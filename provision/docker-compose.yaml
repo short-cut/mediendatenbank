@@ -23,16 +23,14 @@ services:
             USER_GROUP_ID: ${USER_GROUP_ID}
         ports:
             - "${APP_PORT_EXTERNAL}:${APP_PORT}"
+        networks:
+            - "${NETWORK_KEY}"
 
     db:
         image: "${DB_IMAGE}:${ENVIRONMENT}"
         build:
             context: .
             dockerfile: "./db/Dockerfile_${ENVIRONMENT}"
-        profiles:
-            - full
-            - dev
-            - db
         environment:
             - "MYSQL_ROOT_PASSWORD=${DATABASE_ROOT_PASSWORD}"
             - "MYSQL_DATABASE=${DATABASE_DATABASE}"
@@ -43,5 +41,4 @@ services:
         volumes:
             - "${DATA_DIR_HOST}/db/:/var/lib/mysql/${VOLUME_PARAMS}"
             - "${DATA_DIR_HOST}/backup/:/home/mysql/backup/${VOLUME_PARAMS}"
-        networks:
-            - "${NETWORK_KEY}"
+

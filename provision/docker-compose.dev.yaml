@@ -2,3 +2,14 @@ services:
     app:
         volumes:
             - "./app/resources/entrypoint.${ENVIRONMENT}.sh:/entrypoint.sh"
+        networks:
+            - "${NETWORK_KEY}"
+    db:
+        ports:
+            - "${DATABASE_PORT_EXTERNAL}:${DATABASE_PORT}"
+        networks:
+            - "${NETWORK_KEY}"
+
+networks:
+    mddb_dev:
+        name: "${NETWORK_NAME}"
