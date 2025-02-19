@@ -1,0 +1,16 @@
+FROM mariadb:10.4
+
+WORKDIR /home/mysql
+
+COPY ./db/resources/my.cnf /etc/mysql/my.cnf
+
+RUN DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install -yq --no-install-recommends \
+    vim
+
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
+
+EXPOSE 3306
+
+CMD ["mysqld"]
