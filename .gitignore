@@ -8,4 +8,5 @@
 filestore/
 app/.svn/
 doc/sql/
-var/log/
+app/var/log/
+provision/_data/
