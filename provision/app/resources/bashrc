@@ -1,0 +1,3 @@
+alias ll="ls -lha"
+alias cc="cd ~/application && php bin/console cache:clear"
+alias fix="php vendor/bin/php-cs-fixer fix"

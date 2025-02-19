@@ -1,0 +1,102 @@
+<?php
+###############################
+## ResourceSpace
+## Local Configuration Script
+###############################
+
+# All custom settings should be entered in this file.
+# Options may be copied from config.default.php and configured here.
+
+# MySQL database settings
+$mysql_server = 'localhost';
+$mysql_username = 'resourcespace';
+$mysql_password = 'MeDi84.En';
+$mysql_db = 'mediendatenbank';
+
+$mysql_bin_path = '/usr/bin';
+
+# Base URL of the installation
+$baseurl = 'http://192.168.2.26/mediendatenbank';
+
+
+# Variable fuer die Dublettensuche
+$use_temp_tables = true;
+$file_checksums = true;
+
+# Email settings
+$email_from = 'mediendatenbank@dge.de';
+$email_notify = 'it@dge.de';
+
+$spider_password = 'YVe6yHAWEgez';
+$scramble_key = 'u4A4eTumYju4';
+
+$api_scramble_key = 'uGydALYPYQuR';
+
+# Paths
+$imagemagick_path = '/usr/bin';
+$ghostscript_path = '/usr/bin';
+$ffmpeg_path = '/usr/bin';
+$exiftool_path = '/usr/bin';
+$antiword_path = '/usr/bin';
+$pdftotext_path = '/usr/bin';
+
+$enable_remote_apis = true;
+$research_request = false;
+$defaultlanguage = 'de';
+$applicationname = 'Mediendatenbank';
+$ftp_server = 'my.ftp.server';
+$ftp_username = 'my_username';
+$ftp_password = 'my_password';
+$ftp_defaultfolder = 'temp/';
+$thumbs_display_fields = array(8,3);
+$list_display_fields = array(8,3,12);
+$sort_fields = array(12);
+
+# Metadaten Report
+$metadata_report=true;
+$metadata_read=true;
+$exiftool_write=true;
+$exiftool_read=true;
+# Suche
+$searchbar_selectall=true;
+$date_field=83;
+$search_includes_themes=true;
+$search_includes_public_collections=true;
+#Wasserzeichen
+#$watermark="gfx/watermark.png";
+#Zip-Download
+# Set $collection_download to true to enable download of collections as archives (e.g. zip files).
+# The setting below overrides - if true - the $zipcommand.
+# You also have to uncomment and set $collection_download_settings for it to work.
+# (And don't forget to set $archiver_path etc. in the path section.)
+$collection_download = true;
+# Example given for Linux with the zip utility:
+$collection_download_settings[0]["name"] = 'ZIP';
+$collection_download_settings[0]["extension"] = 'zip';
+$collection_download_settings[0]["arguments"] = '-j';
+$collection_download_settings[0]["mime"] = 'application/zip';
+$archiver_path = '/usr/bin';
+$archiver_executable = 'zip';
+$archiver_listfile_argument = "-@ <";
+
+#Dateigröße
+#$list_display_fields=array(8,3,12,73);
+#Themenbilder
+$collection_commenting=true;
+#Geografische Suche deaktiviert
+$disable_geocoding = true;
+#Themes in Collections
+$themes_in_my_collections = true;
+#Name ändern
+$applicationname="Mediendatenbank der DGE e.V.";
+#Standardthema + keine Aenderungsmoeglichkeit
+$defaulttheme="whitegry";
+$available_themes=array("whitegry");
+$upload_methods = array (
+    "single_upload" => true,
+    "in_browser_upload" => true,
+    "in_browser_upload_java" => true,
+    "fetch_from_ftp" => true,
+    "fetch_from_local_folder" => true,
+    );
+

@@ -1,0 +1,47 @@
+services:
+    app:
+        image: "${APP_DOCKER_IMAGE}:${ENVIRONMENT}${ENV_POSTFIX}"
+        build:
+            context: .
+            dockerfile: "./app/Dockerfile_${ENVIRONMENT}"
+            args:
+                - "ENVIRONMENT=${ENVIRONMENT}"
+                - "ENV_POSTFIX=${ENV_POSTFIX}"
+                - "APP_PORT=${APP_PORT}"
+                - "WWW_BASE_DIR=${WWW_BASE_DIR}"
+                - "PROJECT_ROOT_DOCKER=${PROJECT_ROOT_DOCKER}"
+                - "PHP_VERSION=${PHP_VERSION}"
+        container_name: ${COMPOSE_CONTAINER_NAME}
+        restart: unless-stopped
+        volumes:
+            - "../app:${PROJECT_ROOT_DOCKER}"
+        environment:
+            ENVIRONMENT: ${ENVIRONMENT}
+            WWW_BASE_DIR: ${WWW_BASE_DIR}
+            PROJECT_ROOT_DOCKER: ${PROJECT_ROOT_DOCKER}
+            HOST_NAME: ${HOST_NAME}
+            USER_GROUP_ID: ${USER_GROUP_ID}
+        ports:
+            - "${APP_PORT_EXTERNAL}:${APP_PORT}"
+
+    db:
+        image: "${DB_IMAGE}:${ENVIRONMENT}"
+        build:
+            context: .
+            dockerfile: "./db/Dockerfile_${ENVIRONMENT}"
+        profiles:
+            - full
+            - dev
+            - db
+        environment:
+            - "MYSQL_ROOT_PASSWORD=${DATABASE_ROOT_PASSWORD}"
+            - "MYSQL_DATABASE=${DATABASE_DATABASE}"
+            - "MYSQL_USER=${DATABASE_USER}"
+            - "MYSQL_PASSWORD=${DATABASE_PASSWORD}"
+        depends_on:
+            - app
+        volumes:
+            - "${DATA_DIR_HOST}/db/:/var/lib/mysql/${VOLUME_PARAMS}"
+            - "${DATA_DIR_HOST}/backup/:/home/mysql/backup/${VOLUME_PARAMS}"
+        networks:
+            - "${NETWORK_KEY}"

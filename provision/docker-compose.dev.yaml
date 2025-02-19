@@ -1,0 +1,4 @@
+services:
+    app:
+        volumes:
+            - "./app/resources/entrypoint.${ENVIRONMENT}.sh:/entrypoint.sh"

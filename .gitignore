@@ -1,0 +1,11 @@
+# general excludes
+.idea/
+.env
+*~
+*.bak
+
+# project specific excludes
+filestore/
+app/.svn/
+doc/sql/
+var/log/

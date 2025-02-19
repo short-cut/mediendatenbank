@@ -1,0 +1,7 @@
+SecFilterEngine Off
+SecFilterScanPOST Off
+php_value memory_limit 999M
+php_value post_max_size 999M
+php_value upload_max_filesize 999M
+php_value short_open_tag Off
+
