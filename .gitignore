@@ -5,7 +5,7 @@
 *.bak
 
 # project specific excludes
-filestore/
+app/filestore/
 app/.svn/
 doc/sql/
 app/var/log/
