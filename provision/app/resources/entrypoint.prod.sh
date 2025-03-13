@@ -10,6 +10,12 @@ if [[ -d "${PROJECT_ROOT_DOCKER}/var/cache" ]]; then
     rm -rf ${PROJECT_ROOT_DOCKER}/var/cache/*
 fi
 
+if [[ ! -d "${WWW_BASE_DIR}/cache" ]]; then
+    echo "Create folder for session cache"
+    mkdir "${WWW_BASE_DIR}/cache"
+    chmod 777 "${WWW_BASE_DIR}/cache"
+fi
+
 chown "${APACHE_RUN_USER}":"${USER_GROUP_ID}" --recursive ${PROJECT_ROOT_DOCKER} && chmod g+w --recursive "${PROJECT_ROOT_DOCKER}"
 
 echo "127.0.0.1 ${HOST_NAME}" >> /etc/hosts
