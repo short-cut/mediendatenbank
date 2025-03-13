@@ -20,11 +20,12 @@ $lang["note-2"]="%number annotations"; # %number will be replaced, e.g. 3 notes
 
 $lang["annotate_configuration"]="Annotate Configuration";
 $lang["extensions_to_exclude"]="Extensions to exclude<br />(comma separated):";
-$lang["resource_types_to_exclude"]="Resource Types to exclude<br />(tick to exclude):";
+$lang["resource_types_to_exclude"]="Resource Types to exclude (tick to exclude):";
 $lang["annotatedebug"]="Debug:";
 $lang["toggle"]="Toggle";
 $lang["annotate_public_view"] = "Are annotations publicly visible e.g. when sharing collections?";
 $lang["annotate_show_author"] = "Display annotation author when viewing previews?";
+$lang["annotate_metadatafield_error"] = "A metadata field is required to store the annotations";
 
 $lang["annotate_font"]="Font:";
 $lang["annotate_pdf_output"]="PDF Output Option (experimental)";

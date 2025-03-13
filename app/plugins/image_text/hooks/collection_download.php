@@ -22,7 +22,8 @@ function HookImage_textCollection_downloadModifydownloadfile()
 	$image_text_restypes, $image_text_override_groups, $image_text_filetypes,
 	$usesize, $pextension, $use_watermark, $alternative, $tmpfile,
 	$filename, $image_text_height_proportion, $image_text_max_height, 
-	$image_text_min_height, $image_text_font, $image_text_position,$image_text_banner_position;
+	$image_text_min_height, $image_text_font, $image_text_position,$image_text_banner_position,
+	$imagemagick_path;
 	
 	# Return if not configured for this resource type or if user has requested no overlay and is permitted this
 	if(!in_array($result[$n]['resource_type'], $image_text_restypes) || !in_array(strtoupper($result[$n]['file_extension']), $image_text_filetypes) || (getval("nooverlay","")!="" && in_array($usergroup, $image_text_override_groups)) || $use_watermark){return false;}
@@ -68,7 +69,7 @@ function HookImage_textCollection_downloadModifydownloadfile()
 	
 	
 	$tmpolfile= get_temp_dir() . "/" . $result[$n]["ref"] . "_image_text_" . $userref . "." . $pextension;
-	$createolcommand = $convert_fullpath . ' -background "#000" -fill white -gravity "' . $image_text_position . '" -font "' . $image_text_font . '" -size ' . $width  . 'x' . $olheight . ' caption:" ' . $overlaytext .  '  " ' . escapeshellarg($tmpolfile);
+	$createolcommand = $convert_fullpath . ' -background "#000" -fill white -gravity ' . escapeshellarg($image_text_position) . ' -font ' . escapeshellarg($image_text_font) . ' -size ' . escapeshellarg($width  . 'x' . $olheight) . ' caption:' . escapeshellarg($overlaytext) .  ' ' . escapeshellarg($tmpolfile);
 	run_command($createolcommand);
 	
 	$newdlfile = get_temp_dir() . "/" . $result[$n]["ref"] . "_image_text_result_" . $userref . "." . $pextension;

@@ -1,8 +1,6 @@
 <?php
-if (php_sapi_name()!=="cli")
-    {
-    exit("This utility is command line only.");
-    }
+command_line_only();
+
 
 include_once(__DIR__ . "/../../include/image_processing.php");
 
@@ -16,7 +14,7 @@ $preview_tiles = true;
 $preview_tiles_create_auto = true;
 $preview_tile_size = 256;
 $preview_tile_scale_factors = array(1,2,4);
-create_previews($tileresource,false,"jpg",false,false,-1,true);
+create_previews($tileresource,false,"jpg",false,false,-1,true,false,false,["tiles"]);
 
 $tile_checks = array();
 $tile_checks[] = get_resource_path($tileresource, true, 'tile_0_0_256_256');

@@ -18,10 +18,16 @@ $job_find       = getval("job_find","");
 if(!checkperm('a') || $job_user == $userref)
     {
     $pagetitle  = $lang["my_jobs"];
+    $breadcrumbs = [
+        ['title' => $userfullname=="" ? $username : $userfullname, 'href' => "{$baseurl_short}pages/user/user_home.php", 'menu' => true],
+        ['title' => $pagetitle]];
     }
 else
     {
     $pagetitle  = $lang["manage_jobs_title"];
+    $breadcrumbs = [
+        ['title' => $lang['systemsetup'], 'href' => "{$baseurl_short}pages/admin/admin_home.php", 'menu' => true],
+        ['title' => $pagetitle]];
     }
 
 $deletejob = getval("delete_job",0,true);
@@ -29,7 +35,7 @@ $resetjob = getval("reset_job",0,true);
 if($deletejob > 0 && enforcePostRequest(true))
     {
     $deletejobdetail = job_queue_get_job($deletejob);
-    if(checkperm('a') || $deletejob["user"] == $userref)
+    if(checkperm('a') || $deletejobdetail["user"] == $userref)
         {
         job_queue_delete($deletejob);
         }
@@ -56,8 +62,8 @@ elseif(getval("purge_jobs",'') != '' && enforcePostRequest(true) && checkperm('a
 
 $jobs = job_queue_get_jobs($job_type,$job_status,$job_user,'',$job_orderby,$job_sort,$job_find);
 $endedjobs = 0;
-$per_page =getvalescaped("per_page",$default_perpage_list, true); 
-$per_page = (!in_array($per_page,$list_display_array)) ? $default_perpage : $per_page;
+$per_page =getval("per_page",$default_perpage_list, true);
+$per_page = (!in_array($per_page,array_merge($list_display_array,[99999]))) ? $default_perpage_list : $per_page;
 rs_setcookie('per_page', $per_page);
 $jobcount   = count($jobs);
 $totalpages = ceil($jobcount/$per_page);
@@ -100,7 +106,7 @@ $tabledata = array(
 
 if(checkperm('a'))
     {
-    $priorityheader = array("name"=>$lang["job_priority"],"sortable"=>false,"html"=>true, "width" => "40px", "sortable"=>true);
+    $priorityheader = array("name"=>$lang["job_priority"],"sortable"=>true,"html"=>true, "width" => "40px");
     $tabledata["headers"] = array_merge(array("priority" => $priorityheader),$tabledata["headers"]);
     }
 
@@ -130,28 +136,33 @@ for($n=0;$n<$jobcount;$n++)
                 {
                 case JOB_PRIORITY_IMMEDIATE:
                     $priorityicon = "fas fa-fw fa-bolt";
+                    $prioritytitle = $lang["job_priority_immediate"];
                 break;
                 
                 case JOB_PRIORITY_USER:
                     $priorityicon = "fa fa-fw fa-arrow-circle-up";
+                    $prioritytitle = $lang["job_priority_user"];
                 break;
                 
                 case JOB_PRIORITY_SYSTEM:
                     $priorityicon = "fa fa-fw fa-arrow-circle-right";
+                    $prioritytitle = $lang["job_priority_system"];
                 break;
                 
                 case JOB_PRIORITY_COMPLETED:
                 default:
                 $priorityicon = "fa fa-fw fa-arrow-circle-down";
+                $prioritytitle = $lang["job_priority_completed"];
                 break;
                 }
-            $tablejob["priority"] = "<span class='" . $priorityicon . "'></span>";
+            $tablejob["priority"] = "<span class='" . $priorityicon . "' title='" . $prioritytitle ."'></span>";
             }
         $tablejob["status"] = isset($lang["job_status_" . $jobs[$n]["status"]]) ? $lang["job_status_" . $jobs[$n]["status"]] : $jobs[$n]["status"];
         $tablejob["start_date"] = nicedate($jobs[$n]["start_date"],true,true,true); 
         if($jobs[$n]["status"] == STATUS_ERROR || (!in_array($jobs[$n]["status"],array(STATUS_COMPLETE,STATUS_INPROGRESS)) && $jobs[$n]["start_date"] < date("Y-m-d H:i:s",time()-24*60*60)))
             {
             $tablejob["alerticon"] = "fas fa-exclamation-triangle";
+            $tablejob["alerticontitle"] = $lang["job_status_error"];
             }
 
         
@@ -245,6 +256,8 @@ include '../include/header.php';
         echo "<p>" . text("introtext") . "</p>";
         }
 
+    renderBreadcrumbs($breadcrumbs);
+
     if(checkperm('a') && $endedjobs > 0)
         {
         echo "<p><a href='#' onclick='if(confirm(\"" . $lang["job_confirm_purge"] . "\")){update_job(true,\"purge_jobs\");}'>" . LINK_CARET . $lang["jobs_action_purge_complete"] . "</a></p>";
@@ -300,7 +313,6 @@ include '../include/header.php';
                 }?>
 
             <div class="Question"  id="QuestionJobFilterSubmit">
-                <label></label>
                 <input type="button" id="filter" class="searchbutton" value="<?php echo $lang['filterbutton']; ?>" onclick="return CentralSpacePost(document.getElementById('JobFilterForm'));">
                 <input type="button" id="clearfilter" class="searchbutton" value="<?php echo $lang['clearbutton']; ?>" onclick="addUser();jQuery('#job_status').val('-1');jQuery('#job_type').val('');return CentralSpacePost(document.getElementById('JobFilterForm'));">
                 <div class="clearerleft"></div>

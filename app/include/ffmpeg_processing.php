@@ -37,9 +37,7 @@ else
 
 	debug ("Starting ffmpeg_processing.php async with parameters: ref=$ref, file=$file, target=$target, previewonly=$previewonly, snapshottime=$snapshottime, alternative=$alternative",$ref);
 
-	# SQL Connection may have hit a timeout
-	sql_connect();
-	sql_query("UPDATE resource SET is_transcoding = 1 WHERE ref = '".escape_check($ref)."'");
+	ps_query("UPDATE resource SET is_transcoding = 1 WHERE ref = ?", array("i", $ref));
 	}
 
 if(!is_numeric($ref))
@@ -84,7 +82,7 @@ if ($ffmpeg_get_par)
         
     preg_match('/PAR ([0-9]+):([0-9]+)/m', $output, $matches);
     
-    if (@intval($matches[1]) > 0 && @intval($matches[2]) > 0)
+    if (intval($matches[1]??0) > 0 && intval($matches[2]??0) > 0)
         {
         $par = $matches[1] / $matches[2];
         if($par < 1)
@@ -132,7 +130,15 @@ if (hook("replacetranscode","",array($file,$targetfile,$ffmpeg_global_options,$f
 	{
 	exit(); // Do not proceed, replacetranscode hook intends to avoid everything below
 	}
-	
+
+if ($extension == 'gif')
+    {
+    # When processing a GIF file $video_preview_hls_support is unavailable.
+    $video_preview_hls_support = 0;
+    global $ffmpeg_preview_gif_options;
+    $ffmpeg_preview_options = $ffmpeg_preview_gif_options;
+    }
+
 if($video_preview_hls_support!=0)
     {
     // Start the content for the main m3u8 file
@@ -218,7 +224,7 @@ if($video_preview_hls_support!=0)
     
     file_put_contents($hlsmainfile,$hlscontent);
     }
-	
+ 
 if($video_preview_hls_support!=1)
     {
     $shell_exec_cmd = $ffmpeg_fullpath . " $ffmpeg_global_options -y -i " . escapeshellarg($file) . " $ffmpeg_preview_options -t $ffmpeg_preview_seconds -s {$width}x{$height} " . escapeshellarg($targetfile);
@@ -335,9 +341,7 @@ if (isset($ffmpeg_alternatives))
 			if(!hook("removepreviousalts", "", array($ffmpeg_alternatives, $file, $n))):
 
 			# Remove any existing alternative file(s) with this name.
-			# SQL Connection may have hit a timeout
-			sql_connect();
-			$existing=sql_query("select ref from resource_alt_files where resource='$ref' and name='" . escape_check($ffmpeg_alternatives[$n]["name"]) . "'");
+			$existing = ps_query("select ref from resource_alt_files where resource = ? and name = ?", array("i", $ref, "s", $ffmpeg_alternatives[$n]["name"]));
 			for ($m=0;$m<count($existing);$m++)
 				{
 				delete_alternative_file($ref,$existing[$m]["ref"]);
@@ -375,10 +379,9 @@ if (isset($ffmpeg_alternatives))
 			if (file_exists($apath))
 				{
 				# Update the database with the new file details.
-				$file_size = filesize_unlimited($apath);
-				# SQL Connection may have hit a timeout
-				sql_connect();
-				sql_query("update resource_alt_files set file_name='" . escape_check($ffmpeg_alternatives[$n]["filename"] . "." . $ffmpeg_alternatives[$n]["extension"]) . "',file_extension='" . escape_check($ffmpeg_alternatives[$n]["extension"]) . "',file_size='" . $file_size . "',creation_date=now() where ref='$aref'");
+				$file_size = filesize_unlimited($apath);	
+				ps_query("update resource_alt_files set file_name = ?, file_extension = ?, file_size = ?, creation_date = now() where ref = ?", 
+					array("s", $ffmpeg_alternatives[$n]["filename"] . "." . $ffmpeg_alternatives[$n]["extension"], "s", $ffmpeg_alternatives[$n]["extension"], "i", $file_size, "i", $aref));
 				// add this filename to be added to resource.ffmpeg_alt_previews
 				if (isset($ffmpeg_alternatives[$n]['alt_preview']) && $ffmpeg_alternatives[$n]['alt_preview']==true){
 					$ffmpeg_alt_previews[]=basename($apath);
@@ -387,9 +390,7 @@ if (isset($ffmpeg_alternatives))
             else 
                 {
                 # Remove the alternative file entries with this name as ffmpeg has failed to create file.
-                # SQL Connection may have hit a timeout
-                sql_connect();
-                $existing=sql_query("select ref from resource_alt_files where resource='$ref' and name='" . escape_check($ffmpeg_alternatives[$n]["name"]) . "'");
+                $existing = ps_query("select ref from resource_alt_files where resource = ? and name = ?", array("i", $ref, "s", $ffmpeg_alternatives[$n]["name"]));
                 for ($m=0;$m<count($existing);$m++)
                     {
                     delete_alternative_file($ref,$existing[$m]["ref"]);
@@ -397,19 +398,11 @@ if (isset($ffmpeg_alternatives))
                 }
 
 				if(!file_exists($apath) && file_exists($targetfile) && RUNNING_ASYNC) {
-					error_log('FFmpeg alternative failed: ' . $shell_exec_cmd);
-					# SQL Connection may have hit a timeout
-					sql_connect();
+					debug('FFmpeg alternative failed: ' . $shell_exec_cmd);
 					# Change flag as the preview was created and that is the most important of them all
-					sql_query("UPDATE resource SET is_transcoding = 0 WHERE ref = '" . escape_check($ref) . "'");
+					ps_query("UPDATE resource SET is_transcoding = 0 WHERE ref = ?", array("i", $ref));
 				}
 			}
-		/*// update the resource table with any ffmpeg_alt_previews	
-		if (count($ffmpeg_alt_previews)>0){
-			$ffmpeg_alternative_previews=implode(",",$ffmpeg_alt_previews);
-			sql_query("update resource set ffmpeg_alt_previews='".escape_check($ffmpeg_alternative_previews)."' where ref='$ref'");
-		}
-		*/
 	}
 }
 
@@ -423,9 +416,7 @@ if(isset($deletefiles))
 
 if (RUNNING_ASYNC)
 	{
-	# SQL Connection may have hit a timeout
-	sql_connect();
-	sql_query("UPDATE resource SET is_transcoding = 0 WHERE ref = '".escape_check($ref)."'");
+	ps_query("UPDATE resource SET is_transcoding = 0 WHERE ref = ?", array("i", $ref));
 	
 	if ($previewonly)
 		{

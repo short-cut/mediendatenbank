@@ -1,5 +1,5 @@
 <?php
-$simplesaml_version = "1.19.3";
+$simplesaml_version = "1.19.6";
 $simplesaml_check_phpversion = "8.0";
 $simplesaml_site_block=false;
 $simplesaml_login=true;
@@ -12,10 +12,10 @@ $simplesaml_fullname_attribute="cn";
 $simplesaml_email_attribute="mail";
 $simplesaml_username_suffix="";
 $simplesaml_group_attribute="groups";
-$simplesaml_update_group=true;
+$simplesaml_update_group=false;
 $simplesaml_fallback_group=2;
 $simplesaml_groupmap=array();
-$simplesaml_sp="default-sp";
+$simplesaml_sp="resourcespace-sp";
 $simplesaml_fullname_separator=",";
 $simplesaml_username_separator=".";
 $simplesaml_prefer_standard_login=true;

@@ -3,8 +3,8 @@
 function unistr_to_ords($str, $encoding = 'UTF-8'){        
     // Turns a string of unicode characters into an array of ordinal values,
     // Even if some of those characters are multibyte.
-    $str = mb_convert_encoding($str,"UCS-4BE",$encoding);
-    $ords = "";;
+    $str = mb_convert_encoding((string) $str,"UCS-4BE",$encoding);
+    $ords = "";
     
     // Visit each unicode character
     for($i = 0; $i < mb_strlen($str,"UCS-4BE"); $i++){        
@@ -47,7 +47,7 @@ function tms_convert_value($value, $key, array $module)
 	$mappings=array_values($mappings);
         if(strtoupper($mappings[$tms_rs_mapping_index]["encoding"]) != "UTF-8")
             {
-            return mb_convert_encoding($value, 'UTF-8', $mappings[$tms_rs_mapping_index]['encoding']);
+            return mb_convert_encoding((string) $value, 'UTF-8', $mappings[$tms_rs_mapping_index]['encoding']);
             }
         else
             {
@@ -56,12 +56,12 @@ function tms_convert_value($value, $key, array $module)
         }
 
     // Default to the old way of detecting the encoding if we can't figure out the expected encoding of the tms column data.
-    $encoding = mb_detect_encoding($value, getEncodingOrder(), true);
+    $encoding = mb_detect_encoding((string) $value, getEncodingOrder(), true);
 
     // Check if field is defined as UTF-16 or it's not an UTF-8 field
     if(in_array($key, $GLOBALS['tms_link_text_columns']) || !in_array($key, $GLOBALS['tms_link_numeric_columns']))
         {
-        return mb_convert_encoding($value, 'UTF-8', 'UCS-2LE');
+        return mb_convert_encoding((string) $value, 'UTF-8', 'UCS-2LE');
         }
 
     return $value;
@@ -69,25 +69,28 @@ function tms_convert_value($value, $key, array $module)
 
 
 function tms_link_get_tms_data($resource, $tms_object_id = "", $resourcechecksum = "", $onlymodule="")
-  {
-  global $lang, $tms_link_dsn_name,$tms_link_user,$tms_link_password;
-  
-  $conn = odbc_connect($tms_link_dsn_name, $tms_link_user, $tms_link_password);
+    {
+    global $lang, $tms_link_dsn_name,$tms_link_user,$tms_link_password;
 
-    if(!$conn)
-        {
-        $error = odbc_errormsg();
-        return $error;
-        }
+    debug('tms_link: tms_link_get_tms_data() $resource=' . $resource . ' $tms_object_id=' . json_encode($tms_object_id) . ' $resourcechecksum=' . $resourcechecksum . ' $onlymodule=' . $onlymodule);
 
     if(is_int_loose($resource))
         {
         $resource_data = get_resource_data($resource);
         if(!$resource_data)
             {
+            debug('tms_link: unable to get resource data for resource: ' . $resource);
             return $lang["resourceidnotfound"];
             }
-        }   
+        }
+
+    $conn = odbc_connect($tms_link_dsn_name, $tms_link_user, $tms_link_password);
+    if(!$conn)
+        {
+        $error = odbc_errormsg();
+        debug('tms_link: odbc connection error: ' . $error);
+        return $error;
+        }
 
     $modules_mappings = tms_link_get_modules_mappings();
     $convertedtmsdata = array();
@@ -124,11 +127,14 @@ function tms_link_get_tms_data($resource, $tms_object_id = "", $resourcechecksum
             }
 
         $tmscountsql = "SELECT Count(*) FROM {$module['module_name']} {$conditionsql};";
+        debug('tms_link: tms count query to odbc: ' . $tmscountsql);
         $tmscountset = odbc_exec($conn, $tmscountsql);
         $tmscount_arr = odbc_fetch_array($tmscountset);
         $resultcount = end($tmscount_arr);
         if($resultcount == 0)
             {
+            debug('tms_link: No data returned from tms for tms object id(s): ' . json_encode($tms_object_id));
+            odbc_close($conn);
             return $lang["tms_link_no_tms_data"];
             }
 
@@ -149,11 +155,19 @@ function tms_link_get_tms_data($resource, $tms_object_id = "", $resourcechecksum
                 }  
             }
         $tmssql = "SELECT {$columnsql} FROM {$module['module_name']} {$conditionsql};";
+        debug('tms_link: tms column query to odbc: ' . $tmssql);
         $tmsresultset = odbc_exec($conn, $tmssql);
 
         for($r = 1; $r <= $resultcount; $r++)
-            {    
+            {
             $tmsdata = odbc_fetch_array($tmsresultset, $r);
+
+            if (!$tmsdata)
+                {
+                $r++;
+                debug("tms_link: unable to fetch array for tms query row $r in query: $tmssql");
+                continue;
+                }
 
             if(is_array($tms_object_id))
                 {
@@ -168,80 +182,93 @@ function tms_link_get_tms_data($resource, $tms_object_id = "", $resourcechecksum
                     {
                     $convertedtmsdata[$module['module_name']][$key] = tms_convert_value($value, $key, $module);
                     }
-                }        
+                }
             }
         }
 
+    odbc_close($conn);
     return $convertedtmsdata;
     }
 
 function tms_link_get_tms_resources(array $module)
     {
-    if($module['rs_uid_field'] == 0)
+    $module_rtfs = array_filter(array_filter(array_map('intval', [$module['rs_uid_field'], $module['checksum_field']])), 'is_int_loose');
+    if(empty($module_rtfs))
         {
-        return array();
+        return [];
         }
 
-    $tms_resources = sql_query("
-           SELECT rd.resource AS resource,
-                  rd.value AS objectid,
-                  rd2.value AS checksum
-             FROM resource_data AS rd
-        LEFT JOIN resource_data AS rd2 ON rd2.resource = rd.resource AND rd2.resource_type_field = '{$module['checksum_field']}'
-            WHERE rd.resource > 0
-              AND rd.resource_type_field = '{$module['rs_uid_field']}'
-              AND rd.value <> ''
-         ORDER BY rd.resource");
+    $sql_rtf_in = ps_param_insert(count($module_rtfs));
 
-    return $tms_resources;    
+    return ps_query(
+        "   SELECT rn.resource,
+                   max(CASE WHEN n.resource_type_field = ? THEN n.`name` ELSE NULL END) AS objectid,
+                   max(CASE WHEN n.resource_type_field = ? THEN n.`name` ELSE NULL END) AS `checksum`
+              FROM resource_node AS rn
+        INNER JOIN node AS n ON rn.node = n.ref AND n.resource_type_field IN ({$sql_rtf_in})
+             WHERE rn.resource > 0
+          GROUP BY rn.resource
+          ORDER BY rn.resource",
+        array_merge(
+            [
+                'i', $module['rs_uid_field'],
+                'i', $module['checksum_field'],
+            ],
+            ps_param_fill($module_rtfs, 'i')
+        )
+    );
     }
-  
-  
-  
-  
+
 function tms_link_test()
-  {
-  global $tms_link_dsn_name,$tms_link_user,$tms_link_password, $tms_link_checksum_field, $tms_link_table_name,$tms_link_object_id_field, $tms_link_text_columns, $tms_link_numeric_columns;  
-  $conn=odbc_connect($tms_link_dsn_name, $tms_link_user, $tms_link_password);
-  
-  if($conn)
-    {    
-    // Add normal value fields
-    $columnsql = implode(", ", $tms_link_numeric_columns);
-    
-    // Add SQL to get back text fields as VARBINARY(MAX) so we can sort out encoding later
-    foreach ($tms_link_text_columns as $tms_link_text_column)
-      {
-      $columnsql.=", CAST (" . $tms_link_text_column . " AS VARBINARY(MAX)) " . $tms_link_text_column;
-      }    
-    
-    $tmssql = "SELECT TOP 10 * FROM " . $tms_link_table_name . " ;";
-    
-    // Execute the query to get the data from TMS
-    $tmsresultset = odbc_exec($conn,$tmssql);
-    
-    $resultcount=odbc_num_rows ($tmsresultset);
-    if($resultcount==0){global $lang;return $lang["tms_link_no_tms_data"];}
-    
-    $convertedtmsdata=array();
-    for ($r=1;$r<=$resultcount;$r++)
-      {    
-      $tmsdata=odbc_fetch_array ($tmsresultset,$r);
-      foreach($tmsdata as $key=>$value)
-        {        
-        $convertedtmsdata[$key]=$value;
-        }
-      }
-      return $convertedtmsdata;
-    }
-  else
     {
-    $error=odbc_errormsg();
-    exit($error);
-    return $error;
-    }    
-  }  
- 
+    global $tms_link_dsn_name,$tms_link_user,$tms_link_password, $tms_link_checksum_field, $tms_link_table_name,$tms_link_object_id_field, $tms_link_text_columns, $tms_link_numeric_columns;  
+    $conn=odbc_connect($tms_link_dsn_name, $tms_link_user, $tms_link_password);
+
+    if($conn)
+        {
+        // Add normal value fields
+        $columnsql = implode(", ", $tms_link_numeric_columns);
+        
+        // Add SQL to get back text fields as VARBINARY(MAX) so we can sort out encoding later
+        foreach ($tms_link_text_columns as $tms_link_text_column)
+            {
+            $columnsql.=", CAST (" . $tms_link_text_column . " AS VARBINARY(MAX)) " . $tms_link_text_column;
+            }
+
+        $tmssql = "SELECT TOP 10 * FROM " . $tms_link_table_name . " ;";
+
+        // Execute the query to get the data from TMS
+        $tmsresultset = odbc_exec($conn,$tmssql);
+
+        $resultcount=odbc_num_rows ($tmsresultset);
+        if($resultcount == 0)
+            {
+            global $lang;
+            odbc_close($conn);
+            return $lang["tms_link_no_tms_data"];
+            }
+
+        $convertedtmsdata=array();
+        for ($r=1;$r<=$resultcount;$r++)
+            {
+            $tmsdata=odbc_fetch_array ($tmsresultset,$r);
+            foreach($tmsdata as $key=>$value)
+                {
+                $convertedtmsdata[$key]=$value;
+                }
+            }
+
+        odbc_close($conn);
+        return $convertedtmsdata;
+        }
+    else
+        {
+        $error=odbc_errormsg();
+        exit($error);
+        return $error;
+        }
+    }
+
 function tms_add_mediaxref($mediamasterid,$tms_object_id,$create=true)
   {
   global $conn,$tms_link_tms_loginid;
@@ -287,142 +314,175 @@ function tms_add_mediaxref($mediamasterid,$tms_object_id,$create=true)
   } 
   
 function tms_link_create_tms_thumbnail($resource, $alternative=-1)
-  {
-  global $conn,$tms_link_dsn_name,$tms_link_user,$tms_link_password, $tms_link_checksum_field, $tms_link_table_name,$tms_link_object_id_field, $tms_link_text_columns, $tms_link_numeric_columns, $tms_link_tms_loginid,$storagedir, $tms_link_media_path, $tms_link_push_image_sizes;
-  
-  //  Set up connection, need to increase bytes returned
-  ini_set("odbc.defaultlrl", "100K");
-  $conn=odbc_connect($tms_link_dsn_name, $tms_link_user, $tms_link_password);
-
-  if($conn)
     {
-    // Check if we already have a TMS ID
-    $modules_mappings = tms_link_get_modules_mappings();
-    foreach($modules_mappings as $module)
+    global $conn,$tms_link_dsn_name,$tms_link_user,$tms_link_password, $tms_link_checksum_field, $tms_link_table_name,$tms_link_object_id_field, $tms_link_text_columns, $tms_link_numeric_columns, $tms_link_tms_loginid,$storagedir, $tms_link_media_path, $tms_link_push_image_sizes;
+    
+    //  Set up connection, need to increase bytes returned
+    ini_set("odbc.defaultlrl", "100K");
+    $conn=odbc_connect($tms_link_dsn_name, $tms_link_user, $tms_link_password);
+
+    if($conn)
         {
-        if($module['tms_uid_field'] == "ObjectID")
+        // Check if we already have a TMS ID
+        $modules_mappings = tms_link_get_modules_mappings();
+        foreach($modules_mappings as $module)
             {
-            $idfield = $module['rs_uid_field'];
-            break;
+            if($module['tms_uid_field'] == "ObjectID")
+                {
+                $idfield = $module['rs_uid_field'];
+                break;
+                }
+            }
+
+        if(!isset($idfield))
+            {
+            odbc_close($conn);
+            return false;
+            }
+        $tms_object_id = get_data_by_field($resource, $idfield);
+        if($tms_object_id == "")
+            {
+            odbc_close($conn);
+            return false; // No TMS ID found, we can't add the image to TMS
+            }
+
+        // Get TMS Path ID of filestore path
+        $pathid=tms_get_mediapathid($tms_link_media_path);
+        debug("tms_link: Found PathID for " . $tms_link_media_path . " - " . $pathid);
+      
+        // Get details of the image to send to TMS
+        foreach($tms_link_push_image_sizes as $tms_link_push_image_size)
+            {
+            $preview_path=get_resource_path($resource,true,$tms_link_push_image_size,false,'jpg',-1,1,false,'',$alternative);
+            if(file_exists($preview_path) && filesize_unlimited($preview_path)<65536)
+                {
+                if(isset($storagedir) && $storagedir!="")
+                    {
+                    $tmsrelfilepath=substr($preview_path,strlen($storagedir) + 1);
+                    }
+                else
+                    {
+                    $tmsrelfilepath=substr($preview_path,strpos($preview_path,'filestore')+10);
+                    }
+                break;
+                }
+            }
+        if(!isset($tmsrelfilepath))
+            {
+            debug("tms_link: No valid image files found to be uploaded");
+            odbc_close($conn);
+            return false;
+            }
+
+        // Check if mediafile already exists
+        $existingmediafile=tms_check_thumb($pathid,$preview_path,$tmsrelfilepath);	  
+        if($existingmediafile!==false)
+            {
+            // Update MediaRenditions with new thumbnail and return as everything else stays the same
+            debug("tms_link: Found existing media record for Object ID #" . $tms_object_id . " - Mediamaster: " . $existingmediafile["MediaMasterID"]);
+            tms_update_media_rendition_thumb($existingmediafile["MediaMasterID"],$existingmediafile["PrimaryFileID"], $pathid, $preview_path,$tmsrelfilepath);
+            odbc_close($conn);
+            return true;
+            }
+
+         // No existing record for the path defined, Add a new record
+
+        // ============================ MediaMaster Table ================================
+        // Get a MediaMaster record ID to use, if there is not one unused then create one
+        $mediamasterid = tms_get_mediamasterid(true,$resource);
+        if(!$mediamasterid)
+            {
+            debug("tms_link: ERROR: Unable to get a MediaMasterID. ");
+            odbc_close($conn);
+            return false;
+            }
+        debug("tms_link: Using MediaMasterID: " . $mediamasterid);
+
+        // ============================ MediaRenditions Table ============================
+        $renditionid=tms_get_renditionid($mediamasterid,$resource,true);
+        if(!$renditionid)
+            {
+            debug("tms_link: ERROR - Unable to create a new RenditionID. ");
+            odbc_close($conn);
+            return false;
+            }
+        debug("Using RenditionID: " . $renditionid);
+
+        // UPDATE MediaMaster with new value
+        $tmssql="UPDATE MediaMaster Set DisplayRendID = '" . $renditionid . "', PrimaryRendID = '" . $renditionid . "' WHERE MediaMasterID = '" . $mediamasterid . "'";
+        odbc_exec($conn,$tmssql);
+        $tms_set_rendition=odbc_exec($conn,$tmssql);
+        if(!$tms_set_rendition)
+            {
+            $errormessage=odbc_errormsg();
+            debug("tms_link: SQL = " . $tmssql);
+            debug("tms_link: Unable to update MediaMaster table with RenditionID " . $errormessage);
+            odbc_close($conn);
+            return false;
+            }
+
+        $mediafileid=tms_add_mediafile($renditionid,$pathid,$preview_path,$tmsrelfilepath,true);
+        debug("tms_link: added new mediafile in MediaXRefs. Media FileID: " . $mediafileid);
+        
+        // Update MediaRenditions with new mediafile
+        $updaterendition=tms_update_media_rendition($mediamasterid,$mediafileid);
+        if(!$updaterendition)
+            {
+            debug("tms_link: ERROR: Unable to update media rendition");
+            odbc_close($conn);
+            return false;
+            }
+
+        // Update MediaRenditions with new thumbnail
+        tms_update_media_rendition_thumb($mediamasterid,$mediafileid, $pathid, $preview_path,$tmsrelfilepath); 
+
+        // ============================ MediaXRefs Table - Create Link to TMS Objects Module
+        $mediaxrefid=tms_add_mediaxref($mediamasterid,$tms_object_id,true);
+        if(!$mediaxrefid)
+            {
+            debug("tms_link: ERROR: Unable to create row in MediaXRefs");
+            odbc_close($conn);
+            return false;
             }
         }
-
-    if(!isset($idfield))
+    else
         {
+        $error=odbc_errormsg();
+        exit($error);
         return false;
         }
-    $tms_object_id = get_data_by_field($resource, $idfield);
-    if($tms_object_id==""){return false;} // No TMS ID found, we can't add the image to TMS    
-	
-	// Get TMS Path ID of filestore path
-	$pathid=tms_get_mediapathid($tms_link_media_path);
-	debug("tms_link: Found PathID for " . $tms_link_media_path . " - " . $pathid);
-	
-	// Get details of the image to send to TMS
-	foreach($tms_link_push_image_sizes as $tms_link_push_image_size)
-	  {
-	  $preview_path=get_resource_path($resource,true,$tms_link_push_image_size,false,'jpg',-1,1,false,'',$alternative);
-	  if(file_exists($preview_path) && filesize_unlimited($preview_path)<65536)
-		  {
-		  if(isset($storagedir) && $storagedir!="")
-			  {
-			  $tmsrelfilepath=substr($preview_path,strlen($storagedir) + 1);
-			  }
-		  else
-			  {
-			  $tmsrelfilepath=substr($preview_path,strpos($preview_path,'filestore')+10);
-			  }
-		  break;
-		  }
-	  }
-	if(!isset($tmsrelfilepath))
-	  {
-	  debug("tms_link: No valid image files found to be uploaded");
-	  return false;
-	  }
-		  
-	// Check if mediafile already exists
-    $existingmediafile=tms_check_thumb($pathid,$preview_path,$tmsrelfilepath);	  
-	if($existingmediafile!==false)
-		{
-		// Update MediaRenditions with new thumbnail and return as everything else stays the same
-		debug("tms_link: Found existing media record for Object ID #" . $tms_object_id . " - Mediamaster: " . $existingmediafile["MediaMasterID"]);
-		tms_update_media_rendition_thumb($existingmediafile["MediaMasterID"],$existingmediafile["PrimaryFileID"], $pathid, $preview_path,$tmsrelfilepath); 
-		return true;		
-		}
-		
-	// No existing record for the path defined, Add a new record
-	
-	// ============================ MediaMaster Table ================================
-	// Get a MediaMaster record ID to use, if there is not one unused then create one
-	$mediamasterid = tms_get_mediamasterid();
-	if(!$mediamasterid)
-	  {
-	  debug("tms_link: ERROR: Unable to get a MediaMasterID. " . $errormessage);
-	  return false;
-	  }      
-	debug("tms_link: Using MediaMasterID: " . $mediamasterid);
-	// ============================ MediaRenditions Table ============================
-	$renditionid=tms_get_renditionid($mediamasterid,$resource,true);
-	if(!$renditionid)
-	  {
-	  debug("tms_link: ERROR - Unable to create a new RenditionID. " . $errormessage);
-	  return false;
-	  }     
-    debug("Using RenditionID: " . $renditionid);        
-	// UPDATE MediaMaster with new value
-	$tmssql="UPDATE MediaMaster Set DisplayRendID = '" . $renditionid . "', PrimaryRendID = '" . $renditionid . "' WHERE MediaMasterID = '" . $mediamasterid . "'";
-	odbc_exec($conn,$tmssql);
-	$tms_set_rendition=odbc_exec($conn,$tmssql);
-	if(!$tms_set_rendition)
-	  {
-	  $errormessage=odbc_errormsg();
-	  debug("tms_link: SQL = " . $tmssql);
-	  debug("tms_link: Unable to update MediaMaster table with RenditionID " . $errormessage);
-	  return false;
-	  }
-			 
-	$mediafileid=tms_add_mediafile($renditionid,$pathid,$preview_path,$tmsrelfilepath,true);
-	debug("tms_link: added new mediafile in MediaXRefs. Media FileID: " . $mediafileid);
-	
-	// Update MediaRenditions with new mediafile
-	$updaterendition=tms_update_media_rendition($mediamasterid,$mediafileid);
-	if(!$updaterendition)
-	  {
-	  debug("tms_link: ERROR: Unable to update media rendition");
-	  //echo "tms_link: ERROR: Unable to update media rendition<br>";
-	  return false;
-	  }
-	  
-	// Update MediaRenditions with new thumbnail
-	tms_update_media_rendition_thumb($mediamasterid,$mediafileid, $pathid, $preview_path,$tmsrelfilepath); 
-		
-	// ============================ MediaXRefs Table - Create Link to TMS Objects Module
-	$mediaxrefid=tms_add_mediaxref($mediamasterid,$tms_object_id,true);
-	if(!$mediaxrefid)
-	  {
-	  //echo "Unable to create row in MediaXRefs <br>";
-	  debug("tms_link: ERROR: Unable to create row in MediaXRefs");
-	  return false;
-	  }
+    }
 
-    }
-    
-  else
-    {
-    $error=odbc_errormsg();
-    exit($error);
-    return false;
-    }
-    
-  }
-    
-function tms_get_mediamasterid($create=true)
+/**
+ * tms_get_mediamasterid
+ * Retrieve a list of unused Media Master IDs from the TMS database and return the first available.
+ * If no IDs are found then create a new one and then retry
+ * To avoid Media Master IDs being used by multiple resources $tms_link_mediapaths_resource_reference_column can be set.
+ * This will store the resource ID in the MediaMaster table when creating the new ID so that it is not used by another Resource
+ *
+ * @param  bool $create    flag to create a new ID if none found
+ * @param  int  $resource  ResourceSpace resource ID
+ * @return bool|string      False if no ID found, otherwise the Media Master ID is returned
+ */
+function tms_get_mediamasterid(bool $create=true,int $resource=NULL)
   {
-  global $conn, $errormessage, $tms_link_tms_loginid;
+  global $conn, $errormessage, $tms_link_tms_loginid,$tms_link_mediapaths_resource_reference_column ;
   // Get the latest inserted ID that we have not used
-  $tmssql = "select MediaMasterID FROM MediaMaster where LoginID = '" . $tms_link_tms_loginid . "' and DisplayRendID='-1' and PrimaryRendID='-1'";
-  $mediamasterresult=odbc_exec($conn,$tmssql);
+  $tmssql = new PreparedStatementQuery(
+    "SELECT MediaMasterID FROM MediaMaster 
+      WHERE LoginID = ? 
+        AND DisplayRendID='-1' 
+        AND PrimaryRendID='-1'",
+        ["s",$tms_link_tms_loginid]);
+
+  if ($tms_link_mediapaths_resource_reference_column != "" && $resource !=NULL)
+    {
+      $tmssql->sql .= "AND $tms_link_mediapaths_resource_reference_column = ?";
+      $tmssql->parameters = array_merge($tmssql->parameters,["i",$resource]);
+    }
+  
+  $tmsps = odbc_prepare($conn,$tmssql->sql);
+  $mediamasterresult=odbc_exec($tmsps,$tmssql->parameters);
 
   if(!$mediamasterresult)
     {
@@ -444,7 +504,19 @@ function tms_get_mediamasterid($create=true)
     }
   elseif($create)  
     {
-    $tmssql="INSERT INTO MediaMaster (LoginID,DisplayRendID, PrimaryRendID) VALUES ('" . $tms_link_tms_loginid . "',-1,-1)";
+    $insert_columns = ["LoginID","DisplayRendID","PrimaryRendID"];
+    $insert_values  = [$tms_link_tms_loginid,-1,-1];
+
+    if ($tms_link_mediapaths_resource_reference_column != "" && $resource !="")
+      {
+      $insert_columns[]=$tms_link_mediapaths_resource_reference_column;
+      $insert_values[]=$resource;
+      }
+    
+    $insert_columns = implode(",",$insert_columns);
+    $insert_values= implode("','",$insert_values);
+
+    $tmssql="INSERT INTO MediaMaster ($insert_columns) VALUES ('$insert_values')";
     $tmsinsert=odbc_exec($conn,$tmssql);
     if(!$tmsinsert)
       {
@@ -452,7 +524,7 @@ function tms_get_mediamasterid($create=true)
       debug("tms_link: ERROR = " . $errormessage);  
       return false;
       }
-    $newmasterid=tms_get_mediamasterid(false);
+    $newmasterid=tms_get_mediamasterid(false,$resource);
     return $newmasterid;
     }
   else  

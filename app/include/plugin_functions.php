@@ -31,34 +31,22 @@ function activate_plugin($name)
                 $plugin_yaml['desc'] = substr(file_get_contents($about), 0, 95) . '...';
                 }
             }
-            
-        # escape the plugin information
-        $plugin_yaml_esc = array();
-        foreach (array_keys($plugin_yaml) as $thekey)
-            {
-            $plugin_yaml_esc[$thekey] = escape_check($plugin_yaml[$thekey]);
-            }
     
         # Add/Update plugin information.
         # Check if the plugin is already in the table.
-        $c = sql_value("SELECT name as value FROM plugins WHERE name='$name'",'');
+        $c = ps_value("SELECT name as value FROM plugins WHERE name = ?", array("s", $name), '');
 
         if ($c == '')
             {
-            sql_query("INSERT INTO plugins(name) VALUE ('$name')");
+            ps_query("INSERT INTO plugins (name) VALUE (?)", array("s", $name));
             }
 
-        sql_query("UPDATE plugins SET config_url='{$plugin_yaml_esc['config_url']}', " .
-            "descrip='{$plugin_yaml_esc['desc']}', author='{$plugin_yaml_esc['author']}', " .
-            "inst_version='{$plugin_yaml_esc['version']}', " .
-            "priority='{$plugin_yaml_esc['default_priority']}', " .
-            "update_url='{$plugin_yaml_esc['update_url']}', info_url='{$plugin_yaml_esc['info_url']}', " .
-            "disable_group_select='{$plugin_yaml_esc['disable_group_select']}', " .
-            "title='{$plugin_yaml_esc['title']}', " .
-            "icon='{$plugin_yaml_esc['icon']}'" .
-            "WHERE name='{$plugin_yaml_esc['name']}'");
+        ps_query("UPDATE plugins SET config_url = ?, descrip = ?, author = ?, inst_version = ?, priority = ?, update_url = ?, info_url = ?, disable_group_select = ?,
+        title = ?, icon = ? WHERE name = ?", array("s", $plugin_yaml['config_url'], "s", $plugin_yaml['desc'], "s", $plugin_yaml['author'], "d", $plugin_yaml['version'],
+        "i", $plugin_yaml['default_priority'], "s", $plugin_yaml['update_url'], "s", $plugin_yaml['info_url'], "i", $plugin_yaml['disable_group_select'], "s",
+        $plugin_yaml['title'], "s", $plugin_yaml['icon'], "s", $plugin_yaml['name']));
 
-        log_activity(null, LOG_CODE_ENABLED, $plugin_yaml_esc['version'], 'plugins', 'inst_version', $plugin_yaml_esc['name'], 'name', '', null, true);
+        log_activity(null, LOG_CODE_ENABLED, $plugin_yaml['version'], 'plugins', 'inst_version', $plugin_yaml['name'], 'name', '', null, true);
 
         // Clear query cache
         clear_query_cache("plugins");
@@ -79,19 +67,16 @@ function activate_plugin($name)
  * in the database.
  *
  * @param string $name Name of plugin to be deativated.
- * @return bool Returns true if plugin is deactivated.
  * @see activate_plugin
  */
-function deactivate_plugin($name)
+function deactivate_plugin($name): void
     {
-    $name = escape_check($name);
-
-    $inst_version = sql_value("SELECT inst_version AS value FROM plugins WHERE name = '{$name}'", '');
+    $inst_version = ps_value("SELECT inst_version AS value FROM plugins WHERE name = ?", array("s", $name), '');
   
     if($inst_version >= 0)
         {
         # Remove the version field. Leaving the rest of the plugin information.  This allows for a config column to remain (future).
-        sql_query("UPDATE plugins SET inst_version = NULL WHERE name = '{$name}'");
+        ps_query("UPDATE plugins SET inst_version = NULL WHERE name = ?", array("s", $name));
 
         log_activity(null, LOG_CODE_DISABLED, '', 'plugins', 'inst_version', $name, 'name', $inst_version, null, true);
         }
@@ -113,7 +98,7 @@ function deactivate_plugin($name)
  */
 function purge_plugin_config($name)
     {
-    sql_query("UPDATE plugins SET config=NULL, config_json=NULL where name='$name'");
+    ps_query("UPDATE plugins SET config = NULL, config_json = NULL where name = ?", array("s", $name));
 
     // Clear query cache
     clear_query_cache("plugins");
@@ -165,7 +150,7 @@ function get_plugin_yaml($path, $validate=true)
             
         if ($plugin_yaml['config_url']!='' && $plugin_yaml['config_url'][0]=='/') # Strip leading spaces from the config url.
             {
-            trim($plugin_yaml['config_url'], '/');
+            $plugin_yaml['config_url'] = trim($plugin_yaml['config_url'], '/');
             }
         fclose($yaml_file_ptr);
         if ($validate)
@@ -293,13 +278,13 @@ function config_encode($input)
 function get_plugin_config($name){
     global $mysql_verbatim_queries, $mysql_charset;
 
-    # Need verbatum queries here
+    # Need verbatim queries here
     $mysql_vq = $mysql_verbatim_queries;
     $mysql_verbatim_queries = true;
-    $configs = sql_query("SELECT config,config_json from plugins where name='$name'", 'plugins');
-    $configs = $configs[0];
+    $configs = ps_query("SELECT config, config_json from plugins where name = ?", array("s", $name), 'plugins');
+    $configs = $configs[0] ?? [];
     $mysql_verbatim_queries = $mysql_vq;
-    if (!array_key_exists('config', $configs))
+    if (!array_key_exists('config', $configs) || is_null($configs['config_json']))
         {
         return null;
         }
@@ -346,13 +331,11 @@ function set_plugin_config($plugin_name, $config)
         $config_ser_json = iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $config_ser_json);
         }
 
-    $config_ser_json = mysqli_real_escape_string($db["read_write"], $config_ser_json);
-
     // We record the activity before running the query because log_activity() is trying to be clever and figure out the old value
     // which will make the new value also show up (incorrectly) as the old value.
     log_activity(null, LOG_CODE_EDITED, $config_ser_json, 'plugins', 'config_json', $plugin_name, 'name', null, null, true);
 
-    sql_query("UPDATE plugins SET config='$config_ser_bin', config_json='$config_ser_json' WHERE name='$plugin_name'");
+    ps_query("UPDATE plugins SET config = ?, config_json = ? WHERE name = ?", array("s", $config_ser_bin, "s", $config_ser_json, "s", $plugin_name));
 
     // Clear query cache
     clear_query_cache("plugins");
@@ -370,7 +353,7 @@ function set_plugin_config($plugin_name, $config)
  */
 function is_plugin_activated($name)
     {
-    $activated = sql_query("SELECT name FROM plugins WHERE name='$name' and inst_version IS NOT NULL","plugins");
+    $activated = ps_query("SELECT name FROM plugins WHERE name = ? and inst_version IS NOT NULL", array("s", $name), "plugins");
     if (is_array($activated) && count($activated)>0)
         {
         return true;
@@ -389,7 +372,7 @@ function is_plugin_activated($name)
  */
 function get_active_plugins()
     {
-    return sql_query('SELECT name, enabled_groups, config, config_json FROM plugins WHERE inst_version >= 0 ORDER BY priority', 'plugins');
+    return ps_query('SELECT name, enabled_groups, config, config_json FROM plugins WHERE inst_version >= 0 ORDER BY priority', array(), 'plugins');
     }
 
 /**
@@ -508,11 +491,13 @@ function config_gen_setup_html($page_def,$plugin_name,$upload_status,$plugin_pag
     global $lang,$baseurl_short;
 ?>
     <div class="BasicsBox">
+    <h1><?php echo htmlspecialchars($plugin_page_heading); ?></h1>
 <?php
     $links_trail = array(
         array(
             'title' => $lang["systemsetup"],
-            'href'  => $baseurl_short . "pages/admin/admin_home.php"
+            'href'  => $baseurl_short . "pages/admin/admin_home.php",
+            'menu' =>  true
         ),
         array(
             'title' => $lang["pluginmanager"],
@@ -620,7 +605,6 @@ function config_gen_setup_html($page_def,$plugin_name,$upload_status,$plugin_pag
         }
         ?>
         <div class="Question">
-          <label for="submit">&nbsp;</label>
           <input type="submit" name="save" id="save" value="<?php echo $lang['plugins-saveconfig']?>">
           <input type="submit" name="submit" id="submit" value="<?php echo $lang['plugins-saveandexit']?>">
           <div class="clearerleft"></div>
@@ -910,33 +894,51 @@ function config_add_multi_group_select($config_var, $label, $width=300)
     }
 
 /**
- * Generate an html multi-select + options block for selecting multiple the RS field types. The
- * Generate an html multi-select + options block for selecting multiple the RS field types. The
+ * Generate an html multi-select + options block for selecting multiple RS field types. The
  * selected field type is posted as an array of the values of the "ref" column of the selected
  * field types.
  *
  * @param string $name the name of the select block. Usually the name of the config variable being set.
  * @param string $label the user text displayed to label the select block. Usually a $lang string.
- * @param integer array $current the current value of the config variable being set
+ * @param array  $current Array holding the current field IDs of the config variable being set
  * @param integer $width the width of the input field in pixels. Default: 300.
+ * @param integer $size - Number of visible options. Default 7
+ * @param integer $rtype - Limit to fields associated with a specific resource type 
  */
-function config_multi_ftype_select($name, $label, $current, $width=300,$size=7,$ftype=false) 
+function config_multi_ftype_select($name, $label, $current, $width=300,$size=7,$rtype=false) 
     {
     global $lang;
-    if($ftype===false){
-    	$fields=sql_query('select f.ref, f.title, f.name, rt.name as rt_name from resource_type_field f left join resource_type rt on f.resource_type=rt.ref order by rt.ref, f.title, f.name', "schema");
+    if($rtype===false){
+    	$fields = get_resource_type_fields("","order_by");
     }
     else{
-    	$fields=sql_query('select f.ref, f.title, f.name, rt.name as rt_name from resource_type_field f left join resource_type rt on f.resource_type=rt.ref where f.resource_type="$ftype" order by f.title, f.name', "schema");
+    	$fields = get_resource_type_fields($rtype,"order_by");
     }
-?>
-  <div class="Question">
+    $all_resource_types = get_resource_types();
+    $resource_types = array_column($all_resource_types,"name","ref");
+    ?>
+    <div class="Question">
     <label for="<?php echo $name?>" title="<?php echo str_replace('%cvn', $name, $lang['plugins-configvar'])?>"><?php echo $label?></label>
     <select name="<?php echo $name?>[]" id="<?php echo $name?>" class="MultiSelect" multiple="multiple" size="<?php echo $size?>" style="width:<?php echo $width ?>px">
-<?php
+    <?php
     foreach($fields as $field)
         {
-        echo '    <option value="'. $field['ref'] . '"' . (in_array($field['ref'],$current)?' selected':'') . '>' . lang_or_i18n_get_translated($field['title'],'fieldtitle-') . (($field['rt_name']!='')?' (' . lang_or_i18n_get_translated($field['rt_name'],'"resourcetype-') . ')':'') . '</option>';
+        $str_restypes = "";
+        $fieldrestypes = explode(",",(string)$field["resource_types"]);
+        $fieldrestypenames = [];
+        if($field["global"] != 1)
+            {
+            foreach($fieldrestypes as $fieldrestype)
+                {
+                $fieldrestypenames[] =i18n_get_translated($resource_types[$fieldrestype]);
+                }
+            if(count($fieldrestypes) < count($all_resource_types)-2)
+                {
+                // Don't show this if they are linked to all but one resource types
+                $str_restypes = " (" .  implode(",",$fieldrestypenames) . ")";
+                }
+            }
+        echo '<option value="'. $field['ref'] . '"' . (in_array($field['ref'],$current) ? ' selected':'') . '>' . htmlspecialchars(lang_or_i18n_get_translated($field['title'],'fieldtitle-') .  $str_restypes) .  '</option>';
         }
 ?>
     </select>
@@ -970,7 +972,7 @@ function config_add_multi_ftype_select($config_var, $label, $width=300,$size=7,$
 function config_single_rtype_select($name, $label, $current, $width=300)
     {
     global $lang;
-    $rtypes=get_resource_types();
+    $rtypes=get_resource_types("",true,false,true);
 ?>
   <div class="Question">
     <label for="<?php echo $name?>" title="<?php echo str_replace('%cvn', $name, $lang['plugins-configvar'])?>"><?php echo $label?></label>
@@ -1014,20 +1016,23 @@ function config_multi_rtype_select($name, $label, $current, $width=300)
     {
     global $lang;
     $rtypes=get_resource_types();
-?>
-  <div class="Question">
-    <label for="<?php echo $name?>" title="<?php echo str_replace('%cvn', $name, $lang['plugins-configvar'])?>"><?php echo $label?></label>
-    <fieldset id="<?php echo $name?>" class="MultiRTypeSelect">
-<?php
-    foreach($rtypes as $rtype)
-        {
-        echo '    <input type="checkbox" value="'. $rtype['ref'] . '" name="' . $name . '[]"' . (in_array($rtype['ref'],$current)?' checked="checked"':'') . '>' . lang_or_i18n_get_translated($rtype['name'],'resourcetype-') . '</option><br />';
-        }
-?>
-    </fieldset>
-    <div class="clearerleft"></div>
-  </div>
-<?php
+    ?>
+    <div class="Question">
+        <label for="<?php echo escape($name) ?>" title="<?php echo escape(str_replace('%cvn', $name, $lang['plugins-configvar'])) ?>"><?php echo htmlspecialchars($label) ?></label>
+        <fieldset id="<?php echo escape($name) ?>" class="MultiRTypeSelect">
+            <?php foreach($rtypes as $rtype) { ?>
+                <input type="checkbox"
+                    value="<?php echo escape($rtype['ref']) ?>"
+                    name="<?php echo escape($name) ?>[]"
+                    id="<?php echo escape($name . $rtype['ref']) ?>"
+                    <?php echo (in_array($rtype['ref'],$current) ? ' checked="checked"' : '') ?>>
+                <label for="<?php echo escape($name . $rtype['ref']) ?>"><?php echo htmlspecialchars(lang_or_i18n_get_translated($rtype['name'],'resourcetype-')) ?></label>
+                <br />
+            <?php } ?>
+        </fieldset>
+        <div class="clearerleft"></div>
+    </div>
+    <?php
     }
 
 /**
@@ -1057,21 +1062,25 @@ function config_add_multi_rtype_select($config_var, $label, $width=300)
 function config_multi_archive_select($name, $label, $current, $choices, $width=300)
     {
     global $lang;
-?>
-  <div class="Question">
-    <label for="<?php echo $name?>" title="<?php echo str_replace('%cvn', $name, $lang['plugins-configvar'])?>"><?php echo $label?></label>
-    <fieldset id="<?php echo $name?>" class="MultiRTypeSelect">
-<?php
-    foreach($choices as $statekey => $statename)
-        {
-        echo '<span id="archivestate' . $statekey . '"><input type="checkbox" value="'. $statekey . '" name="' . $name . '[]" id="' . $name . $statekey . '" ' 
-            . (isset($current) && $current!='' && in_array($statekey,$current)?' checked="checked"':'') . '> '. $statename . '<br /></span>';
-        }
-?>
-    </fieldset>
-    <div class="clearerleft"></div>
-  </div>
-<?php
+    ?>
+    <div class="Question">
+        <label for="<?php echo escape($name)?>" title="<?php echo escape(str_replace('%cvn', $name, $lang['plugins-configvar']))?>"><?php echo htmlspecialchars($label)?></label>
+        <fieldset id="<?php echo escape($name)?>" class="MultiRTypeSelect">
+            <?php foreach($choices as $statekey => $statename) { ?>
+                <span id="archivestate<?php echo escape($statekey) ?>">
+                    <input type="checkbox"
+                        value="<?php echo escape($statekey) ?>"
+                        name="<?php echo escape($name) . '[]' ?>"
+                        id="<?php echo escape($name . $statekey) ?>" 
+                        <?php echo (isset($current) && $current!='' && in_array($statekey,$current) ? ' checked="checked"' : '') ?>>
+                    <label for="<?php echo escape($name . $statekey) ?>"><?php echo htmlspecialchars($statename) ?></label>
+                    <br />
+                </span>
+            <?php } ?>
+        </fieldset>
+        <div class="clearerleft"></div>
+    </div>
+    <?php
     }
 
 /**
@@ -1338,8 +1347,7 @@ function plugin_activate_for_setup($plugin_name)
     if (file_exists($hookpath)) {include_once $hookpath;}	
 
     // Include plugin configuration	for displaying on Options page
-    $plugin_name = escape_check($plugin_name);
-    $active_plugin = sql_query("SELECT name,enabled_groups,config,config_json FROM plugins WHERE `name` = '{$plugin_name}' AND inst_version>=0 order by priority");
+    $active_plugin = ps_query("SELECT `name`, enabled_groups, config, config_json FROM plugins WHERE `name` = ? AND inst_version >= 0 order by priority", array("s", $plugin_name));
     if (empty($active_plugin))
         {
         include_plugin_config($plugin_name);
@@ -1394,7 +1402,6 @@ function include_plugin_config($plugin_name,$config="",$config_json="")
 		global $$name;
 		$$name = $value;
 		}
-    debug_track_vars('end@include_plugin_config', get_defined_vars());
 	}
 
 function register_plugin_language($plugin)
@@ -1440,6 +1447,9 @@ function get_plugin_path($plugin,$url=false)
     # Supports plugins being in the filestore folder (for user uploaded plugins)
     global $baseurl_short,$storagedir,$storageurl;
     
+    # Sanitise $plugin
+    $plugin=safe_file_name($plugin);
+    
     # Standard location    
     $pluginpath=dirname(__FILE__) . "/../plugins/" . $plugin;
     if (file_exists($pluginpath)) {return ($url?$baseurl_short . "plugins/" . $plugin:$pluginpath);}
@@ -1464,7 +1474,11 @@ function register_plugin($plugin)
 	# Support an 'all' hook
 	$hookpath=$pluginpath . "/hooks/all.php";
 	if (file_exists($hookpath)) {include_once $hookpath;}
-	
+
+  	# Support standard location for API bindings
+	$api_bindings_path=$pluginpath . "/api/api_bindings.php";
+	if (file_exists($api_bindings_path)) {include_once $api_bindings_path;}
+
 	return true;	
 	}
 

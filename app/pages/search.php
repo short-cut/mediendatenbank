@@ -7,15 +7,15 @@ if($annotate_enabled)
     }
 
 # External access support (authenticate only if no key provided, or if invalid access key provided)
-$s = getvalescaped("search","");
+$s = getval("search","");
 if (is_array($s))
     {
     redirect($baseurl . "/pages/search.php");
     }
 $s = explode(" ", $s);
 
-$k = getvalescaped("k","");
-$resetlockedfields = getvalescaped("resetlockedfields","") != "";
+$k = getval("k","");
+$resetlockedfields = getval("resetlockedfields","") != "";
 
 if (($k=="") || (!check_access_key_collection(str_replace("!collection","",$s[0]),$k))) {include "../include/authenticate.php";}
 
@@ -30,8 +30,7 @@ if ($k=="" || $internal_share_access)
         if((isset($anonymous_login) && ($username==$anonymous_login)) && isset($rs_session) && $anonymous_user_session_collection)
             {   
             $sessioncollections=get_session_collections($rs_session,$userref,true); 
-            $usercollection=$sessioncollections[0];
-            $collection_allow_creation=false; // Hide all links that allow creation of new collections                      
+            $usercollection=$sessioncollections[0];                  
             }
         else
             {
@@ -53,9 +52,9 @@ if($k != "" && !$internal_share_access || (isset($anonymous_login) && $username 
     $use_selection_collection = false;
     }
 
-$search = getvalescaped('search', '');
+$search = getval('search', '');
 $modal  = ('true' == getval('modal', ''));
-$collection_add=getvalescaped("collection_add",""); // Need this if redirected here from upload
+$collection_add=getval("collection_add",""); // Need this if redirected here from upload
 $initial_search_cookie = (isset($_COOKIE['search']) ? trim(strip_leading_comma($_COOKIE['search'])) : '');
 $initial_restypes_cookie = (isset($_COOKIE['restypes']) ? trim($_COOKIE['restypes']) : '');
 $initial_saved_archive_cookie = (isset($_COOKIE['saved_archive']) ? trim($_COOKIE['saved_archive']) : '');
@@ -103,31 +102,39 @@ foreach($keywords as $keyword)
         continue;
         }
 
-    $field_shortname = escape_check($field_shortname);
-    $resource_type_field = sql_value("SELECT ref AS `value` FROM resource_type_field WHERE `name` = '{$field_shortname}'", 0, "schema");
-
+    $resource_type_field = ps_value("SELECT ref AS `value` FROM resource_type_field WHERE `name` = ?", array("s",$field_shortname), 0, "schema");
+    $resource_type_field_type = get_resource_type_field($resource_type_field)["type"];
+    
     if(0 == $resource_type_field)
         {
         continue;
         }
 
-    $nodes = get_nodes($resource_type_field, null, true);
+    if(!metadata_field_view_access($resource_type_field))
+        {
+        // User can't search against a metadata field they don't have access to
+        continue;
+        }
+    $nodes = get_nodes($resource_type_field, null, $resource_type_field_type==FIELD_TYPE_CATEGORY_TREE);
     
     // Check if multiple nodes have been specified for an OR search
     $keywords_expanded=explode(';',$specific_field_search[1]);
     $subnodestring = "";
-    foreach($keywords_expanded as $keyword_expanded)
+    if(count($keywords_expanded) > 1) 
         {
-        $node_found = get_node_by_name($nodes, $keyword_expanded);
-
-        if(0 < count($node_found))
+        foreach($keywords_expanded as $keyword_expanded)
             {
-            $subnodestring .= NODE_TOKEN_PREFIX . $node_found['ref'];
+            $node_found = get_node_by_name($nodes, $keyword_expanded);
+
+            if(0 < count($node_found))
+                {
+                $subnodestring .= NODE_TOKEN_PREFIX . $node_found['ref'];
+                }
             }
-        }
-    if($subnodestring != "")
-        {
-        $search = str_ireplace($keyword, $subnodestring, $search);
+        if($subnodestring != "")
+            {
+            $search = str_ireplace($keyword, $subnodestring, $search);
+            }
         }
     }
     
@@ -138,13 +145,7 @@ $df=array();
 $all_field_info=get_fields_for_search_display(array_unique(array_merge($sort_fields,$thumbs_display_fields,$list_display_fields)));
 
 # get display and normalize display specific variables
-$display=getvalescaped("display",$default_display);rs_setcookie('display', $display,0,"","",false,false);
-if(!$leaflet_maps_enable && $display == "map")
-    {
-    // Map view is not supported unless leaflet maps is enabled
-    $display = "thumbs";
-    }
-
+$display=getval("display",$default_display);rs_setcookie('display', $display,0,"","",false,false);
 
 switch ($display)
     {
@@ -219,8 +220,8 @@ if (!$config_search_for_number || !is_numeric($search)) # Don't do this when the
     }
 
 $searchresourceid = "";
-if (is_numeric(trim(getvalescaped("searchresourceid","")))){
-    $searchresourceid = trim(getvalescaped("searchresourceid",""));
+if (is_numeric(trim(getval("searchresourceid","")))){
+    $searchresourceid = trim(getval("searchresourceid",""));
     $search = "!resource$searchresourceid";
 }
 
@@ -233,22 +234,34 @@ if($collectionsearch)
     $search_trimmed = substr($search,11); // The collection search must always be the first part of the search string
     $search_elements = split_keywords($search_trimmed, false, false, false, false, true);
     $collection = (int)array_shift($search_elements);
-    $search = "!collection" . $collection . " " . implode(", ",$search_elements);
+    if(count($search_elements) > 0)
+        {
+        $search = "!collection" . $collection . " " . implode(", ",$search_elements);
+        }
     }
 
 hook("searchstringprocessing");
 
 # Fetch and set the values
-$offset=getvalescaped("offset",0,true);if (strpos($search,"!")===false) {rs_setcookie('saved_offset', $offset,0,"","",false,false);}
+$offset=getval("offset",0,true);if (strpos($search,"!")===false) {rs_setcookie('saved_offset', $offset,0,"","",false,false);}
 $offset = intval($offset); 
 if ($offset<0) {$offset=0;} 
 
-$order_by=getvalescaped("order_by","");if (strpos($search,"!")===false || strpos($search,"!properties")!==false) {rs_setcookie('saved_order_by', $order_by,0,"","",false,false);}
+$order_by=getval("order_by","");
+if (strpos($search,"!")===false || strpos($search,"!properties")!==false) 
+    {
+    rs_setcookie('saved_order_by', $order_by,0,"","",false,false);
+    }
 if ($order_by=="")
     {
     if ($collectionsearch) // We want the default collection order to be applied
         {
         $order_by=$default_collection_sort;
+        }
+    elseif (substr($search,0,14)=="!contributions")
+        {
+        // As Added is the initial sort sequence to be used for contribution searches 
+        $order_by="resourceid";
         }
     else
         {
@@ -267,7 +280,7 @@ if (substr($order_by,0,5)=="field")
         }
     }
 
-$per_page=getvalescaped("per_page",$default_perpage, true); 
+$per_page=getval("per_page",$default_perpage, true); 
 $per_page= (!in_array($per_page,$results_display_array)) ? $default_perpage : $per_page;
 
 rs_setcookie('per_page', $per_page,0,"","",false,false);
@@ -300,7 +313,7 @@ if($use_selection_collection && $clear_selection_collection && !$paging_request 
     }
 
 // Construct archive string and array
-$archive_choices=getvalescaped("archive","");
+$archive_choices=getval("archive","");
 $archive_standard = $archive_choices=="";
 $selected_archive_states = array();
 if(!is_array($archive_choices)){$archive_choices=explode(",",$archive_choices);}
@@ -332,24 +345,12 @@ if($resetlockedfields)
 
 $jumpcount=0;
 
-if (getvalescaped('recentdaylimit', '', true)!="") //set for recent search, don't set cookie
+if (getval('recentdaylimit', '', true)!="") //set for recent search, don't set cookie
     {
-    $daylimit=getvalescaped('recentdaylimit', '', true);
-    }
-else if($recent_search_period_select==true && strpos($search,"!")===false) //set cookie for paging
-    {
-    $daylimit=getvalescaped("daylimit",""); 
-    rs_setcookie('daylimit', $daylimit,0,"","",false,false);
+    $daylimit=getval('recentdaylimit', '', true);
     }
 else {$daylimit="";} // clear cookie for new search
 
-# Most sorts such as popularity, date, and ID should be descending by default,
-# but it seems custom display fields like title or country should be the opposite.
-$default_sort_direction="DESC";
-if (substr($order_by,0,5)=="field")
-    {
-    $default_sort_direction="ASC";
-    }
 if ($order_by=="field{$date_field}")
     {
     $default_sort_direction="DESC";
@@ -358,7 +359,7 @@ elseif ($order_by=="collection")
     {
     $default_sort_direction="ASC";
     }
-$sort=getvalescaped("sort",$default_sort_direction);rs_setcookie('saved_sort', $sort,0,"","",false,false);
+$sort=getval("sort",$default_sort_direction);rs_setcookie('saved_sort', $sort,0,"","",false,false);
 $revsort = ($sort=="ASC") ? "DESC" : "ASC";
 
 ## If displaying a collection
@@ -380,12 +381,12 @@ if($use_selection_collection)
         }
     }
 
-$hiddenfields=getvalescaped("hiddenfields","");
+$hiddenfields=getval("hiddenfields","");
 
 # fetch resource types from query string and generate a resource types cookie
-if (getvalescaped("resetrestypes","")=="")
+if (getval("resetrestypes","")=="")
     {
-    $restypes=getvalescaped("restypes","");
+    $restypes=getval("restypes","");
     }
 else
     { 
@@ -406,23 +407,12 @@ else
 $modified_restypes=hook("modifyrestypes_aftercookieset");
 if($modified_restypes){$restypes=$modified_restypes;}
 
-# if search is not a special search (ie. !recent), use starsearchvalue.
-if (getvalescaped("search","")!="" && strpos(getvalescaped("search",""),"!")!==false)
-    {
-    $starsearch="";
-    }
-else
-    {
-    $starsearch=getvalescaped("starsearch",""); 
-    rs_setcookie('starsearch', $starsearch,0,"","",false,false);
-}
-
 # If returning to an old search, restore the page/order by and other non search string parameters
 $old_search = (!array_key_exists('search', $_GET) && !array_key_exists('search', $_POST));
 if ($old_search)
     {
-    $offset=getvalescaped("saved_offset",0,true);rs_setcookie('saved_offset', $offset,0,"","",false,false);
-    $order_by=getvalescaped("saved_order_by","relevance");
+    $offset=getval("saved_offset",0,true);rs_setcookie('saved_offset', $offset,0,"","",false,false);
+    $order_by=getval("saved_order_by","relevance");
     if ($collectionsearch) // We want the default collection order to be applied
         {
         $order_by=$default_collection_sort;
@@ -432,8 +422,8 @@ if ($old_search)
         $order_by=$default_sort;
         }
     rs_setcookie('saved_order_by', $order_by,0,"","",false,false);
-    $sort=getvalescaped("saved_sort","");rs_setcookie('saved_sort', $sort,0,"","",false,false);
-    $archivechoices=getvalescaped("saved_archive",0);rs_setcookie('saved_archive', $archivechoices,0,"","",false,false);
+    $sort=getval("saved_sort","");rs_setcookie('saved_sort', $sort,0,"","",false,false);
+    $archivechoices=getval("saved_archive",0);rs_setcookie('saved_archive', $archivechoices,0,"","",false,false);
     if(!is_array($archivechoices)){$archivechoices=explode(",",$archivechoices);}
     foreach($archivechoices as $archivechoice)
         {
@@ -445,7 +435,7 @@ if ($old_search)
 hook("searchparameterhandler"); 
     
 # If requested, refresh the collection frame (for redirects from saves)
-if (getvalescaped("refreshcollectionframe","")!="")
+if (getval("refreshcollectionframe","")!="")
     {
     refresh_collection_frame();
     }
@@ -454,7 +444,16 @@ if (getvalescaped("refreshcollectionframe","")!="")
 $refs=array();
 
 # Special query? Ignore restypes
-if (strpos($search,"!")!==false &&  substr($search,0,11)!="!properties" && !$special_search_honors_restypes) {$restypes="";}
+if(
+    mb_strpos($search, '!') !== false
+    && !$special_search_honors_restypes
+    // Except for these special searches
+    && substr($search, 0, 11) !== '!properties'
+    && substr($search, 0, 7) !== '!report'
+)
+    {
+    $restypes = '';
+    }
 
 # Do the search!
 $search=refine_searchstring($search);
@@ -480,7 +479,7 @@ $searchparams= array(
     'archive'        => $archive,
     'sort'           => $sort,
     'restypes'       => $restypes,
-    'recentdaylimit' => getvalescaped('recentdaylimit', '', true),
+    'recentdaylimit' => getval('recentdaylimit', '', true),
     'foredit'        => ($editable_only?"true":""),
     'noreload'       => "true",
     'access'         => $search_access,
@@ -514,10 +513,14 @@ if( isset($_REQUEST["search"]) && $_REQUEST["search"] == "" )
     }
 hook('searchaftersearchcookie');
 
-$rowstoretrieve = $per_page+$offset;
+$rowstoretrieve = (!$disable_geocoding && $display == "map") ? $search_map_max_results : $per_page;
 
 // Do collections search first as this will determine the rows to fetch for do_search() - not for external shares
-if(($k=="" || $internal_share_access) && strpos($search,"!")===false && $archive_standard)
+if(($k=="" || $internal_share_access) 
+    && strpos($search,"!")===false
+    && ($archive_standard || in_array(0,$selected_archive_states))
+    && $display !== "map"
+    )
     {
     $collections=do_collections_search($search,$restypes,0,$order_by,$sort,$rowstoretrieve);
     if(is_array($collections))
@@ -528,12 +531,15 @@ if(($k=="" || $internal_share_access) && strpos($search,"!")===false && $archive
         {
         $colcount = 0;
         }
-    $resourcestoretrieve = max(($rowstoretrieve-$colcount),0);
+
+    // Get the number of resources required after collections have been displayed
+    $cols_this_page = max($colcount-$offset,0);
+    $resourcestoretrieve = $per_page - $cols_this_page;
     }
 else
     {
-    $resourcestoretrieve = $rowstoretrieve;
     $colcount = 0;
+    $resourcestoretrieve = $rowstoretrieve;
     }
 
 if ($search_includes_resources || substr($search,0,1)==="!")
@@ -541,23 +547,27 @@ if ($search_includes_resources || substr($search,0,1)==="!")
     $search_includes_resources=true; // Always enable resource display for special searches.
     if (!hook("replacesearch"))
         {
-        // Save $max_results as this gets changed by do_search();
-        $saved_max_results = $max_results;
-        $result=do_search($search,$restypes,$order_by,$archive,$resourcestoretrieve,$sort,false,$starsearch,false,false,$daylimit, getvalescaped("go",""), true, false, $editable_only, false, $search_access);
-        $max_results = $saved_max_results;
+        $result=do_search($search,$restypes,$order_by,$archive,[max($offset-$colcount,0),$resourcestoretrieve],$sort,false,DEPRECATED_STARSEARCH,false,false,$daylimit, getval("go",""), true, false, $editable_only, false, $search_access,false,true);
         }
     }
 else
     {
-    $result=array(); # Do not return resources (e.g. for collection searching only)
+    $result=["total"=>0,"data"=>[]]; # Do not return resources (e.g. for collection searching only)
     }
-
 # Allow results to be processed by a plugin
 $hook_result=hook("process_search_results","search",array("result"=>$result,"search"=>$search));
 if ($hook_result!==false) {$result=$hook_result;}
 
-$count_result = (is_array($result) ? count($result) : 0);
-
+// Convert structured results back to a simple array for display
+if(isset($result["total"]))
+    {
+    $result_count   = $result["total"];
+    $result         = $result["data"];
+    }
+else
+    {
+    $result_count   = 0;
+    }
 // Log the search and attempt to reduce log spam by only recording initial searches. Basically, if either of the search 
 // string or resource types or archive states changed. Changing, for example, display or paging don't count as different
 // searches.
@@ -566,7 +576,7 @@ $same_restypes_param = (trim($restypes) === $initial_restypes_cookie);
 $same_archive_param = (trim($archive) === $initial_saved_archive_cookie);
 if(!$old_search && (!$same_search_param || !$same_restypes_param || !$same_archive_param))
     {
-    log_search_event(trim(strip_leading_comma($search)), explode(',', $restypes), explode(',', $archive), $count_result);
+    log_search_event(trim(strip_leading_comma($search)), explode(',', $restypes), explode(',', $archive), $result_count);
     }
 
 if ($collectionsearch)
@@ -590,10 +600,10 @@ if ($collectionsearch)
 if ($allow_reorder && $display!="list")
     {
     # Also check for the parameter and reorder as necessary.
-    $reorder=getvalescaped("reorder",false);
+    $reorder=getval("reorder",false);
     if ($reorder)
         {
-        $neworder=json_decode(getvalescaped("order",false));
+        $neworder=json_decode(getval("order",false));
         update_collection_order($neworder,$collection,$offset);
         exit("SUCCESS");
         }
@@ -641,6 +651,7 @@ if($collectionsearch && collection_writeable(substr($search, 11)))
             {
             return false;
             }
+            // Element #CentralSpaceResources (search results) can be dropped on by .CollectionPanelShell elements (collection bar)
             jQuery('#CentralSpaceResources').droppable({
                 accept: '.CollectionPanelShell',
 
@@ -660,7 +671,7 @@ if($collectionsearch && collection_writeable(substr($search, 11)))
                     var collection_id = query_strings.search.substring(11);
 
                     jQuery('#trash_bin').hide();
-                    AddResourceToCollection(event, resource_id, '', collection_id);
+                    AddResourceToCollection(event, ui, resource_id, '', collection_id);
                     CentralSpaceLoad(window.location.href, true);
                 }
             });
@@ -674,7 +685,9 @@ if($collectionsearch && collection_writeable(substr($search, 11)))
 if(!$collectionsearch)
     {
     ?>
-    <!-- Search items should only be draggable if results are not a collection -->
+    <!-- Search item results in centralspace have a class of "ResourcePanel" -->
+    <!-- These items should be draggable to add them to the collection in the collection bar if results are NOT from collection search -->
+    <!-- They should also be draggable to the trash_bin to removing them from a collection if results ARE from collection search -->
     <script>    
     // The below numbers are hardcoded mid points for thumbs and xlthumbs
     var thumb_vertical_mid = <?php if($display=='xlthumbs'){?>197<?php } else {?>123<?php }?>;
@@ -704,12 +717,20 @@ if(!$collectionsearch)
     <?php
     }
     
-if ($allow_reorder && $display!="list" && $order_by == "collection") {
+// The sortable method must be enabled regardless of the order_by so that the trash bin is available for interactions from CentralSpace
+// This allows resources to be removed from collection via the trash bin, but will abandon reorder attempts unless order_by is "collection"
+if ($allow_reorder && $display!="list") {
     global $usersession;
 ?>
     <script type="text/javascript">
     var allow_reorder = true;
-    
+
+    var use_sortable_for_trash_only = false;
+    <?php if ($order_by != "collection") { ?>
+        var use_sortable_for_trash_only = true;
+    <?php
+    }
+    ?>    
     function ReorderResources(idsInOrder) {
         var newOrder = [];
         jQuery.each(idsInOrder, function() {
@@ -777,6 +798,13 @@ if ($allow_reorder && $display!="list" && $order_by == "collection") {
 
             update: function(event, ui)
                 {
+                if (use_sortable_for_trash_only)
+                    {
+                    // We are only using sortable for the ability to use the trash bin when the collection order is not "collection" 
+                    // and so we need to abandon the attempted reorder in this scenario
+                    return false;    
+                    }
+                
                 // Don't reorder when top and bottom collections are the same and you drag & reorder from top to bottom
                 if(ui.item[0].parentElement.id == 'CollectionSpace')
                     {
@@ -843,15 +871,15 @@ if(getval("promptsubmit","")!= "" && getval("archive","")=="-2" && checkperm("e-
     ?>
     <script>    
     jQuery(document).ready(function() {
-        jQuery("#modal_dialog").html('<?php echo $lang["submit_dialog_text"]; ?>');
+        jQuery("#modal_dialog").html('<?php echo escape($lang["submit_dialog_text"]); ?>');
         jQuery("#modal_dialog").dialog({
-                                    title:'<?php echo $lang["submit_review_prompt"]; ?>',
+                                    title:'<?php echo escape($lang["submit_review_prompt"]); ?>',
                                     modal: true,
                                     width: 400,
                                     resizable: false,
                                     dialogClass: 'no-close',
                                     buttons: {
-                                        "<?php echo $lang['action_submit_review'] ?>": function() {
+                                        "<?php echo escape($lang['action_submit_review']) ?>": function() {
                                                 jQuery.ajax({
                                                     type: "POST",
                                                     dataType: "json",
@@ -871,7 +899,9 @@ if(getval("promptsubmit","")!= "" && getval("archive","")=="-2" && checkperm("e-
                                                                     api('send_collection_to_admin',{'collection': <?php echo $collection_add; ?>}, function(response)
                                                                         {
                                                                         console.debug('A copy of collection #<?php echo $collection_add; ?> has been sent for review.');
-                                                                        });
+                                                                        },
+                                                                        <?php echo generate_csrf_js_object('send_collection_to_admin'); ?>
+                                                                    );
                                                                     <?php
                                                                     }
                                                                 echo "window.location.href='" .  $baseurl_short . "pages/search.php?search=!collection" . $collection_add . "';";
@@ -883,26 +913,30 @@ if(getval("promptsubmit","")!= "" && getval("archive","")=="-2" && checkperm("e-
                                                             ?>
                                                             },
                                                     error: function(response) {
-                                                        styledalert('<?php echo $lang["error"]; ?>',response['responseJSON']['message']);
+                                                        styledalert('<?php echo escape($lang["error"]); ?>',response['responseJSON']['message']);
                                                         }
                                                     });
-                                                
-                                                
+
+
                                             },    
-                                        "<?php echo $lang['action_continue_editing'] ?>": function() { 
+                                        "<?php echo escape($lang['action_continue_editing']) ?>": function() { 
                                                 jQuery(this).dialog('close');
                                                 <?php 
-                                                if ($collection_add!="")
-                                                    {?>
-                                                    window.location.href='<?php echo $baseurl_short?>pages/search.php?search=!collection<?php echo $collection_add ?>';
-                                                    <?php
-                                                    }?>
+                                                if (is_int_loose($collection_add))
+                                                    {
+                                                    echo "window.location.href='" .  $baseurl_short . "pages/search.php?search=!collection" . $collection_add . "';";
+                                                    }
+                                                else
+                                                    {
+                                                    echo "window.location.href='" .  $baseurl_short . "pages/search.php?search=!contributions" . $userref . "&archive=-2&order_by=date&sort=desc';";
+                                                    }
+                                                ?>
                                                 }
                                             }
                                 });
     });
     </script>
-    <?php
+<?php
     }
 
 # Hook to replace all search results (used by ResourceConnect plugin, allows search mechanism to be entirely replaced)
@@ -917,6 +951,7 @@ if (isset($result_title_height))
         {
         white-space:normal;
         height: <?php echo $result_title_height ?>px;
+        text-align: left;
         }
     </style>
     <?php
@@ -934,7 +969,7 @@ if ($search_titles)
 
 if (!hook("replacesearchheader")) # Always show search header now.
     {
-    $resources_count=is_array($result)?count($result):0;
+    $resources_count = $result_count ?? (is_array($result) ? count($result) : 0);
     if (isset($collections)) 
         {
         $result_count=$colcount+$resources_count;
@@ -948,47 +983,6 @@ if (!hook("replacesearchheader")) # Always show search header now.
     <div class="TopInpageNav">
     <div class="TopInpageNavLeft">
 
-<?php
-if($responsive_ui)
-    {
-    ?>
-    <div class="ResponsiveResultDisplayControls">
-        <a href="#" id="Responsive_ResultDisplayOptions" class="ResourcePanel ResponsiveButton" style="display:none;"><?php echo $lang['responsive_result_settings']; ?></a>
-        <div id="ResponsiveResultCount" style="display:none;">
-        <?php
-        if($use_selection_collection && $selection_collection_resources_count > 0)
-            {
-            echo render_selected_resources_counter(count($selection_collection_resources));
-            }
-        else if(isset($collections)) 
-            {
-            ?>
-            <span class="Selected">
-            <?php
-            echo number_format($result_count);
-            ?>
-            </span>
-            <?php
-            echo ($result_count==1) ? $lang['youfoundresult'] : $lang['youfoundresults'];
-            } 
-        else
-            {
-            ?>
-            <span class="Selected">
-            <?php
-            echo number_format($resources_count);
-            ?>
-            </span>
-            <?php
-            echo ($resources_count==1)? $lang['youfoundresource'] : $lang['youfoundresources'];
-            }
-            ?>
-        </div>
-    </div>
-    <?php
-    }
-    hook('responsiveresultoptions');
-    ?>
     <div id="SearchResultFound" class="InpageNavLeftBlock">
     <?php
     if($use_selection_collection && $selection_collection_resources_count > 0)
@@ -1016,17 +1010,8 @@ if($responsive_ui)
         {
         ?>
         <div class="InpageNavLeftBlock <?php if($iconthumbs) {echo 'icondisplay';} ?>">
-        <?php   
-        if($display_selector_dropdowns && $display != 'map')
-            { ?>
-            <select style="width:auto" id="displaysize" name="displaysize" onchange="CentralSpaceLoad(this.value,true);">
-            <?php if ($xlthumbs==true) { ?><option <?php if ($display=='xlthumbs'){?>selected="selected"<?php } ?> value="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array('display'=>'xlthumbs')) ?>"><?php echo $lang['xlthumbs']?></option><?php } ?>
-            <option <?php if ($display=='thumbs'){?>selected="selected"<?php } ?> value="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array('display'=>'thumbs')) ?>"><?php echo $lang['largethumbs']?></option>
-            <?php if ($searchlist==true) { ?><option <?php if ($display=='list'){?>selected="selected"<?php } ?> value="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array('display'=>'list')) ?>"><?php echo $lang['list']?></option><?php } ?>
-            </select>
-            <?php
-            }
-        elseif($iconthumbs)
+        <?php 
+        if($iconthumbs && !$high_contrast_mode)
             {
             if($xlthumbs == true)
                 {
@@ -1037,7 +1022,7 @@ if($responsive_ui)
                 else
                     {
                     ?>
-                    <a id="xlthumbs_view_link" href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("display"=>"xlthumbs")); ?>" title='<?php echo $lang["xlthumbstitle"] ?>' onClick="return <?php echo $modal ? 'Modal' : 'CentralSpace'; ?>Load(this);">
+                    <a id="xlthumbs_view_link" href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("display"=>"xlthumbs")); ?>" title='<?php echo escape($lang["xlthumbstitle"]) ?>' onClick="return <?php echo $modal ? 'Modal' : 'CentralSpace'; ?>Load(this);">
                         <span class="xlthumbsicon"></span>
                     </a>
                     <?php
@@ -1050,7 +1035,7 @@ if($responsive_ui)
             else
                 {
                 ?>
-                <a id="thumbs_view_link" href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("display"=>"thumbs")); ?>" title='<?php echo $lang["largethumbstitle"] ?>' onClick="return <?php echo $modal ? 'Modal' : 'CentralSpace'; ?>Load(this);">
+                <a id="thumbs_view_link" href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("display"=>"thumbs")); ?>" title='<?php echo escape($lang["largethumbstitle"]) ?>' onClick="return <?php echo $modal ? 'Modal' : 'CentralSpace'; ?>Load(this);">
                     <span class="largethumbsicon"></span>
                 </a>
                 <?php
@@ -1062,7 +1047,7 @@ if($responsive_ui)
             else
                 {
                 ?>
-                <a id="strip_view_link" href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("display"=>"strip")); ?>" title='<?php echo $lang["striptitle"] ?>' onClick="return <?php echo $modal ? 'Modal' : 'CentralSpace'; ?>Load(this);">
+                <a id="strip_view_link" href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("display"=>"strip")); ?>" title='<?php echo escape($lang["striptitle"]) ?>' onClick="return <?php echo $modal ? 'Modal' : 'CentralSpace'; ?>Load(this);">
                     <span class="stripicon"></span>
                 </a>
                 <?php
@@ -1077,18 +1062,18 @@ if($responsive_ui)
                 else
                     {
                     ?>
-                    <a id="list_view_link"  href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("display"=>"list")); ?>" title='<?php echo $lang["listtitle"] ?>' onClick="return <?php echo $modal ? 'Modal' : 'CentralSpace'; ?>Load(this);">
+                    <a id="list_view_link"  href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("display"=>"list")); ?>" title='<?php echo escape($lang["listtitle"]) ?>' onClick="return <?php echo $modal ? 'Modal' : 'CentralSpace'; ?>Load(this);">
                         <span class="smalllisticon"></span>
                     </a>
                     <?php
                     }
                 }
             
-            if (!$disable_geocoding && $leaflet_maps_enable)
+            if (!$disable_geocoding)
                 {
                 if($display == 'map')
                     { ?>
-                    <span class="fas fa-map" style="font-size:23px;"></span><?php
+                    <span class="fas fa-map"></span><?php
                     }
                 else
                     { ?>
@@ -1102,7 +1087,7 @@ if($responsive_ui)
                         echo "return " . ($modal ? 'Modal' : 'CentralSpace') . "Load(this);";
                         }
                     ?>">
-                    <span class="far fa-map" style="font-size:23px;"></span>
+                    <span class="far fa-map"></span>
                     </a>
                     <?php
                     }
@@ -1112,29 +1097,29 @@ if($responsive_ui)
             }
         else
             {
-            if ($xlthumbs==true) { ?> <?php if ($display=="xlthumbs") { ?><span class="Selected"><?php echo $lang["xlthumbs"]?></span><?php } else { ?><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("display"=>"xlthumbs")) ?>" onClick="return CentralSpaceLoad(this);"><?php echo $lang["xlthumbs"]?></a><?php } ?>&nbsp; |&nbsp;<?php } ?>
-            <?php if ($display=="thumbs") { ?> <span class="Selected"><?php echo $lang["largethumbs"]?></span><?php } else { ?><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("display"=>"thumbs")) ?>" onClick="return CentralSpaceLoad(this);"><?php echo $lang["largethumbs"]?></a><?php } ?>&nbsp; |&nbsp; 
-            <?php if ($display=="strip") { ?><span class="Selected"><?php echo $lang["striptitle"]?></span><?php } else { ?><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("display"=>"strip")) ?>" onClick="return CentralSpaceLoad(this);"><?php echo $lang["striptitle"]?></a><?php } ?>&nbsp; |&nbsp;
-            <?php if ($display=="list") { ?> <span class="Selected"><?php echo $lang["list"]?></span><?php } else { ?><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("display"=>"list")) ?>" onClick="return CentralSpaceLoad(this);"><?php echo $lang["list"]?></a><?php } ?> <?php hook("adddisplaymode"); ?> 
+            if ($xlthumbs==true) { ?> <?php if ($display=="xlthumbs") { ?><span class="Selected"><?php echo htmlspecialchars($lang["xlthumbs"])?></span><?php } else { ?><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("display"=>"xlthumbs")) ?>" onClick="return CentralSpaceLoad(this);"><?php echo htmlspecialchars($lang["xlthumbs"])?></a><?php } ?>&nbsp; |&nbsp;<?php } ?>
+            <?php if ($display=="thumbs") { ?> <span class="Selected"><?php echo htmlspecialchars($lang["largethumbs"])?></span><?php } else { ?><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("display"=>"thumbs")) ?>" onClick="return CentralSpaceLoad(this);"><?php echo htmlspecialchars($lang["largethumbs"])?></a><?php } ?>&nbsp; |&nbsp; 
+            <?php if ($display=="strip") { ?><span class="Selected"><?php echo htmlspecialchars($lang["striptitle"])?></span><?php } else { ?><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("display"=>"strip")) ?>" onClick="return CentralSpaceLoad(this);"><?php echo htmlspecialchars($lang["striptitle"])?></a><?php } ?>&nbsp; |&nbsp;
+            <?php if ($display=="list") { ?> <span class="Selected"><?php echo htmlspecialchars($lang["list"])?></span><?php } else { ?><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("display"=>"list")) ?>" onClick="return CentralSpaceLoad(this);"><?php echo htmlspecialchars($lang["list"])?></a><?php } ?> <?php hook("adddisplaymode"); ?> 
             <?php
-            if(!$disable_geocoding && $leaflet_maps_enable)
+            if(!$disable_geocoding)
                 {
                 if ($display == 'map')
                     { ?>
-                    &nbsp;|&nbsp;<span class="Selected"><?php echo $lang['maptitle']?></span><?php
+                    &nbsp;|&nbsp;<span class="Selected"><?php echo htmlspecialchars($lang['maptitle'])?></span><?php
                     }
                 else
                     { ?>
                     &nbsp;|&nbsp;<a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array('display'=>'map')) ?>" onClick="<?php
                     if($resources_count > $search_map_max_results)
                         {
-                        echo "return false;";
+                        echo "styledalert('" . $lang["error"] . "','" . $lang['search_results_overlimit'] . "');return false;";
                         }
                     else
                         {
                         echo "return " . ($modal ? 'Modal' : 'CentralSpace') . "Load(this);";
                         }
-                    ?>"><?php echo $resources_count > $search_map_max_results ? $lang['search_results_overlimit'] : $lang['maptitle'] ?></a><?php
+                    ?>"><?php echo htmlspecialchars($lang['maptitle']) ?></a><?php
                     }
                 }
             }
@@ -1142,22 +1127,7 @@ if($responsive_ui)
         </div>
         <?php
         }
-    if ($display_selector_dropdowns && $recent_search_period_select && strpos($search,"!")===false && getvalescaped('recentdaylimit', '', true)==""){?>
-    <div class="InpageNavLeftBlock">
-        <select style="width:auto" id="resultsdisplay" name="resultsdisplay" onchange="CentralSpaceLoad(this.value,true);">
-        <?php $recent_search_period_array_count = count($recent_search_period_array);
-        for($n=0;$n<$recent_search_period_array_count;$n++){
-            if ($display_selector_dropdowns){?>
-                <option <?php if ($daylimit==$recent_search_period_array[$n]){?>selected="selected"<?php } ?> value="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("daylimit"=>$recent_search_period_array[$n])); ?>"><?php echo str_replace("?",$recent_search_period_array[$n],$lang["lastndays"]); ?></option>
-            <?php } ?>
-        <?php } ?>
-        <option <?php if ($daylimit==""){?>selected="selected"<?php } ?> value="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("daylimit"=>"")); ?>"><?php echo $lang["anyday"] ?></option>
-        </select>
-    </div>
-    <?php } 
-    
-    # order by
-    #if (strpos($search,"!")===false)
+
     if ($search!="!duplicates" && $search!="!unused" && !hook("replacesearchsortorder")) 
         {
         // Relevance is the default sort sequence if viewing resources following a search
@@ -1173,7 +1143,7 @@ if($responsive_ui)
                 }
             elseif (strpos($search,"!")!==false && substr($search,0,11)!="!properties") 
                 {
-                // As Added is the default sort sequence if viewing recently added resources 
+                // As Added is the default sort sequence for special searches other than image properties
                 $default_sort_order = 'resourceid';
                 $rel=$lang["asadded"];
                 }
@@ -1230,25 +1200,22 @@ if($responsive_ui)
             }
         }
 
-        if(($display_selector_dropdowns || $perpage_dropdown) && $display != 'map')
+        if($display != 'map')
             {
             ?>
             <div class="InpageNavLeftBlock">
-                <select id="resultsdisplay" style="width:auto" name="resultsdisplay" onchange="<?php echo $modal ? 'Modal' : 'CentralSpace'; ?>Load(this.value,true);">
+                <select id="resultsdisplay" style="width:auto" name="resultsdisplay" aria-label="<?php echo escape($lang["resultsdisplay"]) ?>" onchange="<?php echo $modal ? 'Modal' : 'CentralSpace'; ?>Load(this.value,true);">
             <?php
             $results_display_array_count = count($results_display_array);
             for($n = 0; $n < $results_display_array_count; $n++)
-                {
-                if($display_selector_dropdowns || $perpage_dropdown)
+                {               
+                if (isset($searchparams["offset"]))
                     {
-                    if (isset($searchparams["offset"]))
-                        {
-                        $new_offset = floor($searchparams["offset"] / $results_display_array[$n]) * $results_display_array[$n];
-                        }
-                    ?>
-                    <option <?php if($per_page == $results_display_array[$n]) { ?>selected="selected"<?php } ?> value="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("per_page"=>$results_display_array[$n],"offset"=>$new_offset)); ?>"><?php echo str_replace("?",$results_display_array[$n],$lang["perpage_option"]); ?></option>
-                    <?php
+                    $new_offset = floor($searchparams["offset"] / max($results_display_array[$n],1)) * $results_display_array[$n];
                     }
+                ?>
+                <option <?php if($per_page == $results_display_array[$n]) { ?>selected="selected"<?php } ?> value="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("per_page"=>$results_display_array[$n],"offset"=>$new_offset)); ?>"><?php echo str_replace("?",$results_display_array[$n],$lang["perpage_option"]); ?></option>
+                <?php
                 }
                 ?>
                 </select>
@@ -1287,34 +1254,11 @@ if($responsive_ui)
                 render_clear_selected_btn();
                 }
             }
-        
-        if (!$display_selector_dropdowns && !$perpage_dropdown){?>
-        <div class="InpageNavLeftBlock">
-        <?php 
-        $results_display_array_count = count($results_display_array);
-        for($n=0;$n<$results_display_array_count;$n++){?>
-        <?php if ($per_page==$results_display_array[$n]){?><span class="Selected"><?php echo urlencode($results_display_array[$n])?></span><?php } else { ?><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("per_page"=>$results_display_array[$n])); ?>" onClick="return CentralSpaceLoad(this);"><?php echo urlencode($results_display_array[$n])?></a><?php } ?><?php if ($n>-1&&$n<count($results_display_array)-1){?>&nbsp;|<?php } ?>
-        <?php } ?>
-        </div>
-        <?php } 
     
-        if (!$display_selector_dropdowns && $recent_search_period_select && strpos($search,"!")===false && getvalescaped('recentdaylimit', '', true)==""){?>
-        <div class="InpageNavLeftBlock">
-        <?php 
-        $recent_search_period_array_count = count($recent_search_period_array);
-        for($n=0;$n<$recent_search_period_array_count;$n++){
-            if ($daylimit==$recent_search_period_array[$n]){?><span class="Selected"><?php echo htmlspecialchars(str_replace("?",$recent_search_period_array[$n],$lang["lastndays"]))?> </span>&nbsp;|&nbsp;<?php } else { ?><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("daylimit"=>$recent_search_period_array[$n])); ?>" onClick="return CentralSpaceLoad(this);"><?php echo htmlspecialchars(str_replace("?",$recent_search_period_array[$n],$lang["lastndays"]))?></a>&nbsp;|&nbsp;<?php } 
-            }
-        if ($daylimit==""){?><span class="Selected"><?php echo $lang["all"] ?></span><?php } else { ?><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("daylimit"=>"")); ?>" onClick="return CentralSpaceLoad(this);"><?php echo $lang["all"]?></a><?php } 
-        ?>              
-        </div>
-        <?php } ?>      
-        
-    <?php
-    $totalpages=ceil($result_count/$per_page);
+    $totalpages=$per_page==0 ? 1 : ceil($result_count/$per_page);
     if ($offset>$result_count) {$offset=0;}
-    $curpage=floor($offset/$per_page)+1;
-    
+    $curpage=$per_page==0 ? 1 : floor($offset/$per_page)+1;
+
     ?>
     </div>
     <?php hook("stickysearchresults"); ?> <!--the div TopInpageNavRight was added in after this hook so it may need to be adjusted -->
@@ -1344,9 +1288,9 @@ if($responsive_ui)
                 <?php echo i18n_get_collection_name($collectiondata); ?>
                 </h1>
             <?php
-            if((isset($collectiondata) && array_key_exists("description",$collectiondata)) && trim($collectiondata['description']) != "")
+            if((isset($collectiondata) && array_key_exists("description",$collectiondata)) && trim((string)$collectiondata['description']) != "")
                 {
-                echo "<p>" . htmlspecialchars($collectiondata['description']) . "</p>";
+                echo "<p>" . nl2br(htmlspecialchars(i18n_get_translated($collectiondata['description']))) . "</p>";
                 }
             echo "</div>";
             }
@@ -1360,20 +1304,19 @@ if($responsive_ui)
         $saved_archive_standard = $archive_standard;
         $archive_standard = false;
         // Search archive but don't log this to daily_stat
-        $arcresults=do_search($search,$restypes,$order_by,2,0,'desc',false,0,false,false,'',false,false);
+        $arcresults=do_search($search,$restypes,$order_by,2,-1,'desc',false,0,false,false,'',false,false);
         $archive_standard = $saved_archive_standard;
-        
         if (is_array($arcresults)) {$arcresults=count($arcresults);} else {$arcresults=0;}
         if ($arcresults>0) 
             {
             ?>
-            <div class="SearchOptionNav"><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("archive"=>2)); ?>" onClick="return CentralSpaceLoad(this);"><?php echo LINK_CARET ?><?php echo $lang["view"]?> <span class="Selected"><?php echo number_format($arcresults)?></span> <?php echo ($arcresults==1)?$lang["match"]:$lang["matches"]?> <?php echo $lang["inthearchive"]?></a></div>
+            <div class="SearchOptionNav"><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("archive"=>2)); ?>" onClick="return CentralSpaceLoad(this);"><?php echo LINK_CARET ?><?php echo htmlspecialchars($lang["view"])?> <span class="Selected"><?php echo number_format($arcresults)?></span> <?php echo ($arcresults==1)?$lang["match"]:$lang["matches"]?> <?php echo htmlspecialchars($lang["inthearchive"])?></a></div>
             <?php 
             }
         else
             {
             ?>
-            <div class="InpageNavLeftBlock"><?php echo LINK_CARET ?><?php echo $lang["nomatchesinthearchive"]?></div>
+            <div class="InpageNavLeftBlock"><?php echo LINK_CARET ?><?php echo htmlspecialchars($lang["nomatchesinthearchive"])?></div>
             <?php 
             }
         }
@@ -1419,24 +1362,24 @@ if($responsive_ui)
         ?>
         <div class="BasicsBox"> 
           <div class="NoFind">
-            <p><?php echo $lang["searchnomatches"]?></p>
+            <p><?php echo htmlspecialchars($lang["searchnomatches"])?></p>
             <?php
             if(!$collectionsearch) // Don't show hints if a collection search is empty 
                 {
                 if ($result!="" && !is_array($result))
                     {
                     ?>
-                    <p><?php echo $lang["try"]?>: <a onClick="return CentralSpaceLoad(this,true);" href="<?php echo $baseurl_short?>pages/search.php?search=<?php echo urlencode(strip_tags($result))?>"><?php echo strip_tags($result)?></a></p>
+                    <p><?php echo htmlspecialchars($lang["try"])?>: <a onClick="return CentralSpaceLoad(this,true);" href="<?php echo $baseurl_short?>pages/search.php?search=<?php echo urlencode(strip_tags($result))?>"><?php echo strip_tags($result)?></a></p>
                     <?php $result=array();
                     }
                 else
                     {
                     ?>
-                    <p><?php if (strpos($search,"country:")!==false) { ?><p><?php echo $lang["tryselectingallcountries"]?> <?php } 
-                    elseif (strpos($search,"basicyear:")!==false) { ?><p><?php echo $lang["tryselectinganyyear"]?> <?php } 
-                    elseif (strpos($search,"basicmonth:")!==false) { ?><p><?php echo $lang["tryselectinganymonth"]?> <?php } 
-                    elseif (strpos($search,":")!==false) { ?><p><?php echo $lang["field_search_no_results"]; } 
-                    else        {?><?php echo $lang["trybeinglessspecific"]?><?php } ?> <?php echo $lang["enteringfewerkeywords"]?></p>
+                    <p><?php if (strpos($search,"country:")!==false) { ?><p><?php echo htmlspecialchars($lang["tryselectingallcountries"])?> <?php } 
+                    elseif (strpos($search,"basicyear:")!==false) { ?><p><?php echo htmlspecialchars($lang["tryselectinganyyear"])?> <?php } 
+                    elseif (strpos($search,"basicmonth:")!==false) { ?><p><?php echo htmlspecialchars($lang["tryselectinganymonth"])?> <?php } 
+                    elseif (strpos($search,":")!==false) { ?><p><?php echo htmlspecialchars($lang["field_search_no_results"]); } 
+                    else        {?><?php echo htmlspecialchars($lang["trybeinglessspecific"])?><?php } ?> <?php echo htmlspecialchars($lang["enteringfewerkeywords"])?></p>
                     <?php
                     }
                 hook("afterresulthints");
@@ -1444,7 +1387,7 @@ if($responsive_ui)
           ?>
           </div>
         </div>
-        <?php
+<?php
         }
 
     $list_displayed = false;
@@ -1459,7 +1402,8 @@ if($responsive_ui)
         <?php if(!hook("replacelistviewtitlerow")){?>   
         <tr class="ListviewTitleStyle">
         <?php if (!hook("listcheckboxesheader")){?>
-        <?php if ($use_selection_collection){?><td><?php echo $lang['addremove'];?></td><?php } ?>
+        <?php if ($use_selection_collection){?><td><?php echo htmlspecialchars($lang['addremove']);?></td><?php } ?>
+        <td><?php echo htmlspecialchars($lang["imagesize-thumbnail"]);?></td>
         <?php } # end hook listcheckboxesheader 
 
         $df_count = count($df);
@@ -1469,19 +1413,22 @@ if($responsive_ui)
             <?php }
         
         hook("searchbeforeratingfieldtitlecolumn");
-        if ($id_column){?><?php if ($order_by=="resourceid"){?><td class="Selected"><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("order_by"=>"resourceid","sort"=>$revsort)); ?>" onClick="return CentralSpaceLoad(this);"><?php echo $lang["id"]?></a><div class="<?php echo urlencode($sort)?>">&nbsp;</div></td><?php } else { ?><td><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("order_by"=>"resourceid")); ?>" onClick="return CentralSpaceLoad(this);"><?php echo $lang["id"]?></a></td><?php } ?><?php } ?>
-        <?php if ($resource_type_column){?><?php if ($order_by=="resourcetype"){?><td class="Selected"><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("order_by"=>"resourcetype","sort"=>$revsort)); ?>" onClick="return CentralSpaceLoad(this);"><?php echo $lang["type"]?></a><div class="<?php echo urlencode($sort)?>">&nbsp;</div></td><?php } else { ?><td><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("order_by"=>"resourcetype","sort"=>"ASC")); ?>" onClick="return CentralSpaceLoad(this);"><?php echo $lang["type"]?></a></td><?php } ?><?php } ?>
-        <?php if ($order_by=="extension"){?><td class="Selected"><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("order_by"=>"extension","sort"=>$revsort)); ?>" onClick="return CentralSpaceLoad(this);"><?php echo $lang["list_file_extension"]?></a><div class="<?php echo urlencode($sort)?>">&nbsp;</div></td><?php } else { ?><td><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("order_by"=>"extension","sort"=>"ASC")); ?>" onClick="return CentralSpaceLoad(this);"><?php echo $lang["list_file_extension"]?></a></td><?php } ?>
-        <?php if ($list_view_status_column){?><?php if ($order_by=="status"){?><td class="Selected"><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("order_by"=>"status","sort"=>$revsort)); ?>" onClick="return CentralSpaceLoad(this);"><?php echo $lang["status"]?></a><div class="<?php echo urlencode($sort)?>">&nbsp;</div></td><?php } else { ?><td><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("order_by"=>"status")); ?>" onClick="return CentralSpaceLoad(this);"><?php echo $lang["status"]?></a></td><?php } ?><?php } ?>
-        <?php if ($date_column){?><?php if ($order_by=="date"){?><td class="Selected"><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("order_by"=>"date","sort"=>$revsort)); ?>" onClick="return CentralSpaceLoad(this);"><?php echo $lang["date"]?></a><div class="<?php echo urlencode($sort)?>">&nbsp;</div></td><?php } else { ?><td><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("order_by"=>"date")); ?>" onClick="return CentralSpaceLoad(this,true);"><?php echo $lang["date"]?></a></td><?php } ?><?php } ?>
+        if ($id_column){?><?php if ($order_by=="resourceid"){?><td class="Selected"><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("order_by"=>"resourceid","sort"=>$revsort)); ?>" onClick="return CentralSpaceLoad(this);"><?php echo htmlspecialchars($lang["id"])?></a><div class="<?php echo urlencode($sort)?>">&nbsp;</div></td><?php } else { ?><td><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("order_by"=>"resourceid")); ?>" onClick="return CentralSpaceLoad(this);"><?php echo htmlspecialchars($lang["id"])?></a></td><?php } ?><?php } ?>
+        <?php if ($resource_type_column){?><?php if ($order_by=="resourcetype"){?><td class="Selected"><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("order_by"=>"resourcetype","sort"=>$revsort)); ?>" onClick="return CentralSpaceLoad(this);"><?php echo htmlspecialchars($lang["type"])?></a><div class="<?php echo urlencode($sort)?>">&nbsp;</div></td><?php } else { ?><td><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("order_by"=>"resourcetype","sort"=>"ASC")); ?>" onClick="return CentralSpaceLoad(this);"><?php echo htmlspecialchars($lang["type"])?></a></td><?php } ?><?php } ?>
+        <?php if ($order_by=="extension"){?><td class="Selected"><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("order_by"=>"extension","sort"=>$revsort)); ?>" onClick="return CentralSpaceLoad(this);"><?php echo htmlspecialchars($lang["list_file_extension"])?></a><div class="<?php echo urlencode($sort)?>">&nbsp;</div></td><?php } else { ?><td><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("order_by"=>"extension","sort"=>"ASC")); ?>" onClick="return CentralSpaceLoad(this);"><?php echo htmlspecialchars($lang["list_file_extension"])?></a></td><?php } ?>
+        <?php if ($list_view_status_column){?><?php if ($order_by=="status"){?><td class="Selected"><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("order_by"=>"status","sort"=>$revsort)); ?>" onClick="return CentralSpaceLoad(this);"><?php echo htmlspecialchars($lang["status"])?></a><div class="<?php echo urlencode($sort)?>">&nbsp;</div></td><?php } else { ?><td><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("order_by"=>"status")); ?>" onClick="return CentralSpaceLoad(this);"><?php echo htmlspecialchars($lang["status"])?></a></td><?php } ?><?php } ?>
+        <?php if ($date_column){?><?php if ($order_by=="date"){?><td class="Selected"><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("order_by"=>"date","sort"=>$revsort)); ?>" onClick="return CentralSpaceLoad(this);"><?php echo htmlspecialchars($lang["date"])?></a><div class="<?php echo urlencode($sort)?>">&nbsp;</div></td><?php } else { ?><td><a href="<?php echo generateURL($baseurl_short."pages/search.php",$searchparams,array("order_by"=>"date")); ?>" onClick="return CentralSpaceLoad(this,true);"><?php echo htmlspecialchars($lang["date"])?></a></td><?php } ?><?php } ?>
         <?php hook("addlistviewtitlecolumn");?>
-        <td><div class="ListTools"><?php echo $lang["tools"]?></div></td>
+        <td><div class="ListTools"><?php echo htmlspecialchars($lang["tools"])?></div></td>
         </tr>
         <?php } ?> <!--end hook replace listviewtitlerow-->
         <?php
         }
         # Include public collections and themes in the main search, if configured.      
-        if (isset($collections)&& strpos($search,"!")===false && $archive_standard && !hook('replacesearchpublic','',array($search,$collections)))
+        if (isset($collections) 
+            && strpos($search,"!")===false 
+            && ($archive_standard || in_array(0,$selected_archive_states))
+            && !hook('replacesearchpublic','',array($search,$collections)))
             {
             include "../include/search_public.php";
             }
@@ -1495,40 +1442,32 @@ if($responsive_ui)
         global $marker_metadata_field, $use_watermark;
 
         // Loop through search results.
-        $result_count = count($result);
         for ($n = 0; $n < $result_count; $n++)
             {            
-            if(!is_array($result[$n]) || ($search_map_max_results > 0 && $n > $search_map_max_results))
+            if(!isset($result[$n]) || !is_array($result[$n]) || ($search_map_max_results > 0 && $n > $search_map_max_results))
                 {
                 continue;
                 }
             // Get resource data for resources returned by the current search.
             $geo = $result[$n]['ref'];
-            $geomark = get_resource_data($geo, $cache = false);
-            $geomark['preview_path'] = get_resource_path($geo, false, 'thm', false, $result[$n]['preview_extension'], true, 1, $use_watermark, $result[$n]['file_modified']);
-            // Get custom metadata field value.
-            if (isset($marker_metadata_field))
-                {
-                $geomark2 = get_data_by_field($geo,$marker_metadata_field);
-                }
-            else
-                {
-                $geomark2 = '';
-                }
+            $geomark = get_resource_data($geo, true);
+            $geomark2 = isset($marker_metadata_field) ? get_data_by_field($geo, $marker_metadata_field) : '';
+
             // Check for resources without geolocation or invalid coordinates and skip those.
             if (is_numeric($geomark['geo_lat']) && is_numeric($geomark['geo_long']) && $geomark['geo_lat'] >= -90 && $geomark['geo_lat'] <= 90 && $geomark['geo_long'] >= -180 && $geomark['geo_long'] <= 180)
                 {
                 // Create array of geolocation parameters.
                 $geomarker[] = "[" . $geomark['geo_long'] . ", " . $geomark['geo_lat'] . ", " . $geomark['ref'] . ", " . $geomark['resource_type'] . "," . (trim($geomark2) != "" ? floatval($geomark2) : "") . "]";
-                $preview_paths[] = $geomark['preview_path'];
+                $preview_paths[] = $result[$n]['has_image'] == 1 && !resource_has_access_denied_by_RT_size($result[$n]['resource_type'], 'thm')
+                    ? get_resource_path($geo, false, 'thm', false, $result[$n]['preview_extension'], true, 1, $use_watermark, $result[$n]['file_modified'])
+                    : $baseurl_short . 'gfx/' . get_nopreview_icon($result[$n]['resource_type'], $result[$n]['file_extension'], false);
+
                 }
             }
         }
-
     # work out common keywords among the results
     if (is_array($result) && (count($result)>$suggest_threshold) && (strpos($search,"!")===false) && ($suggest_threshold!=-1))
         {
-        $result_count = count($result);
         for ($n=0;$n<$result_count;$n++)
             {
             if(!is_array($result[$n])){continue;}
@@ -1537,7 +1476,7 @@ if($responsive_ui)
         $suggest=suggest_refinement($refs,$search);
         if (count($suggest)>0)
             {
-            ?><p><?php echo $lang["torefineyourresults"]?>: <?php
+            ?><p><?php echo htmlspecialchars($lang["torefineyourresults"])?>: <?php
             $suggest_count = count($suggest);
             for ($n=0;$n<$suggest_count;$n++)
                 {
@@ -1549,9 +1488,9 @@ if($responsive_ui)
         }
         
     $rtypes=array();
-    if (!isset($types)){$types=get_resource_types();}
+    if (!isset($types)){$types=get_all_resource_types();}
     $types_count = count($types);
-    for ($n=0;$n<$types_count;$n++) {$rtypes[$types[$n]["ref"]]=$types[$n]["name"];}
+    for ($n=0;$n<$types_count;$n++) {$rtypes[$types[$n]["ref"]]=lang_or_i18n_get_translated($types[$n]["name"], "resourcetype-");}
     if (is_array($result) && count($result)>0)
         {
         /**
@@ -1573,12 +1512,9 @@ if($responsive_ui)
             }
         else
             {
-            $startresource = max($offset-$colcount,0);
-            $endresource = $result_count-$colcount;
-
             // This is used to ensure that all resource panels are the same height 
             $resource_panel_height_max = 0;            
-            for ($n=$startresource;(($n<$endresource) && ($n<($resourcestoretrieve)));$n++)
+            for ($n=0;$n<$result_count-$offset && $n<$resources_count && $n<$resourcestoretrieve;$n++)
                 {
                 # Allow alternative configuration settings for this resource type.
                 resource_type_config_override($result[$n]["resource_type"]);
@@ -1620,6 +1556,9 @@ if($responsive_ui)
                 if (isset($result[$n]["url"])) {$url = $result[$n]["url"];} # Option to override URL in results, e.g. by plugin using process_Search_results hook above
     
                 hook('beforesearchviewcalls');
+
+                // Prepare for display all $data_joins fields (ie fieldX columns)
+                $result[$n] = process_resource_data_joins_values($result[$n], get_resource_table_joins());
 
                 if ($display=="thumbs")
                     {
@@ -1663,7 +1602,7 @@ if($responsive_ui)
 if ($display=="strip")
     {
     #  ---------------------------- Extra footer for strip view ----------------------------
-    include 'search_views/' . $display . '_footer.php';
+    include 'search_views/strip_footer.php';
     }
 
 $url=generateURL($baseurl . "/pages/search.php",$searchparams); 
@@ -1676,12 +1615,11 @@ $url=generateURL($baseurl . "/pages/search.php",$searchparams);
 
 hook("endofsearchpage");
 
-if($search_anchors && $display != 'map')
+if($display != 'map')
     { ?>
     <script>
-    place     = '<?php echo getvalescaped("place", ""); ?>';
+    place     = '<?php echo escape(getval("place", "")); ?>';
     display   = '<?php echo $display; ?>';
-    highlight = '<?php echo $search_anchors_highlight; ?>';
 
     jQuery(document).ready(function()
         {
@@ -1693,11 +1631,6 @@ if($search_anchors && $display != 'map')
             if(jQuery(elementScroll).length)
                 {
                 elementScroll.scrollIntoView();
-
-                if(highlight)
-                    {
-                    jQuery(elementScroll).addClass('search-anchor');
-                    }
                 }
             }
         });
@@ -1765,7 +1698,7 @@ if($use_selection_collection)
                 resource_ending=null;
             } else {
                 if (!resource_starting) {
-                    styledalert('<?php echo $lang["range_no_start_header"]; ?>', '<?php echo $lang["range_no_start"]; ?>');
+                    styledalert('<?php echo escape($lang["range_no_start_header"]); ?>', '<?php echo escape($lang["range_no_start"]); ?>');
                     if(jQuery(input).prop("checked")) {
                         this.removeAttribute("checked");
                         } 

@@ -385,8 +385,11 @@ class CurlFactory implements CurlFactoryInterface
             if ($accept) {
                 $conf[\CURLOPT_ENCODING] = $accept;
             } else {
+                // The empty string enables all available decoders and implicitly
+                // sets a matching 'Accept-Encoding' header.
                 $conf[\CURLOPT_ENCODING] = '';
-                // Don't let curl send the header over the wire
+                // But as the user did not specify any acceptable encodings we need
+                // to overwrite this implicit header with an empty one.
                 $conf[\CURLOPT_HTTPHEADER][] = 'Accept-Encoding:';
             }
         }
@@ -440,7 +443,9 @@ class CurlFactory implements CurlFactoryInterface
                 $scheme = $easy->request->getUri()->getScheme();
                 if (isset($options['proxy'][$scheme])) {
                     $host = $easy->request->getUri()->getHost();
-                    if (!isset($options['proxy']['no']) || !Utils::isHostInNoProxy($host, $options['proxy']['no'])) {
+                    if (isset($options['proxy']['no']) && Utils::isHostInNoProxy($host, $options['proxy']['no'])) {
+                        unset($conf[\CURLOPT_PROXY]);
+                    } else {
                         $conf[\CURLOPT_PROXY] = $options['proxy'][$scheme];
                     }
                 }

@@ -1,7 +1,6 @@
 <?php
 include "../include/db.php";
 header('Content-Type: application/json');
-include_once "../include/node_functions.php";
 include_once "../include/image_processing.php";
 include_once "../include/api_functions.php";
 include_once "../include/ajax_functions.php";
@@ -9,16 +8,23 @@ include_once "../include/api_bindings.php";
 include_once "../include/login_functions.php";
 include_once "../include/dash_functions.php";
 
-if (!$enable_remote_apis) {http_response_code(403);exit("API not enabled.");}
+# Get authentication mode (userkey, sessionkey or native)
+$authmode = getval("authmode","userkey");
+
+# Native authmode always required
+if (!$enable_remote_apis && $authmode !== "native")
+    {
+    http_response_code(403);
+    exit("API not enabled.");
+    }
 
 debug("API:");
 define("API_CALL", true);
 
 # Get parameters
-$user       = getvalescaped("user","");
-$sign       = getvalescaped("sign","");
-$authmode   = getvalescaped("authmode","userkey");
-$query      = $_SERVER["QUERY_STRING"];
+$user = getval("user","");
+$sign = getval("sign","");
+$query = $_SERVER["QUERY_STRING"];
 $pretty = filter_var(getval('pretty', ''), FILTER_VALIDATE_BOOLEAN); # Should response be prettyfied?
 
 # Support POST request where 'query' is POSTed and is the full query string.
@@ -51,6 +57,7 @@ if($function != "login")
     {
     if($authmode == "native")
         {
+        define('API_AUTHMODE_NATIVE', true);
         include(__DIR__ . "/../include/authenticate.php");
         }
     else
@@ -63,15 +70,28 @@ if($function != "login")
             exit("Invalid signature");
             }
     
-        # Log user in (if permitted)        
-        $validuser = setup_user(get_user(get_user_by_username($user)));
+        # Log user in (if permitted)
+        $userref = get_user_by_username($user);
+        $validuser = setup_user(get_user($userref));
         if(!$validuser)
             {
-            ajax_permission_denied();
+            ajax_send_response(
+                401,
+                ['error' => [
+                    'status' => 401,
+                    'title'  => $GLOBALS['lang']['unauthorized'],
+                    'detail' => $GLOBALS['lang']['error-permissiondenied']
+                ]]
+            );
             }
+            ps_query("UPDATE user 
+                         SET last_active = NOW(),
+                             last_ip = ?,
+                             last_browser = ?
+                       WHERE ref = ?",
+                       ["s",get_ip(),"s","API","i",$userref], false, -1, true, 0);
         }
     }
-# Run the requested query
+
 echo execute_api_call($query, $pretty);
 debug("API: finished execute_api_call({$query});");
-

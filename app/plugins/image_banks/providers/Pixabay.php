@@ -1,38 +1,41 @@
 <?php
 namespace ImageBanks;
 
+use SplFileInfo;
+
 class Pixabay extends Provider
     {
-    protected $id                = 1;
-    protected $name              = "Pixabay";
-    protected $download_endpoint = "https://pixabay.com/get/";
-    
-    protected $configs = array(
-        "pixabay_api_key" => "9664540-83e27f5c4cefd1aeb14fd8009"
-    );
-    protected $warning = "";
-
-    public function checkDependencies()
+    function __construct(array $lang, string $temp_dir_path)
         {
-            if (!function_exists('curl_version'))
-            {
-            return $this->lang["image_banks_error_detail_curl"];
-            }
-            else
-            {
-            return true;
-            }
+        $this->id                = 1;
+        $this->name              = "Pixabay";
+        $this->download_endpoint = "https://pixabay.com/get/";
+        $this->configs = array("pixabay_api_key" => "9664540-83e27f5c4cefd1aeb14fd8009");
+        $this->warning = "";
+        $this->lang = $lang;
+        $this->temp_dir_path = $temp_dir_path;
         }
 
-    public function buildConfigPageDefinition(array $page_def)
+    /** @inheritdoc */
+    public function checkDependencies(): array
         {
-        $page_def[] = \config_add_section_header($this->name);
+        if (!function_exists('curl_version'))
+            {
+            return [$this->lang["image_banks_error_detail_curl"]];
+            }
+        return [];
+        }
+
+    /** @inheritdoc */
+    public function buildConfigPageDefinition(array $page_def): array
+        {
         $page_def[] = \config_add_text_input('pixabay_api_key', $this->lang["image_banks_pixabay_api_key"]);
 
         return $page_def;
         }
 
-    public function runSearch($keywords, $per_page = 24, $page = 1)
+    /** @inheritdoc */
+    public function runSearch(string $keywords, int $per_page = 24, int $page = 1): ProviderSearchResults
         {
         if($per_page < 3)
             {
@@ -74,8 +77,12 @@ class Pixabay extends Provider
 
         $provider_results = new ProviderSearchResults();
 
-        // More cleanly handle an unexpected result.
-        if (!isset($search_results["hits"])) {echo "<h1>Sorry, your query could not be completed.</h1><pre>Provider said: " . json_encode($search_results,JSON_PRETTY_PRINT) . "</pre>";exit();}
+        if (!isset($search_results["hits"]))
+            {
+            $provider_results->setError($this->lang['image_banks_error_unexpected_response']);
+            debug(sprintf('[image_banks][%s] Unexpected response: %s', __METHOD__, json_encode($search_results)));
+            return $provider_results;
+            }
 
         foreach($search_results["hits"] as $result)
             {
@@ -113,6 +120,12 @@ class Pixabay extends Provider
             }
 
         return $provider_results;
+        }
+
+    /** @inheritdoc */
+    public function getDownloadFileInfo(string $file): SplFileInfo
+        {
+        return new SplFileInfo($file);
         }
 
 

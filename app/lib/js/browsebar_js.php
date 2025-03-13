@@ -1,6 +1,6 @@
 <?php
 /**
-* Add in CSS overrides for UI elements
+* JS functions for the Browse Bar
 *
 * @package ResourceSpace
 */
@@ -10,33 +10,6 @@ include_once "../../include/db.php";
 include_once "../../include/authenticate.php";
 header("Content-type: text/javascript");
 ?>
-
-function ToggleBrowseBar(forcestate, noresize) 
-	{
-    console.debug("ToggleBrowseBar(forcestate = %o, noresize = %o)", forcestate, noresize);
-    var browseopen = (typeof browse_show === "undefined" || browse_show == 'hide') || (forcestate !== "undefined" && forcestate == 'open')
-    console.debug("browseopen = %o", browseopen);
-	if (browseopen)
-		{
-        jQuery('#BrowseBar').show();
-		if(typeof noresize === 'undefined' || noresize == false)
-            {
-            myLayout.sizePane("west", <?php echo $browse_default_width; ?>);
-            jQuery('#BrowseBarContent').width(browse_width-40);
-            }
-		browse_show = 'show';
-        SetCookie('browse_show', 'show');
-        ModalCentre();
-        }
-	else
-		{	
-    	jQuery('#BrowseBar').hide();
-		myLayout.sizePane("west", 30);
-		browse_show = 'hide';
-		SetCookie('browse_show', 'hide');
-		}
-    jQuery(document).trigger("resize");
-	}
 
 function renderBrowseItem(node, parent)
     {
@@ -127,9 +100,9 @@ function toggleBrowseElements(browse_id, reload, useraction)
 
     if(useraction)
         {
-        browse_clicked=true;    
+        browse_clicked=true;
         }
-    
+
     if(typeof b_loading === 'undefined')
         {
         b_loading = new Array();
@@ -147,7 +120,17 @@ function toggleBrowseElements(browse_id, reload, useraction)
         browse_toload = new Array();
         }
 
+    if(typeof browse_reloaded === 'undefined' || useraction)
+        {
+        // Used to ensure we don't get into an endless loop of loading parents and looking for non-existent child elements
+        browse_reloaded = new Array();
+        }
+
     var curel = jQuery(".BrowseBarItem[data-browse-id='" + browse_id + "']");
+
+
+
+
 
     if(!curel.length)
         {
@@ -155,7 +138,7 @@ function toggleBrowseElements(browse_id, reload, useraction)
         var item_elements = browse_id.split('-');
         item_elements.pop();
         if (item_elements.length  < 1)
-            {            
+            {
             // This is the root node and is not present, give up
             browse_clicked = false;
             curel.stop(true, false);
@@ -164,7 +147,7 @@ function toggleBrowseElements(browse_id, reload, useraction)
             
         var parentitem = item_elements.join('-');
         
-        //Add this id so that it is loaded after the parent has completed
+        // Add this id so that it is loaded after the parent has completed
         if(typeof browsepostload[parentitem] === "undefined")
             {
             browsepostload[parentitem] = new Array();
@@ -304,8 +287,12 @@ function toggleBrowseElements(browse_id, reload, useraction)
 
             browsepostload[browse_id].forEach(function (childitem)
                 {
-                console.debug("Finished loading %o, loading child item %o", browse_id, childitem);
-                toggleBrowseElements(childitem, true);
+                if(!browse_reloaded.includes(childitem))
+                    {
+                    console.debug("Finished loading %o, loading child item %o", browse_id, childitem);
+                    toggleBrowseElements(childitem, true);
+                    browse_reloaded.push(childitem); 
+                    }
                 });
                 
             if(browse_toload.length == 0)
@@ -333,10 +320,11 @@ function toggleBrowseElements(browse_id, reload, useraction)
                     b_loading.splice(loadindex, 1);
                     }
                 browse_clicked = false;
-                styledalert('<?php echo htmlspecialchars($lang["error"]); ?> ' + xhr.status, '<?php echo htmlspecialchars($lang['error_generic']); ?> : ' + error);	 refreshicon.removeClass("fa-spin");
+                styledalert('<?php echo escape($lang["error"]); ?> ' + xhr.status, '<?php echo escape($lang['error_generic']); ?> : ' + error);	 refreshicon.removeClass("fa-spin");
                 }
             });
 
+    browse_reloaded.push(browse_id);
     return true;
     }
 
@@ -367,6 +355,7 @@ function BrowseBarInit()
 
         drop: function(event, ui)
             {
+            // Get the dragged resource id
             dropped = jQuery(ui.draggable);
             var resource_id = dropped.attr("id");
             resource_id = resource_id.replace("ResourceShell", "");
@@ -396,7 +385,7 @@ function BrowseBarInit()
                         {
                         styledalert('<?php echo $lang['error']; ?>','<?php echo $lang['error-invalid_resource_type']; ?>');
                         browse_err = document.createElement( "div" ),
-                        jQuery(browse_err).html('<?php echo $lang["save-error"] ?>');
+                        jQuery(browse_err).html('<?php echo escape($lang["save-error"]) ?>');
                         jQuery(browsetarget).append(browse_err);
                         jQuery(browse_err).fadeOut('slow');
                         }
@@ -404,7 +393,7 @@ function BrowseBarInit()
                 case 'FC':
                 case 'C':
                     cid = item_elements[item_elements.length - 1].replace('C:','');
-                    AddResourceToCollection(event,resource_id,'', cid);
+                    AddResourceToCollection(event, ui, resource_id, '', cid);
                     jQuery(this).find(".BrowseBarLink a").fadeTo(100, 0.3, function() { jQuery(this).fadeTo(500, 1.0); });
                     break;
                 default:

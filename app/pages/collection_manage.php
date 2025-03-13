@@ -1,19 +1,18 @@
 <?php 
 include "../include/db.php";
-
 include "../include/authenticate.php";
 if (checkperm("b"))
     {exit("Permission denied");}
 
-$k=getvalescaped("k","");
-$offset=getvalescaped("offset",0,true);
-$find=getvalescaped("find",getvalescaped("saved_find",""));rs_setcookie('saved_find', $find);
-$col_order_by=getvalescaped("col_order_by",getvalescaped("saved_col_order_by","created"));rs_setcookie('saved_col_order_by', $col_order_by);
-$sort=getvalescaped("sort",getvalescaped("saved_col_sort","ASC"));rs_setcookie('saved_col_sort', $sort);
+$k=getval("k","");
+$offset=getval("offset",0,true);
+$find=getval("find",getval("saved_find",""));rs_setcookie('saved_find', $find);
+$col_order_by=getval("col_order_by",getval("saved_col_order_by","created"));rs_setcookie('saved_col_order_by', $col_order_by);
+$sort=getval("sort",getval("saved_col_sort","ASC"));rs_setcookie('saved_col_sort', $sort);
 if (!in_array(mb_strtoupper($sort), array('ASC','DESC'))) {$sort = "ASC";}
 $revsort = ($sort=="ASC") ? "DESC" : "ASC";
 # pager
-$per_page=getvalescaped("per_page_list",$default_perpage_list,true);rs_setcookie('per_page_list', $per_page);
+$per_page=getval("per_page_list",$default_perpage_list,true);rs_setcookie('per_page_list', $per_page);
 
 $collection_valid_order_bys=array("fullname","name","ref","count","type");
 $modified_collection_valid_order_bys=hook("modifycollectionvalidorderbys");
@@ -22,8 +21,8 @@ if (!in_array($col_order_by,$collection_valid_order_bys)) {$col_order_by="create
 
 if (array_key_exists("find",$_POST)) {$offset=0;} # reset page counter when posting
 
-$name = getvalescaped('name', '');
-if('' != $name && $collection_allow_creation && enforcePostRequest(false))
+$name = getval('name', '');
+if('' != $name && can_create_collections() && enforcePostRequest(false))
     {
     // Create new collection
     $new = create_collection($userref, $name);
@@ -55,9 +54,9 @@ if('' != $name && $collection_allow_creation && enforcePostRequest(false))
     }
 
 $delete_collections = array();
-if (getvalescaped("delete","") != "")
+if (getval("delete","") != "")
     {
-	$delete_cols = explode(',', getvalescaped("delete",""));
+	$delete_cols = explode(',', getval("delete",""));
 	foreach($delete_cols as $col_ref)
 	    {
 	    $delete_collections[] = $col_ref;	
@@ -70,18 +69,17 @@ foreach ($delete_collections as $delete)
 	    {
 	    // Check user is actually allowed to delete the collection first
 	    $collection_data = get_collection($delete);
-	    if(!can_delete_collection($collection_data, $userref, $k))
-	    	{
-	    	header('HTTP/1.1 401 Unauthorized');
-		    die('Permission denied!');
-		    }
+        if (is_array($collection_data) && !can_delete_collection($collection_data, $userref, $k)) {
+            header('HTTP/1.1 401 Unauthorized');
+            die('Permission denied!');
+        }
 
 	    # Delete collection
 	    delete_collection($collection_data);
 
 	    # Get count of collections
 	    $c=get_user_collections($userref);
-	
+
 	    # If the user has just deleted the collection they were using, select a new collection
 	    if ($usercollection==$delete && count($c)>0)
 		    {
@@ -97,7 +95,7 @@ foreach ($delete_collections as $delete)
 		    $usercollection=create_collection ($userref,"Default Collection");
 	    	set_user_collection($userref,$usercollection);
 	    	}
-        
+
 		# To update the page only when all collections have been deleted, remove from the array those already processed.
         $id_col_deleted = array_search($delete,$delete_collections);
 	    if ($id_col_deleted !== false)
@@ -105,15 +103,15 @@ foreach ($delete_collections as $delete)
 			unset($delete_collections[$id_col_deleted]);
 	    	}
 
-	    if(getvalescaped('ajax', '') !== '' && getvalescaped('dropdown_actions', '') !== '' && count($delete_collections) == 0)
+	    if(getval('ajax', '') !== '' && getval('dropdown_actions', '') !== '' && count($delete_collections) == 0)
 	        {
 	    	$response = array(
 		    	'success'                => 'Yes',
 		    	'redirect_to_collection' => $usercollection,
-		    	'k'                      => getvalescaped('k', ''),
+		    	'k'                      => getval('k', ''),
 		    	'nc'                     => time()
 		    );
-		
+
 		    echo json_encode($response);
 		    exit();
 		    }
@@ -121,57 +119,57 @@ foreach ($delete_collections as $delete)
 	}
 refresh_collection_frame($usercollection);
 
-$removeall=getvalescaped("removeall","");
+$removeall=getval("removeall","");
 if ($removeall!="" && enforcePostRequest(false)){
 	remove_all_resources_from_collection($removeall);
 	refresh_collection_frame($usercollection);
 }
 
-$remove=getvalescaped("remove","");
+$remove=getval("remove","");
 if ($remove!="" && enforcePostRequest(false))
 	{
 	# Remove someone else's collection from your My Collections
 	remove_collection($userref,$remove);
-	
+
 	# Get count of collections
 	$c=get_user_collections($userref);
-	
+
 	# If the user has just removed the collection they were using, select a new collection
 	if ($usercollection==$remove && count($c)>0) {
 		# Select the first collection in the dropdown box.
 		$usercollection=$c[0]["ref"];
 		set_user_collection($userref,$usercollection);
 	}
-	
+
 	refresh_collection_frame();
 	}
 
-$add=getvalescaped("add","");
+$add=getval("add","");
 if ($add!="" && enforcePostRequest(false))
 	{
 	# Add someone else's collection to your My Collections
 	add_collection($userref,$add);
 	set_user_collection($userref,$add);
 	refresh_collection_frame();
-	
+
    	# Log this
 	daily_stat("Add public collection",$userref);
 	}
 
-$reload=getvalescaped("reload","");
+$reload=getval("reload","");
 if ($reload!="")
 	{
 	# Refresh the collection frame (just edited a collection)
 	refresh_collection_frame();
 	}
 
-$purge=getvalescaped("purge","");
-$deleteall=getvalescaped("deleteall","");
+$purge=getval("purge","");
+$deleteall=getval("deleteall","");
 if(($purge != "" || $deleteall != "") && enforcePostRequest(false)) {
-	
+
 	if ($purge!=""){$deletecollection=$purge;}
 	if ($deleteall!=""){$deletecollection=$deleteall;}
-		
+
 	# Delete all resources in collection
 	if (!checkperm("D")) {
 		$resources=do_search("!collection" . $deletecollection);
@@ -182,20 +180,20 @@ if(($purge != "" || $deleteall != "") && enforcePostRequest(false)) {
 			}
 		}
 	}
-	
+
 	if ($purge!=""){
 		# Delete collection
 		delete_collection($purge);
 		# Get count of collections
 		$c=get_user_collections($userref);
-		
+
 		# If the user has just deleted the collection they were using, select a new collection
 		if ($usercollection==$purge && count($c)>0) {
 			# Select the first collection in the dropdown box.
 			$usercollection=$c[0]["ref"];
 			set_user_collection($userref,$usercollection);
 		}
-	
+
 		# User has deleted their last collection? add a new one.
 		if (count($c)==0) {
 			# No collections to select. Create them a new collection.
@@ -206,12 +204,12 @@ if(($purge != "" || $deleteall != "") && enforcePostRequest(false)) {
 	refresh_collection_frame($usercollection);
 }
 
-$deleteempty=getvalescaped("deleteempty","");
+$deleteempty=getval("deleteempty","");
 if ($deleteempty!="" && enforcePostRequest(false)) {
-		
+
 	$collections=get_user_collections($userref);
 	$deleted_usercoll = false;
-		
+
 	for ($n = 0; $n < count($collections); $n++) {
 		// if count is zero and not Default Collection and collection is owned by user:
 		if ($collections[$n]['count'] == 0 && $collections[$n]['cant_delete'] != 1 && $collections[$n]['user']==$userref) {
@@ -220,32 +218,32 @@ if ($deleteempty!="" && enforcePostRequest(false)) {
 				$deleted_usercoll = true;
 			}
 		}
-				
+
 	}
-		
+
 	# Get count of collections
 	$c=get_user_collections($userref);
-		
+
 	# If the user has just deleted the collection they were using, select a new collection
 	if ($deleted_usercoll && count($c)>0) {
 		# Select the first collection in the dropdown box.
 		$usercollection=$c[0]["ref"];
 		set_user_collection($userref,$usercollection);
 	}
-	
+
 	# User has deleted their last collection? add a new one.
 	if (count($c)==0) {
 		# No collections to select. Create them a new collection.
 		$usercollection=create_collection ($userref,"Default Collection");
 		set_user_collection($userref,$usercollection);
 	}
-	
+
 	refresh_collection_frame($usercollection);
 }
 
 hook('customcollectionmanage');
 
-$removeall=getvalescaped("removeall","");
+$removeall=getval("removeall","");
 if($removeall != "" && enforcePostRequest(false))
     {
     remove_all_resources_from_collection($removeall);
@@ -256,16 +254,16 @@ if($removeall != "" && enforcePostRequest(false))
 include "../include/header.php";
 ?>
   <div class="BasicsBox">
-    <h1><?php echo $lang["managemycollections"]?></h1>
+    <h1><?php echo htmlspecialchars($lang["managemycollections"])?></h1>
     <p class="tight"><?php echo text("introtext");render_help_link("collections-public-and-themes");?></p><br />
 <div class="BasicsBox">
     <form method="post" action="<?php echo $baseurl_short?>pages/collection_manage.php">
 		<?php generateFormToken("find"); ?>
         <div class="Question">
 			<div class="tickset">
-			 <div class="Inline"><input type=text name="find" id="find" value="<?php echo htmlspecialchars(unescape($find)); ?>" maxlength="100" class="shrtwidth" /></div>
-			 <div class="Inline"><input name="Submit" type="submit" value="&nbsp;&nbsp;<?php echo $lang["searchbutton"]?>&nbsp;&nbsp;" /></div>
-			 <div class="Inline"><input name="Clear" type="button" onclick="document.getElementById('find').value='';submit();" value="&nbsp;&nbsp;<?php echo $lang["clearbutton"]?>&nbsp;&nbsp;" /></div>
+			 <div class="Inline"><input type=text name="find" id="find" value="<?php echo escape(unescape($find)); ?>" maxlength="100" class="shrtwidth" /></div>
+			 <div class="Inline"><input name="Submit" type="submit" value="&nbsp;&nbsp;<?php echo escape($lang["searchbutton"])?>&nbsp;&nbsp;" /></div>
+			 <div class="Inline"><input name="Clear" type="button" onclick="document.getElementById('find').value='';submit();" value="&nbsp;&nbsp;<?php echo escape($lang["clearbutton"])?>&nbsp;&nbsp;" /></div>
 			</div>
 			<div class="clearerleft"> </div>
 		</div>
@@ -300,12 +298,12 @@ $atoz.="</div>";
 
 $url=$baseurl_short."pages/collection_manage.php?paging=true&col_order_by=".urlencode($col_order_by)."&sort=".urlencode($sort)."&find=".urlencode($find)."";
 
-	?><div class="TopInpageNav"><div class="TopInpageNavLeft"><?php echo $atoz?> <div class="InpageNavLeftBlock"><?php echo $lang["resultsdisplay"]?>:
+	?><div class="TopInpageNav"><div class="TopInpageNavLeft"><?php echo $atoz?> <div class="InpageNavLeftBlock"><?php echo htmlspecialchars($lang["resultsdisplay"])?>:
   	<?php 
   	for($n=0;$n<count($list_display_array);$n++){?>
   	<?php if ($per_page==$list_display_array[$n]){?><span class="Selected"><?php echo htmlspecialchars($list_display_array[$n]) ?></span><?php } else { ?><a href="<?php echo $url; ?>&per_page_list=<?php echo urlencode($list_display_array[$n])?>" onClick="return CentralSpaceLoad(this);"><?php echo htmlspecialchars($list_display_array[$n]) ?></a><?php } ?>&nbsp;|
   	<?php } ?>
-  	<?php if ($per_page==99999){?><span class="Selected"><?php echo $lang["all"]?></span><?php } else { ?><a href="<?php echo $url; ?>&per_page_list=99999" onClick="return CentralSpaceLoad(this);"><?php echo $lang["all"]?></a><?php } ?>
+  	<?php if ($per_page==99999){?><span class="Selected"><?php echo htmlspecialchars($lang["all"])?></span><?php } else { ?><a href="<?php echo $url; ?>&per_page_list=99999" onClick="return CentralSpaceLoad(this);"><?php echo htmlspecialchars($lang["all"])?></a><?php } ?>
   	</div> </div><?php pager(false,true,array("confirm_page_change" => "return promptBeforePaging();")); ?><div class="clearerleft"></div></div><?php	
 ?>
 
@@ -354,7 +352,7 @@ function delete_collections()
 		}
 	if (to_delete != "")
 	    {
-		if (confirm('<?php echo $lang["delete_multiple_collections"] ?>'))
+		if (confirm('<?php echo escape($lang["delete_multiple_collections"]) ?>'))
 		    {
 			var post_data = 
 			    {
@@ -372,7 +370,7 @@ function delete_collections()
                     }
                 }, 'json');    
             }
-			
+
 		}
 	}
 
@@ -396,7 +394,7 @@ function delete_collections()
                 collection_ending=null;
             } else {
                 if (!collection_starting) {
-                    styledalert('<?php echo $lang["range_no_start_header"]; ?>', '<?php echo $lang["range_no_start"]; ?>');
+                    styledalert('<?php echo escape($lang["range_no_start_header"]); ?>', '<?php echo escape($lang["range_no_start"]); ?>');
                     if(jQuery(input).prop("checked")) {
                         this.removeAttribute("checked");
                         } 
@@ -450,7 +448,7 @@ function delete_collections()
                         }
                     }
                 }
-                
+
 				collection_selections.forEach(function (collection)
                     {
                     if(res_list.includes(collection.box_collection))
@@ -476,6 +474,19 @@ function delete_collections()
             console.log("collection_LIST\n" + JSON.stringify(res_list));
 
             });
+
+        // Load collection actions when dropdown is clicked
+        jQuery('.collectionactions').on("mouseover", function(e){
+            var el = jQuery(this);
+            if(el.attr('data-actions-populating') != '0')
+                {
+                return false
+                }
+            el.attr('data-actions-populating','1');
+            var action_selection_id = el.attr('id');
+            var colref = el.attr('data-col-id');
+            LoadActions('collections',action_selection_id,'collection',colref);
+            });
         });
 
 // Add confirmation message to advise selected collections will be cleared on paging.
@@ -485,14 +496,14 @@ function promptBeforePaging()
 
 	if (document.getElementById("collection_delete").style.visibility == "visible")
 	    {
-		$proceed = confirm('<?php echo $lang["page_collections_message"] ?>');
+		$proceed = confirm('<?php echo escape($lang["page_collections_message"]) ?>');
 	    return $proceed;
 		}
     }
 
 </script>
 
-<a id="collection_delete" style="visibility:hidden; margin-left:10px" title = "<?php echo $lang["delete_all_selected"] ?>" onClick="delete_collections()"><i aria-hidden="true" class="fa fa-fw fa-trash"></i></a>
+<a id="collection_delete" style="visibility:hidden; margin-left:10px" title = "<?php echo escape($lang["delete_all_selected"]) ?>" onClick="delete_collections()"><i aria-hidden="true" class="fa fa-fw fa-trash"></i></a>
 <form method=post id="collectionform" action="<?php echo $baseurl_short?>pages/collection_manage.php">
 <?php generateFormToken("collectionform"); ?>
 <input type=hidden name="delete" id="collectiondelete" value="">
@@ -504,62 +515,66 @@ function promptBeforePaging()
 <table border="0" cellspacing="0" cellpadding="0" class="ListviewStyle">
 <tr class="ListviewTitleStyle">
 <td> <input type="checkbox" onclick='check_delete_all(this)'> </td>
-<td class="name"><?php if ($col_order_by=="name") {?><span class="Selected"><?php } ?><a href="<?php echo $baseurl_short?>pages/collection_manage.php?offset=0&col_order_by=name&sort=<?php echo urlencode($revsort)?>&find=<?php echo urlencode($find)?>" onClick="return CentralSpaceLoad(this);"><?php echo $lang["collectionname"]?></a><?php if ($col_order_by=="name") {?><div class="<?php echo urlencode($sort)?>">&nbsp;</div><?php } ?></td>
+<td class="name"><?php if ($col_order_by=="name") {?><span class="Selected"><?php } ?><a href="<?php echo $baseurl_short?>pages/collection_manage.php?offset=0&col_order_by=name&sort=<?php echo urlencode($revsort)?>&find=<?php echo urlencode($find)?>" onClick="return CentralSpaceLoad(this);"><?php echo htmlspecialchars($lang["collectionname"])?></a><?php if ($col_order_by=="name") {?><div class="<?php echo urlencode($sort)?>">&nbsp;</div><?php } ?></td>
 
-<td class="fullname"><?php if ($col_order_by=="fullname") {?><span class="Selected"><?php } ?><a href="<?php echo $baseurl_short?>pages/collection_manage.php?offset=0&col_order_by=fullname&sort=<?php echo urlencode($revsort)?>&find=<?php echo urlencode($find)?>" onClick="return CentralSpaceLoad(this);"><?php echo $lang["owner"]?></a><?php if ($col_order_by=="fullname") {?><div class="<?php echo urlencode($sort)?>">&nbsp;</div><?php } ?></td>
+<td class="fullname"><?php if ($col_order_by=="fullname") {?><span class="Selected"><?php } ?><a href="<?php echo $baseurl_short?>pages/collection_manage.php?offset=0&col_order_by=fullname&sort=<?php echo urlencode($revsort)?>&find=<?php echo urlencode($find)?>" onClick="return CentralSpaceLoad(this);"><?php echo htmlspecialchars($lang["owner"])?></a><?php if ($col_order_by=="fullname") {?><div class="<?php echo urlencode($sort)?>">&nbsp;</div><?php } ?></td>
 
-<td class="ref"><?php if ($col_order_by=="ref") {?><span class="Selected"><?php } ?><a href="<?php echo $baseurl_short?>pages/collection_manage.php?offset=0&col_order_by=ref&sort=<?php echo urlencode($revsort)?>&find=<?php echo urlencode($find)?>" onClick="return CentralSpaceLoad(this);"><?php echo $lang["id"]?></a><?php if ($col_order_by=="ref") {?><div class="<?php echo urlencode($sort)?>">&nbsp;</div><?php } ?></td>
+<td class="ref"><?php if ($col_order_by=="ref") {?><span class="Selected"><?php } ?><a href="<?php echo $baseurl_short?>pages/collection_manage.php?offset=0&col_order_by=ref&sort=<?php echo urlencode($revsort)?>&find=<?php echo urlencode($find)?>" onClick="return CentralSpaceLoad(this);"><?php echo htmlspecialchars($lang["id"])?></a><?php if ($col_order_by=="ref") {?><div class="<?php echo urlencode($sort)?>">&nbsp;</div><?php } ?></td>
 
-<td class="created"><?php if ($col_order_by=="created") {?><span class="Selected"><?php } ?><a href="<?php echo $baseurl_short?>pages/collection_manage.php?offset=0&col_order_by=created&sort=<?php echo urlencode($revsort)?>&find=<?php echo urlencode($find)?>" onClick="return CentralSpaceLoad(this);"><?php echo $lang["created"]?></a><?php if ($col_order_by=="created") {?><div class="<?php echo urlencode($sort)?>">&nbsp;</div><?php } ?></td>
+<td class="created"><?php if ($col_order_by=="created") {?><span class="Selected"><?php } ?><a href="<?php echo $baseurl_short?>pages/collection_manage.php?offset=0&col_order_by=created&sort=<?php echo urlencode($revsort)?>&find=<?php echo urlencode($find)?>" onClick="return CentralSpaceLoad(this);"><?php echo htmlspecialchars($lang["created"])?></a><?php if ($col_order_by=="created") {?><div class="<?php echo urlencode($sort)?>">&nbsp;</div><?php } ?></td>
 
-<td class="count"><?php if ($col_order_by=="count") {?><span class="Selected"><?php } ?><a href="<?php echo $baseurl_short?>pages/collection_manage.php?offset=0&col_order_by=count&sort=<?php echo urlencode($revsort)?>&find=<?php echo urlencode($find)?>" onClick="return CentralSpaceLoad(this);"><?php echo $lang["itemstitle"]?></a><?php if ($col_order_by=="count") {?><div class="<?php echo urlencode($sort)?>">&nbsp;</div><?php } ?></td>
+<td class="count"><?php if ($col_order_by=="count") {?><span class="Selected"><?php } ?><a href="<?php echo $baseurl_short?>pages/collection_manage.php?offset=0&col_order_by=count&sort=<?php echo urlencode($revsort)?>&find=<?php echo urlencode($find)?>" onClick="return CentralSpaceLoad(this);"><?php echo htmlspecialchars($lang["itemstitle"])?></a><?php if ($col_order_by=="count") {?><div class="<?php echo urlencode($sort)?>">&nbsp;</div><?php } ?></td>
 
-<?php if (!$hide_access_column){ ?><td class="access"><?php if ($col_order_by=="type") {?><span class="Selected"><?php } ?><a href="<?php echo $baseurl_short?>pages/collection_manage.php?offset=0&col_order_by=type&sort=<?php echo urlencode($revsort)?>&find=<?php echo urlencode($find)?>" onClick="return CentralSpaceLoad(this);"><?php echo $lang["access"]?></a><?php if ($col_order_by=="type") {?><div class="<?php echo urlencode($sort)?>">&nbsp;</div><?php } ?></td><?php }?>
+<td class="access"><?php if ($col_order_by=="type") {?><span class="Selected"><?php } ?><a href="<?php echo $baseurl_short?>pages/collection_manage.php?offset=0&col_order_by=type&sort=<?php echo urlencode($revsort)?>&find=<?php echo urlencode($find)?>" onClick="return CentralSpaceLoad(this);"><?php echo htmlspecialchars($lang["access"])?></a><?php if ($col_order_by=="type") {?><div class="<?php echo urlencode($sort)?>">&nbsp;</div><?php } ?></td>
 
-<td class="collectionin"><?php echo $lang["showcollectionindropdown"] ?></td>
+<td class="collectionin"><?php echo htmlspecialchars($lang["showcollectionindropdown"]) ?></td>
 
 <?php hook("beforecollectiontoolscolumnheader");?>
-<td class="tools"><div class="ListTools"><?php echo $lang['actions']?></div></td>
+<td class="tools"><div class="ListTools"><?php echo htmlspecialchars($lang['actions'])?></div></td>
 </tr>
 <form method="get" name="colactions" id="colactions" action="<?php echo $baseurl_short?>pages/collection_manage.php">
 <?php
 
 for ($n=$offset;(($n<count($collections)) && ($n<($offset+$per_page)));$n++)
-	{
+    {
+    if($collections[$n]['ref'] < 0)
+        {
+        // Don't show special 'new uploads' collection
+        continue;
+        }
     $colusername=$collections[$n]['fullname'];
     $count_result = $collections[$n]["count"];
-	?><tr <?php hook("collectionlistrowstyle");?>>
-	<td> <?php if (can_delete_collection($collections[$n], $userref, $k)) 
-	               { 
-				   echo '<input type="checkbox" class="check_delete" id="check_' . $collections[$n]['ref'] . '" value="' . $collections[$n]['ref'] . '" onClick="show_delete()">'; 
-				   } ?> </td>
-	<td class="name"><div class="ListTitle">
-		<a <?php if($collections[$n]["type"] == COLLECTION_TYPE_FEATURED) { ?>style="font-style:italic;"<?php } ?> href="<?php echo $baseurl_short?>pages/search.php?search=<?php echo urlencode("!collection" . $collections[$n]["ref"])?>" onClick="return CentralSpaceLoad(this);"><?php echo strip_tags_and_attributes(highlightkeywords(htmlspecialchars_decode(i18n_get_collection_name($collections[$n])), $find)); ?></a></div></td>
-	<td class="fullname"><?php echo strip_tags_and_attributes(highlightkeywords($colusername, $find)); ?></td>
-	<td class="ref"><?php echo strip_tags_and_attributes(highlightkeywords($collection_prefix . $collections[$n]["ref"], $find)); ?></td>
-	<td class="created"><?php echo nicedate($collections[$n]["created"],true) ?></td>
-	<td class="count"><?php echo $collections[$n]["count"] ?></td>
-<?php if (! $hide_access_column){ ?>	<td class="access"><?php
-if(!hook('collectionaccessmode'))
-    {
-    switch($collections[$n]["type"])
+    ?><tr <?php hook("collectionlistrowstyle");?>>
+    <td> <?php if (can_delete_collection($collections[$n], $userref, $k)) 
+        { 
+        echo '<input type="checkbox" class="check_delete" id="check_' . $collections[$n]['ref'] . '" value="' . $collections[$n]['ref'] . '" onClick="show_delete()">'; 
+        } ?> </td>
+    <td class="name"><div class="ListTitle">
+        <a <?php if($collections[$n]["type"] == COLLECTION_TYPE_FEATURED) { ?>style="font-style:italic;"<?php } ?> href="<?php echo $baseurl_short?>pages/search.php?search=<?php echo urlencode("!collection" . $collections[$n]["ref"])?>" onClick="return CentralSpaceLoad(this);"><?php echo strip_tags_and_attributes(highlightkeywords(htmlspecialchars_decode(i18n_get_collection_name($collections[$n])), $find)); ?></a></div></td>
+    <td class="fullname"><?php echo strip_tags_and_attributes(highlightkeywords($colusername, $find)); ?></td>
+    <td class="ref"><?php echo strip_tags_and_attributes(highlightkeywords($collections[$n]["ref"], $find)); ?></td>
+    <td class="created"><?php echo nicedate($collections[$n]["created"],true) ?></td>
+    <td class="count"><?php echo $collections[$n]["count"] ?></td>
+    <td class="access"><?php
+    if(!hook('collectionaccessmode'))
         {
-        case COLLECTION_TYPE_PUBLIC:
-            echo $lang["public"];
-            break;
+        switch($collections[$n]["type"])
+            {
+            case COLLECTION_TYPE_PUBLIC:
+                echo htmlspecialchars($lang["public"]);
+                break;
 
-        case COLLECTION_TYPE_FEATURED:
-            echo $lang["theme"];
-            break;
+            case COLLECTION_TYPE_FEATURED:
+                echo htmlspecialchars($lang["theme"]);
+                break;
 
-        case COLLECTION_TYPE_STANDARD:
-        default:
-            echo $lang["private"];
-            break;
+            case COLLECTION_TYPE_STANDARD:
+            default:
+                echo htmlspecialchars($lang["private"]);
+                break;
+            }
         }
-    }
-?></td><?php
-}?>
+    ?></td>
 
 <td class="collectionin"><input type="checkbox" onClick='UpdateHiddenCollections(this, "<?php echo $collections[$n]['ref'] ?>", {<?php echo generateAjaxToken("colactions"); ?>});' <?php if(!in_array($collections[$n]['ref'],$hidden_collections)){echo "checked";}?>></td>
 
@@ -570,9 +585,9 @@ hook('render_collections_list_tools', '', array($collections[$n])); ?>
     <div class="ListTools">
     <?php hook('legacy_list_tools', '', array($collections[$n])); ?>
         <div class="ActionsContainer">
-            <select class="collectionactions" id="<?php echo $action_selection_id ?>" onchange="action_onchange_<?php echo $action_selection_id ?>(this.value);">
+            <select class="collectionactions" id="<?php echo $action_selection_id ?>" data-actions-loaded="0" data-actions-populating="0" data-col-id="<?php echo $collections[$n]["ref"];?>" onchange="action_onchange_<?php echo $action_selection_id ?>(this.value);">
             <option>
-                <?php echo $lang["actions-select"]?>
+                <?php echo htmlspecialchars($lang["actions-select"])?>
             </option>
             </select>
         </div>
@@ -580,14 +595,6 @@ hook('render_collections_list_tools', '', array($collections[$n])); ?>
 </div>
 </td>
 </tr>
-<script>
-  jQuery('#<?php echo $action_selection_id ?>').bind({
-    mouseenter:function(e){
-      LoadActions('collections','<?php echo $action_selection_id ?>','collection','<?php echo $collections[$n]['ref'] ?>');
-    }
-  }
-);
-</script>
 <input type=hidden name="deleteempty" id="collectiondeleteempty" value="">
 <?php
 }
@@ -623,30 +630,30 @@ echo " " . ($mycollcount==1 ? $lang["owned_by_you-1"] : str_replace("%mynumber",
 </div>
 
 <!--Create a collection-->
-<?php if ($collection_allow_creation && !hook("replacecollectionmanagecreatenew")) { ?>
+<?php if (!hook("replacecollectionmanagecreatenew")) { ?>
 	<div class="BasicsBox">
-		<h1><?php echo $lang["createnewcollection"]?></h1>
+		<h1><?php echo htmlspecialchars($lang["createnewcollection"])?></h1>
 		<p class="tight"><?php echo text("newcollection")?></p>
 		<form method="post" action="<?php echo $baseurl_short?>pages/collection_manage.php">
 			<?php generateFormToken("newcollection"); ?>
             <div class="Question">
-				<label for="newcollection"><?php echo $lang["collectionname"]?></label>
+				<label for="newcollection"><?php echo htmlspecialchars($lang["collectionname"])?></label>
 				<div class="tickset">
 				 <div class="Inline"><input type=text name="name" id="newcollection" value="" maxlength="100" class="shrtwidth"></div>
-				 <div class="Inline"><input name="Submit" type="submit" value="&nbsp;&nbsp;<?php echo $lang["create"]?>&nbsp;&nbsp;" /></div>
+				 <div class="Inline"><input name="Submit" type="submit" value="&nbsp;&nbsp;<?php echo escape($lang["create"])?>&nbsp;&nbsp;" /></div>
 				</div>
 			<div class="clearerleft"> </div>
 			</div>
 		</form>
 	</div>
 <?php } ?>
- 
+
 <!--Find a collection-->
 <?php if (!$public_collections_header_only && $enable_public_collections && !hook('replacecollectionmanagepublic')){?>
 <div class="BasicsBox">
-    <h1><?php echo $lang["findpubliccollection"]?></h1>
+    <h1><?php echo htmlspecialchars($lang["findpubliccollection"])?></h1>
     <p class="tight"><?php echo text("findpublic")?></p>
-    <p><?php echo LINK_CARET ?><a href="<?php echo $baseurl_short?>pages/collection_public.php" onClick="return CentralSpaceLoad(this,true);"><?php echo $lang["findpubliccollection"]?></a></p>
+    <p><?php echo LINK_CARET ?><a href="<?php echo $baseurl_short?>pages/collection_public.php" onClick="return CentralSpaceLoad(this,true);"><?php echo htmlspecialchars($lang["findpubliccollection"])?></a></p>
 </div>
 <?php } ?>
 
@@ -654,8 +661,8 @@ echo " " . ($mycollcount==1 ? $lang["owned_by_you-1"] : str_replace("%mynumber",
 	{
 	?>
 	<div class="BasicsBox">
-		<h1><?php echo $lang["view_shared_collections"]?></h1>
-		<p><a href="<?php echo $baseurl_short?>pages/view_shares.php" onClick="return CentralSpaceLoad(this,true);"><?php echo LINK_CARET ?><?php echo $lang["view_shared_collections"]?></a></p>
+		<h1><?php echo htmlspecialchars($lang["view_shared_collections"])?></h1>
+		<p><a href="<?php echo $baseurl_short?>pages/view_shares.php" onClick="return CentralSpaceLoad(this,true);"><?php echo LINK_CARET ?><?php echo htmlspecialchars($lang["view_shared_collections"])?></a></p>
 	</div>
 	<?php
 	}

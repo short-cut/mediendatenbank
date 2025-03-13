@@ -4,7 +4,8 @@ include '../../../include/authenticate.php';
 include '../../../include/ajax_functions.php';
 if(!checkperm('a'))
     {
-    exit(error_alert($lang["error-permissiondenied"], true, 403));
+    error_alert($lang["error-permissiondenied"], true, 403);
+    exit();
     }
 
 $museumplus_modules_config = plugin_decode_complex_configs($museumplus_modules_saved_config);
@@ -23,7 +24,7 @@ $breadcrumbs = array(
     ),
     array(
         'title' => $lang['museumplus_configuration'],
-        'href'  => $baseurl . $plugin_yaml['config_url']
+        'href'  => $baseurl . '/' . $plugin_yaml['config_url']
     ),
     array(
         'title' => $lang['museumplus_module_setup'],
@@ -100,11 +101,12 @@ $form_action = generateURL(
         'id' => $id,
     )
 );
-$rtfs = sql_query('SELECT * FROM resource_type_field ORDER BY title, name', 'schema');
+$rtfs = ps_query('SELECT * FROM resource_type_field ORDER BY title, name', [],'schema');
 
 include '../../../include/header.php';
 ?>
 <div class="BasicsBox">
+<h1><?php echo $lang['museumplus_module_setup']; ?></h1>
 <?php
 renderBreadcrumbs($breadcrumbs);
 if(isset($error))
@@ -191,7 +193,6 @@ if(isset($error))
             <div class="clearerleft"></div>
         </div>
         <div class="QuestionSubmit">
-            <label></label>
             <input type="submit" name="save" value="<?php echo $lang["save"]; ?>">
         </div>
     </form>  <!-- end of MplusModuleConfigForm -->

@@ -8,6 +8,15 @@ if($k == "" || !check_access_key_collection($parent, $k))
     include "../include/authenticate.php";
     $parent = (int) getval("parent", $featured_collections_root_collection, true);
     }
+else
+    {
+    // Disable CSRF when someone is accessing an external share (public context)
+    $CSRF_enabled = false;
+
+    // Force simple view because otherwise it assumes you're logged in. The JS api function will use the native mode to
+    // get the resource count and loading the actions always authenticates and both actions will (obviously) error.
+    $themes_simple_view = true;
+    }
 
 if(!$enable_themes)
     {
@@ -18,7 +27,8 @@ if(!$enable_themes)
 // Access control
 if($parent > 0 && !featured_collection_check_access_control($parent))
     {
-    exit(error_alert($lang["error-permissiondenied"], true, 403));
+    error_alert($lang["error-permissiondenied"], true, 403);
+    exit();
     }
 
 $smart_rtf = (int) getval("smart_rtf", 0, true);
@@ -43,7 +53,7 @@ include "../include/header.php";
 ?>
 <div class="BasicsBox FeaturedSimpleLinks">
 <?php
-if($enable_theme_breadcrumbs && $parent > 0)
+if($parent > 0)
     {
     $links_trail = array(
         array(
@@ -107,7 +117,7 @@ else if($parent == 0 && $smart_rtf > 0 && metadata_field_view_access($smart_rtf)
     {
     // Smart fields. If a category tree, then a parent could be passed once user requests a lower level than root of the tree
     $resource_type_field = get_resource_type_field($smart_rtf);
-    if($resource_type_field !== false)
+    if($resource_type_field !== false && in_array($resource_type_field["type"],$FIXED_LIST_FIELD_TYPES))
         {
         // We go one level at a time so we don't need it to search recursively even if this is a FIELD_TYPE_CATEGORY_TREE
         $smart_fc_nodes = get_smart_themes_nodes($smart_rtf, false, $smart_fc_parent, $resource_type_field);
@@ -133,7 +143,7 @@ unset($rendering_options["smart"]);
 
 if($k == "" && $smart_rtf == 0)
     {
-    if($collection_allow_creation && checkperm("h"))
+    if(checkperm("h")&& can_create_collections())
         {
         render_new_featured_collection_cta(
             generateURL(
@@ -173,17 +183,24 @@ if($k == "" && $smart_rtf == 0)
 <script>
 jQuery(document).ready(function ()
     {
-    jQuery('.FeaturedSimpleTile').hover(
-    function(e)
+    if (jQuery(window).width() > 600)
         {
-        tileid = jQuery(this).attr('id').substring(19);
-        jQuery('#FeaturedSimpleTileActions_' + tileid).stop(true, true).slideDown();
-        },
-    function(e)
-        {
-        tileid=jQuery(this).attr('id').substring(19);
-        jQuery('#FeaturedSimpleTileActions_' + tileid).stop(true, true).slideUp();
+        jQuery('.FeaturedSimpleTile').hover(
+        function(e)
+            {
+            tileid = jQuery(this).attr('id').substring(19);
+            jQuery('#FeaturedSimpleTileActions_' + tileid).stop(true, true).slideDown();
+            },
+        function(e)
+            {
+            tileid=jQuery(this).attr('id').substring(19);
+            jQuery('#FeaturedSimpleTileActions_' + tileid).stop(true, true).slideUp();
         });
+        }
+    else
+        {
+        jQuery('.FeaturedSimpleTileActions').css('display', 'block');
+        }
 
     // Get and update display for total resource count for each of the rendered featured collections (@see render_featured_collection() for more info)
     var fcs_waiting_total = jQuery('.FeaturedSimpleTile.FullWidth .FeaturedSimpleTileContents h2 span[data-tag="resources_count"]');
@@ -202,40 +219,69 @@ jQuery(document).ready(function ()
                 jQuery('.FeaturedSimpleTile.FullWidth .FeaturedSimpleTileContents h2 span[data-tag="resources_count"][data-fc-ref="' + k + '"]')
                     .text(total_count + ' ' + (total_count == 1 ? lang_resource : lang_resources));
                 });
-
-            });
+            },
+            <?php echo generate_csrf_js_object('get_collections_resource_count'); ?>
+        );
         }
-    });
-
-
-// Re-order capability
-jQuery(function() {
-    // Disable for touch screens
-    if(is_touch_device())
+    <?php if (!$themes_simple_view)
         {
-        return false;
-        }
-
-    jQuery('.BasicsBox.FeaturedSimpleLinks').sortable({
-        items: '.SortableItem',
-        update: function(event, ui)
-            {
-            let html_ids_new_order = jQuery('.BasicsBox.FeaturedSimpleLinks').sortable('toArray');
-            let fcs_new_order = html_ids_new_order.map(id => jQuery('#' + id).data('fc-ref'));
-            console.debug('fcs_new_order=%o', fcs_new_order);
-            <?php
-            if($descthemesorder)
-                {
-                ?>
-                fcs_new_order = fcs_new_order.reverse();
-                console.debug('fcs_new_order_reversed=%o', fcs_new_order);
-                <?php
-                }
-                ?>
-            api('reorder_featured_collections', {'refs': fcs_new_order});
-            }
+        ?>
+        // Load collection actions when dropdown is clicked
+        jQuery('.fcollectionactions').on("focus", function(e){
+                var el = jQuery(this);
+                if(el.attr('data-actions-populating') != '0')
+                    {
+                    return false
+                    }
+                el.attr('data-actions-populating','1');
+                var action_selection_id = el.attr('id');
+                var colref = el.attr('data-col-id');
+                LoadActions('themes',action_selection_id,'collection',colref);
+                });
+        <?php
+        }?>
     });
-});
+
+<?php
+if ($allow_fc_reorder)
+    {
+    ?>
+    // Re-order capability
+    jQuery(function() {
+        // Disable for touch screens
+        if(is_touch_device())
+            {
+            return false;
+            }
+
+        jQuery('.BasicsBox.FeaturedSimpleLinks').sortable({
+            items: '.SortableItem',
+            update: function(event, ui)
+                {
+                let html_ids_new_order = jQuery('.BasicsBox.FeaturedSimpleLinks').sortable('toArray');
+                let fcs_new_order = html_ids_new_order.map(id => jQuery('#' + id).data('fc-ref'));
+                console.debug('fcs_new_order=%o', fcs_new_order);
+                <?php
+                if($descthemesorder)
+                    {
+                    ?>
+                    fcs_new_order = fcs_new_order.reverse();
+                    console.debug('fcs_new_order_reversed=%o', fcs_new_order);
+                    <?php
+                    }
+                    ?>
+                api(
+                    'reorder_featured_collections',
+                    {'refs': fcs_new_order},
+                    null,
+                    <?php echo generate_csrf_js_object('reorder_featured_collections'); ?>
+                );
+                }
+        });
+    });
+    <?php
+    }
+    ?>
 </script>
 <?php
 if($themes_show_background_image && !$full_width)
@@ -277,7 +323,10 @@ if($themes_show_background_image && !$full_width)
 
         if(isset($bg_fc_images) && is_array($bg_fc_images) && !empty($bg_fc_images))
             {
-            $background_image_url = $bg_fc_images[0]; # get_fc_imgs_ctx is limiting to 1 so we know we have this
+            if(strpos($bg_fc_images[0], '/gfx/') === false)
+                {
+                $background_image_url = $bg_fc_images[0]; # get_fc_imgs_ctx is limiting to 1 so we know we have this
+                }
 
             // Reset slideshow files as we want to use the featured collection image
             $slideshow_files = array();

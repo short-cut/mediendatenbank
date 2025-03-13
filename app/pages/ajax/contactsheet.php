@@ -13,8 +13,8 @@ use Spipu\Html2Pdf\Exception\Html2PdfException;
 use Spipu\Html2Pdf\Exception\ExceptionFormatter;
 
 
-$collection        = getvalescaped('c', 0,true);
-$size              = getvalescaped('size', '');
+$collection        = getval('c', 0,true);
+$size              = getval('size', '');
 if(strpos($size,"x") !== false)
     {
     $size = explode("x",$size);
@@ -23,18 +23,18 @@ else
     {
     $size = strtoupper($size);
     }
-$columns           = getvalescaped('columns', 1);
-$order_by          = getvalescaped('orderby', 'relevance');
-$sort              = getvalescaped('sort', 'asc');
-$orientation       = getvalescaped('orientation', '');
-$sheetstyle        = getvalescaped('sheetstyle', 'thumbnails');
-$preview           = ('true' == getvalescaped('preview', ''));
-$previewpage       = getvalescaped('previewpage', 1, true);
-$includeheader     = getvalescaped('includeheader', '');
-$addlink           = getvalescaped('addlink', '');
-$addlogo           = getvalescaped('addlogo', '');
-$addfieldname	   = getvalescaped('addfieldname','');
-$force_watermark   = getvalescaped('force_watermark','');
+$columns           = getval('columns', 1);
+$order_by          = getval('order_by', 'relevance');
+$sort              = getval('sort', 'asc');
+$orientation       = getval('orientation', '');
+$sheetstyle        = getval('sheetstyle', 'thumbnails');
+$preview           = ('true' == getval('preview', ''));
+$previewpage       = getval('previewpage', 1, true);
+$includeheader     = getval('includeheader', '');
+$addlink           = getval('addlink', '');
+$addlogo           = getval('addlogo', '');
+$addfieldname	   = getval('addfieldname','');
+$force_watermark   = getval('force_watermark','');
 $field_value_limit = getval('field_value_limit', 0, true);
 
 if($force_watermark==='true'){
@@ -55,7 +55,7 @@ $contactsheet_header           = ('' != $includeheader ? filter_var($includehead
 $add_contactsheet_logo         = ('' != $addlogo ?  filter_var($addlogo, FILTER_VALIDATE_BOOLEAN) : $include_contactsheet_logo);
 $contact_sheet_add_link        = ('' != $addlink ? filter_var($addlink, FILTER_VALIDATE_BOOLEAN) : $contact_sheet_add_link);
 $contact_sheet_field_name      = ('' != $addfieldname ? filter_var($addfieldname, FILTER_VALIDATE_BOOLEAN) : false);
-$selected_contact_sheet_fields = getvalescaped('selected_contact_sheet_fields', '');
+$selected_contact_sheet_fields = getval('selected_contact_sheet_fields', '');
 
 
 $pdf_properties = array();
@@ -79,7 +79,7 @@ if($contactsheet_use_field_templates && !isset($contactsheet_field_template))
 	
 if($contactsheet_use_field_templates)
 	{
-	$field_template = getvalescaped('field_template', 0, true);
+	$field_template = getval('field_template', 0, true);
 	$getfields = $contactsheet_field_template[$field_template]['fields'];
 	}
 else
@@ -174,7 +174,7 @@ else
     }
 
 // Choose the image size requirements
-$img_size = ('single' == $sheetstyle ? getvalescaped('ressize', 'lpr') : 'pre');
+$img_size = ('single' == $sheetstyle ? getval('ressize', 'lpr') : 'pre');
 if($preview)
     {
     $img_size = 'col';
@@ -243,33 +243,18 @@ foreach($results as $result_data)
         }
 
     // Determine the image path. If no file is found then do not continue.
-    $img_path = get_resource_path($result_data['ref'], true, $img_size, false, $result_data['preview_extension'], -1, 1, $use_watermark);
-
-    if(!file_exists($img_path))
+    $img_path = dirname(__DIR__, 2) . "/gfx/" . get_nopreview_icon($result_data['resource_type'], $result_data['file_extension'], false);
+    foreach([$img_size, 'lpr', 'scr', 'pre'] as $img_preview_size)
         {
-        $img_path = get_resource_path($result_data['ref'], true, 'lpr', false, $result_data['preview_extension'], -1, 1, $use_watermark);
-        }
-
-    if(!file_exists($img_path))
-        {
-        $img_path = get_resource_path($result_data['ref'], true, 'scr', false, $result_data['preview_extension'], -1, 1, $use_watermark);
-        }
-
-    // If we can't find the size, drop back to preview size
-    if(!file_exists($img_path))
-        {
-        $img_path = get_resource_path($result_data['ref'], true, 'pre', false, $result_data['preview_extension'], -1, 1, $use_watermark);
-        }
-
-    if(!file_exists($img_path))
-        {
-        $img_path = "../../gfx/" . get_nopreview_icon($result_data['resource_type'], $result_data['file_extension'], false, true);
-        }
-
-    if(!file_exists($img_path))
-        {
-        debug("CONTACT_SHEET: could not find image path at '{$img_path}'. Skipping resource!");
-        continue;
+        if(
+            !resource_has_access_denied_by_RT_size($result_data['resource_type'], $img_preview_size)
+            && ($img_preview_size_path = get_resource_path($result_data['ref'], true, $img_preview_size, false, $result_data['preview_extension'], -1, 1, $use_watermark))
+            && file_exists($img_preview_size_path)
+        )
+            {
+            $img_path = $img_preview_size_path;
+            break;
+            }
         }
 
     // Note: _drawImage from html2pdf.class.php supports paths. If using URLs, allow_url_fopen should be turned ON but on
@@ -311,17 +296,13 @@ catch(Html2PdfException $e)
     {
     $formatter = new ExceptionFormatter($e);
 
-    echo $formatter->getHtmlMessage();
+    $contactsheetmessage = $e->getMessage();
 
-    exit();
-    }
-catch(Html2Pdf_exception $e)
-    {
-    debug('CONTACT-SHEET:' . $e->getMessage());
+    debug('CONTACT-SHEET:' . $contactsheetmessage);
     debug('CONTACT-SHEET:' . $e->getTraceAsString());
 	
 	// Starting point
-    if(0 == $field_value_limit)
+    if($field_value_limit === 0)
         {
         $field_value_limit = 1100;
         }
@@ -331,12 +312,14 @@ catch(Html2Pdf_exception $e)
         'field_value_limit' => $field_value_limit - 100,
     );
 
-	if(strpos($e->getMessage(),"does not fit on only one page") !== false)
+	if(strpos($contactsheetmessage,"does not fit on only one page") !== false)
 		{
 		$parameters["error"] = "contactsheet_data_toolong";
 		}
 	
     redirect(generateURL("{$baseurl}/pages/contactsheet_settings.php", $parameters));
+
+    echo $formatter->getHtmlMessage();
 
     exit();
     }
@@ -387,7 +370,7 @@ if ($preview && isset($imagemagick_path))
 // Create a resource based on this PDF file or download it?
 if($contact_sheet_resource && enforcePostRequest(getval("ajax", false)))
     {
-    $new_resource = create_resource($contact_sheet_resource_type, 0);
+    $new_resource = create_resource($contact_sheet_resource_type, 0,-1,$lang["createdfromcontactsheet"]);
 
     update_field($new_resource, 8, i18n_get_collection_name($collectiondata) . ' ' . nicedate(date('Y-m-d H:i:s'), $contact_sheet_date_include_time, $contact_sheet_date_wordy));
     update_field($new_resource, $filename_field, "{$new_resource}.pdf");
@@ -395,7 +378,7 @@ if($contact_sheet_resource && enforcePostRequest(getval("ajax", false)))
     // Relate all resources in collection to the new contact sheet resource
     relate_to_collection($new_resource, $collection);	
 
-    sql_query("UPDATE resource SET file_extension = 'pdf' WHERE ref = '{$new_resource}'");
+    ps_query("UPDATE resource SET file_extension = 'pdf' WHERE ref = ?",array("i",$new_resource));
 
     // Create the file in the new resource folder:
     $path = get_resource_path($new_resource, true, '', true, 'pdf');

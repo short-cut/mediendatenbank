@@ -1,12 +1,5 @@
 <?php
 
-function HookRse_versionLog_entryGet_resource_log_extra_fields()
-    {
-    # Extend get_resource_log so that the state of the previous value is fetched also.
-    return ",((r.previous_value is not null and (r.type='e' or r.type='m' or r.type='N')) or (r.previous_file_alt_ref is not null and r.type='u')) revert_enabled";
-    }
-
-
 function HookRse_versionLog_entryLog_entry_processing($column, $value, $logentry)
     {
     global $lang, $baseurl;    
@@ -78,14 +71,29 @@ function HookRse_versionLog_entryLog_entry_processing($column, $value, $logentry
         echo "</td></tr>";
         return true;
         }
-    elseif($column == "revert_enabled")
+    elseif($column == "revert_enabled" && $value > 0)
         {
-        // Show revert link
-        ?>
-        <td><?php echo $lang["actions"]; ?></td>
-        <td><a href="<?php echo $baseurl; ?>/plugins/rse_version/pages/revert.php?ref=<?php echo $logentry["ref"] ?>" onClick="CentralSpaceLoad(this,true);return false;"><?php echo LINK_CARET . $lang["revert"] ?></a></td>
-        <?php
-        return true;
+        $show_revert_link = false;
+        if ($logentry["type"] == LOG_CODE_UPLOADED) // Show revert link for Replace file.
+            {
+            $show_revert_link = true;
+            }
+        else
+            {
+            $field_info = get_resource_type_field($logentry["field"]);
+            if((bool)$field_info["required"] === false || trim($logentry["previous_value"]) != "")
+                {
+                $show_revert_link = true;
+                }
+            }
+        if($show_revert_link)
+            {
+            ?>
+            <td><?php echo $lang["actions"]; ?></td>
+            <td><a href="<?php echo $baseurl; ?>/plugins/rse_version/pages/revert.php?ref=<?php echo $logentry["ref"] ?>" onClick="CentralSpaceLoad(this,true);return false;"><?php echo LINK_CARET . $lang["revert"] ?></a></td>
+            <?php
+            return true;
+            }
         }
     return false;
     }

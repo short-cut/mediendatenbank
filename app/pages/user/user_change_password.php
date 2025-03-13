@@ -3,12 +3,12 @@ include "../../include/db.php";
 include_once dirname(__DIR__, 2) . '/include/login_functions.php';
 
 $password_reset_mode=false;
-$resetvalues=getvalescaped("rp","");
+$resetvalues=getval("rp","");
 if($resetvalues!="")
     {
     if(substr($resetvalues,0,2) == "3D")
         {
-        // Email Smay have encoded the = character
+        // Email may have encoded the = character
         $resetvalues = substr($resetvalues,2);
         }
         
@@ -16,7 +16,7 @@ if($resetvalues!="")
     $resetuserref=substr($resetvalues,0,$rplength-15);
     $resetkey=substr($resetvalues,$rplength-15);
     $valid_reset_link=false;
-	$resetvaliduser=sql_query("select ref, username, email, fullname, usergroup, password, password_reset_hash, last_active from user where ref='" . escape_check($resetuserref)  . "'",""); 
+	$resetvaliduser = ps_query("SELECT ref, username, email, fullname, usergroup, password, password_reset_hash, last_active FROM user WHERE ref = ?", ["i", $resetuserref]);
 	if(count($resetvaliduser)==1)
 		{
 		$resetuser=$resetvaliduser[0];
@@ -71,8 +71,7 @@ if(getval("save", "") != "" && enforcePostRequest(false))
 	{
     if($case_insensitive_username)
         {
-        $username=sql_value("select username value from user where lower(username)=lower('" . escape_check($username) ."')",$username);       
-        $username=escape_check($username);
+        $username=ps_value("select username value from user where lower(username)=lower(?)",array("s",$username),$username);       
         }
 	if (hook('saveadditionaluserpreferences'))
 		{
@@ -86,7 +85,7 @@ if(getval("save", "") != "" && enforcePostRequest(false))
         if (getval("password","")!=getval("password2","")) {$error2=true;}
     	else
 	    	{
-		    $message=change_password(getvalescaped("password",""));
+		    $message=change_password(getval("password",""));
     		if ($message===true)
 	    		{
 				if($password_reset_mode && $last_active=="" && $email!="")
@@ -148,7 +147,7 @@ else
 	<?php if (getval("expired","")!="") { ?><div class="FormError">!! <?php echo $lang["password_expired"]?> !!</div><?php } ?>
 
 	<form method="post" action="<?php echo $baseurl_short?>pages/user/user_change_password.php">
-	<input type="hidden" name="expired" value="<?php echo htmlspecialchars(getvalescaped("expired",""))?>">
+	<input type="hidden" name="expired" value="<?php echo htmlspecialchars(getval("expired",""))?>">
 	<?php
     generateFormToken("user_change_password");
 
@@ -189,7 +188,6 @@ else
 
 
 	<div class="QuestionSubmit">
-	<label for="buttons"> </label>
 	<input name="save" type="submit" value="&nbsp;&nbsp;<?php echo $lang["save"]?>&nbsp;&nbsp;" /><div class="clearerleft"> </div>
 	</div>
 	</form>

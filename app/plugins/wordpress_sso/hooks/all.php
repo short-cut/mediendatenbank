@@ -8,7 +8,7 @@ function HookWordpress_ssoAllProvideusercredentials()
     if (isset($_COOKIE["user"]) && $_COOKIE["user"]!="|") {return true;}
 
     global $username,$hashsql,$session_hash,$baseurl,$lang,$wordpress_sso_url, $wordpress_sso_secret, $wordpress_sso_auto_create;
-    global $wordpress_sso_auto_approve, $wordpress_sso_auto_create_group,$global_cookies,$user_select_sql,$session_autologout;
+    global $wordpress_sso_auto_approve, $wordpress_sso_auto_create_group,$user_select_sql,$session_autologout;
 
     $session_hash="";
     @$_COOKIE["user"]="|";
@@ -29,7 +29,7 @@ function HookWordpress_ssoAllProvideusercredentials()
             }
         else // We have got user details in the query string, check they are valid
             {
-            $requestid=getvalescaped("requestid","");
+            $requestid=getval("requestid","");
             $s=explode("|",$wordpress_user);
             debug("wordpress_sso - received response from wordpress server: " . $wordpress_user . " request ID: " . $requestid);
             if (count($s)==3 || count($s)==5)
@@ -43,7 +43,7 @@ function HookWordpress_ssoAllProvideusercredentials()
                 $today = date("Ymd");
                 $currentrequest = ps_value("SELECT wp_authrequest AS value FROM user WHERE username = ?", array("s", $username), "");
 
-                if ($requesthash!=md5($baseurl . $wordpress_sso_secret . $username . $today . $requestid)) // Invalid hash. Failed authentication and came from WordPress so no point redirecting.
+                if ($requesthash !== md5($baseurl . $wordpress_sso_secret . $username . $today . $requestid)) // Invalid hash. Failed authentication and came from WordPress so no point redirecting.
                     {
                     wordpress_sso_fail();
                     }
@@ -68,7 +68,7 @@ function HookWordpress_ssoAllProvideusercredentials()
                         wordpress_sso_fail();
                         }
                     }
-                debug("wordpress_sso - Found user matching: " . escape_check($username));
+                debug("wordpress_sso - Found user matching: " . $username);
                 // Check that current request 		
                 if ($currentrequest!=$requestid || $requestid=="") // This request is either not set or does not match the last one created, was saved before redirect so go back to WordPress (step 2)
                 {
@@ -104,7 +104,7 @@ function HookWordpress_ssoAllProvideusercredentials()
             debug("wordpress_sso - wordpress_sso cookie has username");
             $hash=$s[1];	
             $today = date("Ymd");
-            if ($hash!=md5($baseurl . $wordpress_sso_secret . $username . $today))
+            if ($hash !== md5($baseurl . $wordpress_sso_secret . $username . $today))
                 {		
                 // Invalid hash. Redirect to Wordpress to reauthenticate.
                 debug("wordpress_sso - wordpress_sso cookie has invalid hash");

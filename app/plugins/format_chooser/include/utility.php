@@ -11,7 +11,7 @@ function getDefaultOutputFormat($inputFormat = null)
 	if (!empty($format_chooser_default_output_format))
 		return $format_chooser_default_output_format;
 
-	$inputFormat = strtoupper($inputFormat);
+	$inputFormat = strtoupper((string) $inputFormat);
 
 	# Use resource format by default if none given
 	if (empty($inputFormat) || !in_array($inputFormat, $format_chooser_output_formats))
@@ -27,8 +27,7 @@ function getDefaultOutputFormat($inputFormat = null)
 function supportsInputFormat($inputFormat)
 	{
 	global $format_chooser_input_formats;
-	$inputFormat = strtoupper($inputFormat);
-
+    $inputFormat = strtoupper((string) $inputFormat);
 	return in_array($inputFormat, $format_chooser_input_formats);
 	}
 
@@ -79,7 +78,7 @@ function convertImage($resource, $page, $alternative, $target, $width, $height, 
 	    $target_temp_id = $resource['ref'] . "_" . md5($username . $randstring . $scramble_key);
 		$path = write_metadata($originalPath, $resource['ref'], "format_chooser/" . $target_temp_id);
         //$temp_path for removal later to assure not removing original path
-        $temp_path = get_temp_dir(false,"format_chooser/" . $resource['ref'] . "_" . md5($username . $randstring . $scramble_key));;
+        $temp_path = get_temp_dir(false,"format_chooser/" . $resource['ref'] . "_" . md5($username . $randstring . $scramble_key));
         }
     else
 	    {
@@ -101,7 +100,7 @@ function convertImage($resource, $page, $alternative, $target, $width, $height, 
 	
     // Handle alpha/ matte channels
     $target_extension = pathinfo($target, PATHINFO_EXTENSION);
-    if(!in_array($target_extension, $preview_no_flatten_extensions))
+    if(!in_array(strtolower($target_extension), $preview_no_flatten_extensions))
         {
         $transform_actions['background'] = 'white';
         }
@@ -138,12 +137,12 @@ function convertImage($resource, $page, $alternative, $target, $width, $height, 
         }
 	}
 
-function sendFile($filename, string $download_filename)
+function sendFile($filename, string $download_filename, $usage = -1, $usagecomment = "")
 	{
 	$suffix = pathinfo($filename, PATHINFO_EXTENSION);
 	$size = filesize_unlimited($filename);
 
-    global $baseurl, $username, $scramble_key;
+    global $baseurl, $username, $scramble_key, $exiftool_write;
 
     list($resource_ref, $download_key) = explode('_', pathinfo($filename, PATHINFO_FILENAME));
     $user_downloads_path = sprintf('%s/%s_%s.%s',
@@ -157,10 +156,13 @@ function sendFile($filename, string $download_filename)
     $user_download_url = generateURL(
         $baseurl . '/pages/download.php',
         [
-            'userfile' => pathinfo($filename, PATHINFO_BASENAME),
-            'filename' => strip_extension($download_filename, false),
-			'k'        => getval('k', ''),
-			'ref'      => getval('ref', '')
+            'userfile'      => pathinfo($filename, PATHINFO_BASENAME),
+            'filename'      => strip_extension($download_filename, false),
+            'usage'         => $usage,
+            'usagecomment'  => $usagecomment,
+			'k'             => getval('k', ''),
+			'ref'           => getval('ref', ''),
+			'exif_write'    => ($exiftool_write ? 'true' : '')
         ]
     );
     redirect($user_download_url);

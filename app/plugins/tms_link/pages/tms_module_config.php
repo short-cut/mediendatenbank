@@ -7,7 +7,19 @@ if(!checkperm('a'))
     exit($lang["error-permissiondenied"]);
     }
 
-
+// Get available tables
+$conn = odbc_connect($tms_link_dsn_name, $tms_link_user,$tms_link_password);
+$arrtables=[];
+$alltables = odbc_tables($conn);
+while (odbc_fetch_row($alltables))
+    {
+    $type = odbc_result($alltables, 4);
+    if ($type == "TABLE")
+        {
+        $tablename = odbc_result($alltables,3);
+        $arrtables[$tablename] = $tablename;
+        }
+    }
 
 $id = getval('id', '');
 $action = getval('action', '');
@@ -49,12 +61,14 @@ if($action == 'delete' && $id !== '' && enforcePostRequest(false))
     {
     if(!array_key_exists($id, $tms_link_modules_mappings))
         {
+        odbc_close($conn);
         http_response_code(400);
         exit();
         }
 
     unset($tms_link_modules_mappings[$id]);
     tms_link_save_module_mappings_config($tms_link_modules_mappings);
+    odbc_close($conn);
     exit();
     }
 
@@ -73,7 +87,7 @@ if($id !== '' && array_key_exists($id, $tms_link_modules_mappings))
 // Generate back to setup page of tms plugin link
 $plugin_yaml_path = get_plugin_path('tms_link') . "/tms_link.yaml";
 $plugin_yaml = get_plugin_yaml($plugin_yaml_path, false);
-$back_to_url = $baseurl . $plugin_yaml['config_url'];
+$back_to_url = $baseurl . '/' . $plugin_yaml['config_url'];
 $back_to_link_name = LINK_CARET_BACK . str_replace('%area', $lang['tms_link_configuration'], $lang["back_to"]);
 
 include '../../../include/header.php';
@@ -96,12 +110,10 @@ include '../../../include/header.php';
         ));
     ?>
     <form id="TmsModuleConfigForm" method="post" action="<?php echo $form_action; ?>">
-        <?php generateFormToken("tms_module_config"); ?>
-        <div class="Question">
-            <label><?php echo $lang["tms_link_tms_module_name"]; ?></label>
-            <input name="tms_link_module_name" type="text" class="stdwidth" value="<?php echo htmlspecialchars($tms_link_module_name); ?>">
-            <div class="clearerleft"></div>
-        </div>
+        <?php
+        generateFormToken("tms_module_config");
+        render_dropdown_question($lang["tms_link_tms_module_name"],"tms_link_module_name",$arrtables,$tms_link_module_name); ?>
+
         <div class="Question">
             <label><?php echo $lang["tms_link_tms_uid_field"]; ?></label>
             <input name="tms_link_tms_uid_field" type="text" class="stdwidth" value="<?php echo htmlspecialchars($tms_link_tms_uid_field); ?>">
@@ -153,7 +165,7 @@ include '../../../include/header.php';
                             <select class="medwidth" name="tms_rs_mappings[<?php echo $tms_rs_mapping_index; ?>][rs_field]">
                                 <option value=""><?php echo $lang['select']; ?></option>
                         <?php
-                        $fields = sql_query('SELECT * FROM resource_type_field ORDER BY title, name', "schema");
+                        $fields = ps_query('SELECT * FROM resource_type_field ORDER BY title, name', array(), "schema");
                         foreach($fields as $field)
                             {
                             $selected = ($tms_rs_mapping['rs_field'] == $field['ref'] ? ' selected' : '');
@@ -197,7 +209,7 @@ include '../../../include/header.php';
                 new_row_html += '<td><select class="medwidth" name="tms_rs_mappings[' + row_index + '][rs_field]">';
                 new_row_html += '<option value=""><?php echo $lang['select']; ?></option>';
                 <?php
-                $fields = sql_query('SELECT * FROM resource_type_field ORDER BY title, name', "schema");
+                $fields = ps_query('SELECT * FROM resource_type_field ORDER BY title, name', array(), "schema");
                 foreach($fields as $field)
                     {
                     $option_text = lang_or_i18n_get_translated($field['title'], 'fieldtitle-');
@@ -231,9 +243,8 @@ include '../../../include/header.php';
             // This function reindexes the attribute 'name' when 'Add mapping' or 'Delete' is pressed
             function reindexTable()
                 {
-                                
                 // Go through each row (not first or last though)
-                jQuery('#tmsModulesMappingTable tr').not(':first').not(':last').each(function(i) 
+                jQuery('#tmsModulesMappingTable tr').not(':first').not(':last').each(function(i)
                     {
 
                     // Build strings again using correct number
@@ -253,10 +264,11 @@ include '../../../include/header.php';
             </script>
         </div>
         <div class="QuestionSubmit">
-            <label for="buttons"></label>
             <input name="save" type="submit" value="<?php echo $lang["save"]; ?>">
         </div>
     </form>
 </div>
 <?php
+
+odbc_close($conn);
 include '../../../include/footer.php';

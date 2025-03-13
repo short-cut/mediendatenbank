@@ -1,12 +1,7 @@
 <?php
-if('cli' != PHP_SAPI)
-    {
-    exit('This utility is command line only.');
-    }
-
+command_line_only();
 
 define ('ECHOFEEDBACK',false); # Whether or not to echo progress; for testing of this test script
-
 define ('ADVANCED_TRUE', 1);
 define ('ADVANCED_FALSE', 0);
 
@@ -15,6 +10,31 @@ global $date_field;
 $saved_date_field = $date_field;
 
 $fldref=array();
+
+function make_field($fieldname, $resourcetype, $fieldtype, $advanced) {
+    $ref = create_resource_type_field($fieldname, $resourcetype, $fieldtype);
+    $sql = "update resource_type_field set advanced_search=?, keywords_index=? where ref=?"; 
+    ps_query($sql,array("i",$advanced,"i",$advanced,"i",$ref));
+    return $ref;
+}
+
+function verify_field_position($fieldname, $searchfieldarray, $expectedposition) {
+    foreach($searchfieldarray as $key => $searchfieldentry ) {
+        if($searchfieldentry['title'] == $fieldname) {
+            if($key == $expectedposition) {
+                feedback("FIELD ".$fieldname." PASSED".PHP_EOL);
+                return true;
+            }
+        }
+    }
+    # Error; not located in the expected position
+    feedback("FIELD ".$fieldname." FAILED".PHP_EOL);
+    return false;
+}
+
+function feedback($buffer) {
+    if(ECHOFEEDBACK) echo $buffer;
+}
 
 # Shipped resource types are as follows
 #  1 Photo
@@ -26,7 +46,7 @@ $fldref=array();
 # TEST 1 SETUP
 # Set all metadata fields so that they are not on advanced search 
 $sql = "update resource_type_field set advanced_search=0"; 
-sql_query($sql);
+ps_query($sql);
 
 # Create several resource type text fields with resource type 1 (Photo) which are marked with advanced_search as per list below 
 
@@ -66,8 +86,8 @@ $fldref[] = make_field("VideoAreaSearch", 3, FIELD_TYPE_TEXT_BOX_SINGLE_LINE, AD
 $ref_first=$fldref[0];
 $ref_last=$fldref[count($fldref)-1];
 
-$sql = "select ref, title from resource_type_field where ref between ".$ref_first." and ".$ref_last; 
-$fldset= sql_query($sql);
+$sql = "select ref, title from resource_type_field where ref between ? and ?"; 
+$fldset= ps_query($sql,array("i",$ref_first,"i",$ref_last));
 
 feedback(PHP_EOL);
 foreach($fldset as $fldentry ) {
@@ -132,27 +152,3 @@ feedback("RESTORED DATE_FIELD= ".$date_field.PHP_EOL);
 
 return true;
 
-function make_field($fieldname, $resourcetype, $fieldtype, $advanced) {
-    $ref = create_resource_type_field($fieldname, $resourcetype, $fieldtype);
-    $sql = "update resource_type_field set advanced_search=".$advanced.", keywords_index=".$advanced." where ref=".$ref; 
-    sql_query($sql);
-    return $ref;
-}
-
-function verify_field_position($fieldname, $searchfieldarray, $expectedposition) {
-    foreach($searchfieldarray as $key => $searchfieldentry ) {
-        if($searchfieldentry['title'] == $fieldname) {
-            if($key == $expectedposition) {
-                feedback("FIELD ".$fieldname." PASSED".PHP_EOL);
-                return true;
-            }
-        }
-    }
-    # Error; not located in the expected position
-    feedback("FIELD ".$fieldname." FAILED".PHP_EOL);
-    return false;
-}
-
-function feedback($buffer) {
-    if(ECHOFEEDBACK) echo $buffer;
-}

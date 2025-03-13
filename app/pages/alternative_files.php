@@ -3,22 +3,21 @@ include "../include/db.php";
 
 include "../include/authenticate.php";
 
-$ref=getvalescaped("ref","",true);
-$alt=getvalescaped("alternative","",true);
+$ref=getval("ref","",true);
+$alt=getval("alternative","",true);
 
-$search=getvalescaped("search","");
-$offset=getvalescaped("offset",0,true);
-$order_by=getvalescaped("order_by","");
-$archive=getvalescaped("archive","",true);
-$restypes=getvalescaped("restypes","");
+$search=getval("search","");
+$offset=getval("offset",0,true);
+$order_by=getval("order_by","");
+$archive=getval("archive","",true);
+$restypes=getval("restypes","");
 if (strpos($search,"!")!==false) {$restypes="";}
-$starsearch=getvalescaped("starsearch","");
 $modal = (getval("modal", "") == "true");
 
 $default_sort_direction="DESC";
 if (substr($order_by,0,5)=="field"){$default_sort_direction="ASC";}
 $sort=getval("sort",$default_sort_direction);
-$curpos=getvalescaped("curpos","");
+$curpos=getval("curpos","");
 $go=getval("go","");
 
 $urlparams= array(
@@ -28,7 +27,6 @@ $urlparams= array(
     'order_by' => $order_by,
     'offset' => $offset,
     'restypes' => $restypes,
-    'starsearch' => $starsearch,
     'archive' => $archive,
     'default_sort_direction' => $default_sort_direction,
     'sort' => $sort,
@@ -39,7 +37,7 @@ $urlparams= array(
 # Fetch resource data.
 $resource=get_resource_data($ref);
 
-$editaccess = get_edit_access($ref,$resource["archive"], false,$resource);
+$editaccess = get_edit_access($ref,$resource["archive"],$resource);
 
 # Not allowed to edit this resource?
 if (!($editaccess || checkperm('A')) && $ref>0) {exit ("Permission denied.");}
@@ -56,7 +54,7 @@ hook("pageevaluation");
 # Handle deleting a file
 if (getval("filedelete","")!="" && enforcePostRequest(getval("ajax", false)))
 	{
-	$filedelete=explode(',',getvalescaped('filedelete',''));
+	$filedelete=explode(',',getval('filedelete',''));
 	foreach ($filedelete as $filedel){
 		if (is_numeric($filedel) && $filedel!='on'){// safety checks
 			delete_alternative_file($ref,$filedel);
@@ -98,8 +96,9 @@ function clickDelete(){
                     error++;
                     
                     }
-                }
-            );
+                },
+            <?php echo generate_csrf_js_object('delete_alternative_file'); ?>
+        );
     });
 
     if (errors > 0){styledalert('<?php echo $lang['error'] ?>','<?php echo $lang['altfilesdeletefail']?>');return false;}
@@ -143,8 +142,8 @@ elseif($previous_page_modal)
             if($modal)
                 {
                 ?>
-                <a class="maxLink fa fa-expand" href="<?php echo generateURL($baseurl_short . "pages/alternative_files.php", $urlparams, array("modal" => "")); ?>" onclick="return CentralSpaceLoad(this);"></a>
-                &nbsp;<a href="#" class="closeLink fa fa-times" onclick="ModalClose();"></a>
+                <a class="maxLink fa fa-expand" href="<?php echo generateURL($baseurl_short . "pages/alternative_files.php", $urlparams, array("modal" => "")); ?>" onclick="return CentralSpaceLoad(this);" title="<?php echo escape($lang["maximise"]); ?>"></a>
+                &nbsp;<a href="#" class="closeLink fa fa-times" onclick="ModalClose();" title="<?php echo escape($lang["close"]); ?>"></a>
                 <?php
                 }
                 ?>
@@ -162,7 +161,7 @@ if($alternative_file_resource_preview)
         } 
     }
 
-if($alternative_file_resource_title && isset($resource['field'.$view_title_field]))
+if(isset($resource['field'.$view_title_field]))
     {
     echo "<h2>" . htmlspecialchars(i18n_get_translated($resource['field'.$view_title_field])) . "</h2><br/>";
     }
@@ -229,8 +228,9 @@ for ($n=0;$n<count($files);$n++)
                         {
                         styledalert('<?php echo $lang['error'] ?>','<?php echo $lang['altfiledeletefail']?>');
                         }
-                    }
-                );
+                    },
+                <?php echo escape(generate_csrf_js_object('delete_alternative_file')); ?>
+            );
             }
         return false;
     "><?php echo LINK_CARET ?><?php echo $lang["action-delete"]?></a>

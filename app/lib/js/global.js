@@ -34,25 +34,14 @@ function is_touch_device()
 
 
 
-function SetCookie (cookieName,cookieValue,nDays,global)
+function SetCookie (cookieName,cookieValue,nDays)
 	{
 	var today = new Date();
 	var expire = new Date();
-	if (global === undefined) {
-          global = false;
-    } 
 
 	if (nDays==null || nDays==0) nDays=1;
 	expire.setTime(today.getTime() + 3600000*24*nDays);
-	if (global_cookies || global)
-		{
-		/* Use the root path */
-		path = ";path=/";
-		}
-	else
-        {
-        path = ";path=" + baseurl_short;
-        }
+	path = ";path=" + baseurl_short;
 
     // Expire first the old cookie which might not be on the desired path (path used to be set to empty string which made 
     // certain cookies be set at /pages) causing issues further down the process (e.g collection bar "thumbs" cookie which
@@ -126,7 +115,7 @@ function ReloadSearchBar()
 			{
 			if (status=="error")
 				{				
-				SearchBar.html(errorpageload  + xhr.status + " " + xhr.statusText + "<br>" + response);		
+				SearchBar.html(errorpageload  + xhr.status + " " + xhr.statusText + "<br/>" + response);		
 				}
 			else
 				{
@@ -152,7 +141,7 @@ function pageScrolltop(element)
 	}
 
 /* AJAX loading of central space contents given a link */
-function CentralSpaceLoad (anchor,scrolltop,modal)
+function CentralSpaceLoad (anchor,scrolltop,modal,keep_fragment = true)
 	{
 	ajaxinprogress=true;
 	var CentralSpace=jQuery('#CentralSpace');
@@ -182,6 +171,12 @@ function CentralSpaceLoad (anchor,scrolltop,modal)
 		var anchor = document.createElement('a');
 		anchor.href=plainurl;
 	}
+
+    // Remove fragments when necessary 
+    if(anchor.href.includes('#') && keep_fragment == false)
+        {
+        anchor.href = anchor.href.substr(0, anchor.href.lastIndexOf('#'));
+        }
 
 	/* Open as standard link in new tab (no AJAX) if URL is external */
     if (anchor.hostname != "" && window.location.hostname != anchor.hostname)
@@ -292,38 +287,38 @@ function CentralSpaceLoad (anchor,scrolltop,modal)
             CentralSpaceHideLoading();
             styledalert(errortext,xhr.responseText);
             }
+        else if (xhr.status == 205)
+            {
+            console.debug("Full page reload required " + response);
+            CentralSpaceHideLoading();
+            window.location.href = anchor.href;
+            }
         else if (status=="error")
 			{
 			CentralSpaceHideLoading();
-			CentralSpace.html(errorpageload  + xhr.status + " " + xhr.statusText + "<br>" + response);
+			CentralSpace.html(errorpageload  + xhr.status + " " + xhr.statusText + "<br/>" + response);
 			jQuery(anchor).fadeTo(0,1);
 			}
 		else
 			{
-
 			// Load completed
 			CentralSpaceHideLoading();
-			if (!modal)
+			if (modal)
+				{
+				// Show the modal
+				ModalCentre();
+				jQuery('#modal_overlay').fadeIn('fast');
+				if (modalalign=='right')
 					{
-					// jQuery(anchor).fadeTo(0,1);
+					// Right aligned "drop down" style modal used for My Account.
+					jQuery('#modal').slideDown('fast');
 					}
-			else
-				{
-			    // Show the modal
-			     ModalCentre();
-			    jQuery('#modal_overlay').fadeIn('fast');
-			    if (modalalign=='right')
-				{
-				// Right aligned "drop down" style modal used for My Account.
-				
-				jQuery('#modal').slideDown('fast');
+				else
+					{
+					jQuery('#modal').show();
+					}
+				jQuery('#modal').focus();
 				}
-			    else
-				{
-				jQuery('#modal').show();
-				}
-			   
-			    }
 
 			// Activate or deactivate the large slideshow, if this function is enabled.			
 			if (typeof ActivateSlideshow == 'function' && !modal)
@@ -370,7 +365,7 @@ function CentralSpaceLoad (anchor,scrolltop,modal)
 					{
 					pageScrolltop(scrolltopElementModal);
 					}
-				else if (jQuery(window).width() <= 1280)
+				else if (jQuery(window).width() <= 1100)
 					{
 					pageScrolltop(scrolltopElementContainer);
 					}
@@ -500,6 +495,16 @@ function CentralSpacePost (form, scrolltop, modal, update_history, container_id)
 	pagename=pagename.substr(0, pagename.lastIndexOf('.'));
 	jQuery.post(url,formdata,function(data)
 		{
+		// Check for a redirect (use instead of HTTP redirect to avoid URL not updating)
+		if(isJson(data))
+			{
+			jsonresponse = JSON.parse(data);
+			if(typeof jsonresponse.redirecturl !== "undefined")
+				{
+				CentralSpaceLoad(jsonresponse.redirecturl);
+				}
+			return;
+			}
 		CentralSpaceHideLoading();
 		CentralSpace.html(data);
         
@@ -570,7 +575,7 @@ function CentralSpacePost (form, scrolltop, modal, update_history, container_id)
                 }
             else
                 {
-                CentralSpace.html(errorpageload + result.status + ' ' + result.statusText + '<br>URL:  ' + url + '<br>POST data: ' + jQuery(form).serialize());
+                CentralSpace.html(errorpageload + result.status + ' ' + result.statusText + '<br/>URL:  ' + url + '<br/>POST data: ' + jQuery(form).serialize());
                 }
 			}
 		});
@@ -637,10 +642,6 @@ function CollectionDivLoad (anchor,scrolltop)
 		{
         jQuery("#CollectionDiv").trigger("CollectionDiv_loaded");
 
-		if(collection_bar_hide_empty){
-			CheckHideCollectionBar();
-			}
-
 		// For each resource in centralspace, assume its not in the collection, so show + icon and hide - icon 
 		jQuery('div.ResourcePanel a.addToCollection').removeClass('DisplayNone');
 		jQuery('div.ResourcePanel a.removeFromCollection').addClass('DisplayNone');
@@ -703,7 +704,7 @@ function ReloadLinks()
         else if(status=="error")
             {
             var SearchBar=jQuery('#SearchBarContainer');		
-            SearchBar.html(errorpageload  + xhr.status + " " + xhr.statusText + "<br>" + response);		
+            SearchBar.html(errorpageload  + xhr.status + " " + xhr.statusText + "<br/>" + response);		
             }
         else
             {
@@ -716,24 +717,29 @@ function ReloadLinks()
     return false;
     }
 
-function relateresources (ref,related,action)
+function relateresources(ref,related,action, ctx)
 	{
-	//console.log("relateresources:" +ref + ":" + related + ":" + action);
-	url=baseurl_short+"pages/ajax/relate_resources.php?ref=" + ref + "&related=" + related + "&action=" + action;
-	jQuery.post(url, function (response, status, xhr)
-			{
-			if (response.indexOf("error") > 0)
-				{				
-				alert ("ERROR");
-				return false;
-				}
-			else
-				{
-				jQuery('#relatedresource' + related).remove();
-				return true;
-				}		
-			});		
-		return false;	
+    var add_param='1';
+    if (action=="remove") { add_param='0';}
+    
+    var post_data = {
+    'ref': ref,
+    'related': related,
+    'add': add_param
+    };
+
+    api("update_related_resource", post_data, function(response) {
+    if(response!= false)
+        {				
+        jQuery('#relatedresource' + related).remove();
+        return true;
+        }
+    else
+        {
+        alert ("ERROR");
+        return false;
+        }
+    }, ctx);
 	}
 
 /*
@@ -1051,7 +1057,7 @@ function ModalClose()
 			}
 	}
 	
-// For modals, set what conteckt the modal was called from and insert if missing
+// For modals, set what context the modal was called from and insert if missing
 function SetContext(url)
     {
     if(typeof url != 'string'){url = url.href;}
@@ -1102,7 +1108,7 @@ function ActivateHeaderLink(activeurl)
                     }				
 				}				
 			});
-        jQuery(activelink).addClass('current');
+        jQuery(activelink).addClass('current').attr('aria-current', 'page');
 		}
 
 function ReplaceUrlParameter(url, parameter, value){
@@ -1138,6 +1144,7 @@ function styledalert(title,text,minwidth){
         minWidth: minwidth,
         dialogClass: 'no-close',
         modal: true,
+        maxHeight:500,
          buttons: [{
                   text: oktext,
                   click: function() {
@@ -1199,23 +1206,6 @@ function ShowCollectionBar() {
 	}
 }
 				
-function CheckHideCollectionBar(){
-	if(collection_bar_hide_empty==false || jQuery('#currentusercollection').length==0){
-		// Option to hide empty bar not configured or collection panel not yet loaded
-		return true;
-		}
-	
-	if(jQuery('.CollectionPanelShell').length==0) {
-		HideCollectionBar();
-		return false;
-	}
-	else	{	
-		ShowCollectionBar();
-		return true;
-	}
-
-}
-
 function ChosenDropdownInit(elem, selector)
 	{
 	if(typeof chosen_config!=='undefined')
@@ -1319,19 +1309,30 @@ function StripResizeResults(targetImageHeight)
         }
     }
 
+/**
+ * Load unified dropdown actions
+ *
+* @param {string} pagename
+* @param {string|object} id The ID of the element where the actions should be loaded. Can also be a jQuery object.
+* @param {string} type The action type (@see ajax/load_actions.php)
+* @param {int} ref The associated (type) ref (e.g for type "collection", the collection ref)
+* @param {object} extra_data Any other extra data the associated type might need (e.g for type "search", the searchparams)
+*
+* @return {Promise} Returns a promise of whether the actions were loaded or not (true/false)
+*/
 function LoadActions(pagename,id,type,ref, extra_data)
     {
+    console.debug('LoadActions(pagename = %o, id = %o, type = %o, ref = %o, extra_data = %o)', pagename, id, type, ref, extra_data);
+
+    var actionspace = typeof id === "object" ? id : jQuery('#' + id);
+    console.debug('[LoadActions] actionspace = %o', actionspace);
+
+    if(actionspace.attr('data-actions-loaded') != 0)
+        {
+        return jQuery.when(false);
+        }
+
     CentralSpaceShowLoading();
-
-    if(typeof id === "object")
-        {
-        var actionspace = id;
-        }
-    else
-        {
-        var actionspace=jQuery('#' + id);
-        }
-
     url = baseurl_short+"pages/ajax/load_actions.php";
     var data = {
         actiontype: type,
@@ -1349,20 +1350,32 @@ function LoadActions(pagename,id,type,ref, extra_data)
     return jQuery.when(request)
         .then(function(response, status, xhr)
             {
-            if(status == "error")
+            console.debug('[LoadActions] xhr = %o', xhr);
+
+            if(response.includes('pagename="login"'))
                 {
-                styledalert(errorpageload  + xhr.status + " " + xhr.statusText, response);
+                styledalert(errortext,errornotloggedin + ' <a href="' + baseurl_short + '" target="_new">' + login + '</a>');
+                }
+            else if(!response.includes('<option'))
+                {
+                console.error('[LoadActions] Unexpected response, no options');
                 }
             else
                 {
+                console.debug('[LoadActions] actionspace.html(response)');
                 actionspace.html(response);
-                CentralSpaceHideLoading();
+                actionspace.attr('data-actions-loaded','1');
+
+                // The following hack is required for Chrome (tested in version 111). When rendering dropdowns in the
+                // lower part of the screen that slide upwards, the new options fail to show until the dropdown is reopened.
+                setTimeout(() => actionspace.css('height', 'auto'), 100);
+
                 return true;
                 }
 
-            CentralSpaceHideLoading();
             return false;
-            });
+            })
+        .always(() => CentralSpaceHideLoading());
     }
 
 /**
@@ -1488,13 +1501,19 @@ function showHideLinks()
 * Toggles the edit_multi_checkbox question on edit page when in batch edit mode (ie. multiple == true)
 * 
 */
-function batch_edit_toggle_edit_multi_checkbox_question(field_ref)
+function batch_edit_toggle_edit_multi_checkbox_question(question_ref)
     {
-    var question = document.getElementById('question_' + field_ref);
-    var modeselect = document.getElementById('modeselect_' + field_ref);
-    var findreplace = document.getElementById('findreplace_' + field_ref);
+    var question = document.getElementById('question_' + question_ref);
+    var modeselect = document.getElementById('modeselect_' + question_ref);
+    var findreplace = document.getElementById('findreplace_' + question_ref);
+    var revert = document.getElementById('revert_' + question_ref);
 
-    if(jQuery("#editthis_" + field_ref).prop("checked"))
+    // The copy_from_field is rendered with an id of the resource_type_field ref, not the question_ref (seq number) passed in here
+    // The resource_type_field ref is however the last digits of the checkbox name attribute, so use that to get the copyfrom element 
+    var this_checkbox=document.getElementById('editthis_' + question_ref);
+    var copyfrom = document.getElementById('copy_from_field_' + this_checkbox.name.substring(15));
+
+    if(jQuery("#editthis_" + question_ref).prop("checked"))
         {
         question.style.display = 'block';
         modeselect.style.display = 'block';
@@ -1504,8 +1523,18 @@ function batch_edit_toggle_edit_multi_checkbox_question(field_ref)
         question.style.display = 'none';
         modeselect.style.display = 'none';
         findreplace.style.display = 'none';
+        // revert is not always present, but if it is then hide it
+        if(revert)
+            {
+            revert.style.display = 'none';
+            }
+        // copyfrom is not always present, but if it is then hide it
+        if(copyfrom)
+            {
+            copyfrom.style.display = 'none';
+            }
 
-        document.getElementById('modeselectinput_' + field_ref).selectedIndex = 0;
+        document.getElementById('modeselectinput_' + question_ref).selectedIndex = 0;
         }
 
     return;
@@ -1610,6 +1639,56 @@ function SelectMetaTab(resourceid,tabnum,modal)
 		}
 }
 
+/**
+ * Handle clicks on the .TabBar in the resource downloads area
+ * 
+ * @param {string} tabName - name of the tab clicked
+ * @param {boolean} modal - whether the resource is opened in a modal or not
+ */	
+function selectDownloadTab(tabName, modal)
+	{
+	if (modal)
+		{
+		jQuery('#modal #RecordDownloadTabButtons .Tab').removeClass('TabSelected');
+		jQuery('#modal #'+tabName+'Button').addClass('TabSelected');
+		jQuery('#modal #RecordDownloadTabContainer .RecordDownloadSpace').hide();
+		jQuery('#modal #'+tabName).show();
+		}
+	else
+		{
+		jQuery('#RecordDownloadTabButtons .Tab').removeClass('TabSelected');
+		jQuery('#'+tabName+'Button').addClass('TabSelected');
+		jQuery('#RecordDownloadTabContainer .RecordDownloadSpace').hide();
+		jQuery('#'+tabName).show();
+		}
+	}
+
+/**
+ * Handle clicks on the tab bar in the search area
+ * 
+ * @param {string} tabName - name of the tab clicked
+ */	
+function selectSearchBarTab(tabName)
+	{
+	jQuery('#SearchBarTabsContainer .SearchBarTab').removeClass('SearchBarTabSelected');
+	
+	switch(tabName)
+		{
+		case 'search':
+			jQuery('#SearchBarTabsContainer .SearchTab').addClass('SearchBarTabSelected');
+			jQuery('#SearchBoxPanel').show();
+			jQuery('#BrowseBarContainer').hide();
+			SetCookie('selected_search_tab', 'search');
+			break;
+		case 'browse':
+			jQuery('#SearchBarTabsContainer .BrowseTab').addClass('SearchBarTabSelected');
+			jQuery('#SearchBoxPanel').hide();
+			jQuery('#BrowseBarContainer').show();
+			SetCookie('selected_search_tab', 'browse');
+			break;
+		}
+	}
+
 // unset cookie
 function unsetCookie(cookieName, cpath)
 	{
@@ -1670,7 +1749,7 @@ function add_hidden_modal_input(form, decision_factor)
     return true;
     }
 
-function api(name, params, callback)
+function api(name, params, callback, post_data_extra = {})
     {
     query = {};
     query["function"] = name;
@@ -1678,10 +1757,11 @@ function api(name, params, callback)
         query[key] = params[key];
         }
 	console.debug("API Query",query);
-    postobj = {};
+
+    postobj = Object.assign({}, post_data_extra);
     postobj['query'] = jQuery.param(query);
     postobj['authmode'] = "native";
-    
+
     // Below is used to get access to responseURL
     var xhr = new XMLHttpRequest();
     jQuery.ajax({
@@ -1711,7 +1791,10 @@ function api(name, params, callback)
             })
         .fail(function(jqXHR, textStatus, errorThrown)
             {
-            console.log("API Error",textStatus);
+            let response = typeof jqXHR.responseJSON.data.message !== 'undefined'
+                ? jqXHR.responseJSON.data.message
+                : textStatus;
+            console.error("API Error: %s - %s", errorThrown, response);
             });
     }
 
@@ -1799,3 +1882,254 @@ function CentralSpaceHideProcessing()
 	{
 	jQuery('#ProcessingBox').fadeOut('fast'); 
 	}
+
+
+/**
+* Generate ResourceSpace URL with context aware params (from an elements' data set).
+* 
+* @param   {HTML element}  el         The element from which we want to generate a URL for
+* @param   {string}        path       URL path
+* @param   {string}        data_key   The data set key to retrieve params from. Note: the data value is an object
+* 
+* @return string
+*/
+function GenerateRsUrlFromElement(el, path, data_key)
+    {
+    params = jQuery(el).data(data_key);
+    url = baseurl_short + path + '?' + new URLSearchParams(params).toString();
+    console.debug('[GenerateRsUrlFromElement] url = %s', url);
+    return url;
+    }
+
+/**
+ * Get client's date and time in friendly format
+ *
+ * @return string
+ * 
+ */
+function rsGetLocalDatetime()
+    {
+    var dt = new Date();
+    var logtime = dt.getFullYear() + "-" +dt.getMonth() + "-" + dt.getDate() + " " + dt.getHours() + ":" + dt.getMinutes() + ":" + dt.getSeconds();
+    return logtime;
+    }
+
+/**
+ * Log all ResourceSpace global client side variables
+ */
+function resourcespace_get_global_state() {
+    // global variables that exist in chrome browser by default
+    let stdChromeVars = [
+        "parent",
+        "opener",
+        "top",
+        "length",
+        "frames",
+        "closed",
+        "location",
+        "self",
+        "window",
+        "document",
+        "name",
+        "customElements",
+        "history",
+        "locationbar",
+        "menubar",
+        "personalbar",
+        "scrollbars",
+        "statusbar",
+        "toolbar",
+        "status",
+        "frameElement",
+        "navigator",
+        "origin",
+        "external",
+        "screen",
+        "innerWidth",
+        "innerHeight",
+        "scrollX",
+        "pageXOffset",
+        "scrollY",
+        "pageYOffset",
+        "visualViewport",
+        "screenX",
+        "screenY",
+        "outerWidth",
+        "outerHeight",
+        "devicePixelRatio",
+        "clientInformation",
+        "screenLeft",
+        "screenTop",
+        "defaultStatus",
+        "defaultstatus",
+        "styleMedia",
+        "onsearch",
+        "isSecureContext",
+        "onabort",
+        "onblur",
+        "oncancel",
+        "oncanplay",
+        "oncanplaythrough",
+        "onchange",
+        "onclick",
+        "onclose",
+        "oncontextmenu",
+        "oncuechange",
+        "ondblclick",
+        "ondrag",
+        "ondragend",
+        "ondragenter",
+        "ondragleave",
+        "ondragover",
+        "ondragstart",
+        "ondrop",
+        "ondurationchange",
+        "onemptied",
+        "onended",
+        "onerror",
+        "onfocus",
+        "onformdata",
+        "oninput",
+        "oninvalid",
+        "onkeydown",
+        "onkeypress",
+        "onkeyup",
+        "onload",
+        "onloadeddata",
+        "onloadedmetadata",
+        "onloadstart",
+        "onmousedown",
+        "onmouseenter",
+        "onmouseleave",
+        "onmousemove",
+        "onmouseout",
+        "onmouseover",
+        "onmouseup",
+        "onmousewheel",
+        "onpause",
+        "onplay",
+        "onplaying",
+        "onprogress",
+        "onratechange",
+        "onreset",
+        "onresize",
+        "onscroll",
+        "onseeked",
+        "onseeking",
+        "onselect",
+        "onstalled",
+        "onsubmit",
+        "onsuspend",
+        "ontimeupdate",
+        "ontoggle",
+        "onvolumechange",
+        "onwaiting",
+        "onwebkitanimationend",
+        "onwebkitanimationiteration",
+        "onwebkitanimationstart",
+        "onwebkittransitionend",
+        "onwheel",
+        "onauxclick",
+        "ongotpointercapture",
+        "onlostpointercapture",
+        "onpointerdown",
+        "onpointermove",
+        "onpointerup",
+        "onpointercancel",
+        "onpointerover",
+        "onpointerout",
+        "onpointerenter",
+        "onpointerleave",
+        "onselectstart",
+        "onselectionchange",
+        "onanimationend",
+        "onanimationiteration",
+        "onanimationstart",
+        "ontransitionend",
+        "onafterprint",
+        "onbeforeprint",
+        "onbeforeunload",
+        "onhashchange",
+        "onlanguagechange",
+        "onmessage",
+        "onmessageerror",
+        "onoffline",
+        "ononline",
+        "onpagehide",
+        "onpageshow",
+        "onpopstate",
+        "onrejectionhandled",
+        "onstorage",
+        "onunhandledrejection",
+        "onunload",
+        "performance",
+        "stop",
+        "open",
+        "alert",
+        "confirm",
+        "prompt",
+        "print",
+        "queueMicrotask",
+        "requestAnimationFrame",
+        "cancelAnimationFrame",
+        "captureEvents",
+        "releaseEvents",
+        "requestIdleCallback",
+        "cancelIdleCallback",
+        "getComputedStyle",
+        "matchMedia",
+        "moveTo",
+        "moveBy",
+        "resizeTo",
+        "resizeBy",
+        "scroll",
+        "scrollTo",
+        "scrollBy",
+        "getSelection",
+        "find",
+        "webkitRequestAnimationFrame",
+        "webkitCancelAnimationFrame",
+        "fetch",
+        "btoa",
+        "atob",
+        "setTimeout",
+        "clearTimeout",
+        "setInterval",
+        "clearInterval",
+        "createImageBitmap",
+        "close",
+        "focus",
+        "blur",
+        "postMessage",
+        "onappinstalled",
+        "onbeforeinstallprompt",
+        "crypto",
+        "indexedDB",
+        "webkitStorageInfo",
+        "sessionStorage",
+        "localStorage",
+        "chrome",
+        "applicationCache",
+        "onpointerrawupdate",
+        "trustedTypes",
+        "speechSynthesis",
+        "webkitRequestFileSystem",
+        "webkitResolveLocalFileSystemURL",
+        "openDatabase",
+        "caches",
+        "ondevicemotion",
+        "ondeviceorientation",
+        "ondeviceorientationabsolute"
+    ];
+
+    let T = Object.keys(window)
+        .filter(prop => stdChromeVars.indexOf(prop) < 0)
+        .filter(prop => typeof window[prop] !== 'function')
+        .sort()
+    ;
+
+    for (let i in T) {
+        let prop = T[i];
+        console.debug('%s: %s = %o', prop, typeof window[prop], window[prop]);
+    }
+}

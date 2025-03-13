@@ -11,7 +11,7 @@ include "../../include/authenticate.php"; if (!checkperm("r")) {exit ("Permissio
 include_once "../../include/research_functions.php";
 include_once "../../include/request_functions.php";
 
-$ref=getvalescaped("ref","",true);
+$ref=getval("ref","",true);
 
 if (getval("submitted", "") != "" && enforcePostRequest(false))
 	{
@@ -30,7 +30,7 @@ if (!$research)
 include "../../include/header.php";
 ?>
 <div class="BasicsBox">
-<h1><?php echo $lang["editresearchrequest"];render_help_link('resourceadmin/user-research-requests');?></h1>
+<h1><?php echo htmlspecialchars($lang["editresearchrequest"]);render_help_link('resourceadmin/user-research-requests');?></h1>
 
 <form method="post" action="<?php echo $baseurl_short?>pages/team/team_research_edit.php" onSubmit="return CentralSpacePost(this,true);">
     <?php generateFormToken("team_research_edit"); ?>
@@ -64,14 +64,14 @@ include "../../include/header.php";
 <div class="clearerleft"> </div></div>
 
 <?php if (!hook("replaceresearcheditresourcetypes")){?>
-	<div class="Question"><label><?php echo $lang["resourcetypes"]?></label><div class="Fixed">
+	<div class="Question"><label><?php echo htmlspecialchars($lang["resourcetypes"])?></label><div class="Fixed">
 	<?php $first=true;$set=explode(", ",$research["resource_types"]);$types=get_resource_types();for ($n=0;$n<count($types);$n++) {if (in_array($types[$n]["ref"],$set)) {if (!$first) {echo ", ";}echo htmlspecialchars($types[$n]["name"]);$first=false;}} ?>
 	</div>
 	<div class="clearerleft"> </div></div>
 <?php } ?>
 
 <?php if (!hook("replaceresearcheditnoresources")){?>
-<div class="Question"><label><?php echo htmlspecialchars($lang["noresourcesrequired"])?></label><div class="Fixed"><?php echo htmlspecialchars($research["noresources"])?></div>
+<div class="Question"><label><?php echo htmlspecialchars($lang["noresourcesrequired"])?></label><div class="Fixed"><?php echo htmlspecialchars((string) $research["noresources"])?></div>
 <div class="clearerleft"> </div></div>
 <?php }
 
@@ -96,7 +96,7 @@ array_walk($rr_cfields, function($field, $i)
         $field_id = $field["html_properties"]["id"];
         ?>
         <label for="custom_<?php echo $field_id; ?>"><?php echo htmlspecialchars(i18n_get_translated($field["title"])); ?></label>
-        <div class="Fixed"><?php echo htmlspecialchars(i18n_get_translated($field["value"], false)); ?></div>
+        <div class="Fixed"><?php echo htmlspecialchars(i18n_get_translated($field["value"])); ?></div>
         <?php
         });
     });
@@ -124,8 +124,7 @@ for ($n=0;$n<count($users);$n++)
 
 
 <div class="Question"><label><?php echo htmlspecialchars($lang["copyexistingresources"])?></label>
-<input name="copyexisting" type="checkbox" value="yes"><b><?php echo $lang["yes"]?></b> <?php echo htmlspecialchars($lang["typecollectionid"])?><br/>
-<strong><?php echo htmlspecialchars($collection_prefix)?></strong> <input name="copyexistingref" type="text" class="shrtwidth">
+<input name="copyexisting" type="checkbox" value="yes"><b><?php echo htmlspecialchars($lang["yes"])?></b> <?php echo htmlspecialchars($lang["typecollectionid"])?><br/><input name="copyexistingref" type="text" class="shrtwidth">
 <div class="clearerleft"> </div></div>
 
 <div class="Question"><label><?php echo htmlspecialchars($lang["ticktodeletethisresearchrequest"])?></label>
@@ -134,8 +133,7 @@ for ($n=0;$n<count($users);$n++)
 
 <?php hook('research_request_extra_fields'); ?>
 
-<div class="QuestionSubmit">
-<label for="buttons"> </label>			
+<div class="QuestionSubmit">		
 <input name="savexxx" type="submit" value="&nbsp;&nbsp;<?php echo htmlspecialchars($lang["save"])?>&nbsp;&nbsp;" />
 </div>
 </form>

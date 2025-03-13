@@ -7,7 +7,13 @@ include dirname(__FILE__) . "/../../../include/db.php";
 
 include_once dirname(__FILE__) . "/../include/tms_link_functions.php";
 
-$debug_log=false;
+// To reduce debug log file growth, debug logging is disabled by default but can be enabled within the plugin options.
+global $tms_link_write_to_debug_log;
+
+if (!$tms_link_write_to_debug_log)
+    {
+    $debug_log = false;
+    }
 
 ob_end_clean();
 set_time_limit($cron_job_time_limit);
@@ -20,7 +26,7 @@ if(!in_array("tms_link",$plugins))
 if($tms_link_email_notify!=""){$email_notify=$tms_link_email_notify;}
 
 // Check when this script was last run - do it now in case of permanent process locks
-$scriptlastran=sql_value("select value from sysvars where name='last_tms_import'","");
+$scriptlastran=ps_value("select value from sysvars where name='last_tms_import'", array(), "");
 
 $tms_link_script_failure_notify_seconds=intval($tms_link_script_failure_notify_days)*60*60*24;
 
@@ -126,7 +132,7 @@ foreach(tms_link_get_modules_mappings() as $module)
     $tmscount += $current_tms_count;
 
     $tmspointer = 0;
-    
+
     if(!$tms_link_test_mode || !is_numeric($tms_link_test_count))
         {
         $tms_link_test_count = 999999999;
@@ -214,7 +220,7 @@ foreach(tms_link_get_modules_mappings() as $module)
                     {
                     fwrite($logfile, $logmessage);
                     }
-                
+
                 $updatedok = false;
 
                 // Update fields if necessary
@@ -230,10 +236,9 @@ foreach(tms_link_get_modules_mappings() as $module)
                         $resource_type_field_data = get_resource_type_field($tms_link_field_id);
                         if($resource_type_field_data!==false && $resource_type_field_data['type'] == FIELD_TYPE_TEXT_BOX_FORMATTED_AND_CKEDITOR)
                             {
-                            $newval = strip_tags($tmsresult[$tms_link_column_name]);
-                            $newval = str_replace('&nbsp;', ' ', $newval);
+                            $newval = str_replace('&nbsp;', ' ', $tmsresult[$tms_link_column_name]);
                             }
-                            
+
                         if ($existingval!== $newval)
                             {
                             if(!$tms_link_test_mode)
@@ -245,7 +250,7 @@ foreach(tms_link_get_modules_mappings() as $module)
                                     fwrite($logfile,$logmessage);
                                     }
 
-                                update_field($tms_resources[$ri]["resource"], $tms_link_field_id, escape_check($tmsresult[$tms_link_column_name]));
+                                update_field($tms_resources[$ri]["resource"], $tms_link_field_id, $tmsresult[$tms_link_column_name]);
                                 }
 
                             if($tms_link_field_id != $tms_link_checksum_field)
@@ -361,5 +366,5 @@ if($tms_log)
     }
 
 clear_process_lock("tms_link");
-sql_query("delete from sysvars where name='last_tms_import'");
-sql_query("insert into sysvars values('last_tms_import', now())");
+ps_query("delete from sysvars where name='last_tms_import'");
+ps_query("insert into sysvars values('last_tms_import', now())");

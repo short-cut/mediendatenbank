@@ -1,54 +1,56 @@
 <?php
 namespace ImageBanks;
 
+use SplFileInfo;
+
 abstract class Provider
     {
-    protected $lang;
-    protected $temp_dir_path = "";
+    protected array $lang;
+    protected string $temp_dir_path = "";
+    protected int $id;
+    protected string $name;
+    protected string $download_endpoint;
+    protected array $configs;
+    protected string $warning;
 
-    public final function __construct(array $lang, $temp_dir_path)
-        {
-        if(!isset($this->id))
-            {
-            throw new \LogicException(get_class($this) . ' must have a $id property');
-            }
+    /**
+     * Allow each provider to register its own dependency checks.
+     * Note: Image Banks implements the extra_warn_checks hook which will use these errors to notify sysadmins.
+     *
+     * @return array List of failed (system) dependencies.
+     */
+    abstract public function checkDependencies(): array;
 
-        if(!isset($this->name))
-            {
-            throw new \LogicException(get_class($this) . ' must have a $name property');
-            }
+    /**
+     * Add configuration needs to the image_banks' setup page
+     * @param array $page_def Setup page definitions {@see config_functions.php}
+     */
+    abstract public function buildConfigPageDefinition(array $page_def): array;
 
-        if(!isset($this->download_endpoint))
-            {
-            throw new \LogicException(get_class($this) . ' must have a $download_endpoint property');
-            }
+    /**
+    * Search providers' database based on specified keywords
+    *
+    * @param  string   $keywords  Search keyword(s)
+    * @param  integer  $per_page  Number of results per page
+    * @param  integer  $page      Select the page number
+    */
+    abstract protected function runSearch(string $keywords, int $per_page = 24, int $page = 1): ProviderSearchResults;
 
-        if(!isset($this->configs))
-            {
-            throw new \LogicException(get_class($this) . ' must have a $configs property');
-            }
-
-        if(!isset($this->warning))
-            {
-            throw new \LogicException(get_class($this) . ' must have a $warning property');
-            }
-
-        $this->lang = $lang;
-        $this->temp_dir_path = $temp_dir_path;
-        }
-
-    abstract public function checkDependencies();
-    abstract public function buildConfigPageDefinition(array $page_def);
-
+    /**
+     * Get file information for download or when creating a new resource based on a Providers' source file.
+     * 
+     * @param string $file The source file URL 
+     */
+    abstract public function getDownloadFileInfo(string $file): SplFileInfo;
 
     /**
     * Register configuration options required by the Provider in the GLOBAL scope
     * 
     * @param  array $globals The globals variable - $GLOBALS
     * 
-    * @return array Returns the $GLOBALS array back with any config vars required by a provider
+    * @return void  
     */
-    public final function registerConfigurationNeeds(array $globals)
+    final public function registerConfigurationNeeds(array $globals)
         {
         foreach($this->configs as $config => $value)
             {
@@ -60,44 +62,22 @@ abstract class Provider
                 continue;
                 }
 
-            $globals[$config] = $value;
+            $GLOBALS[$config] = $value;
             }
 
-        return $globals;
+        return ;
         }
 
     /**
     * Search providers' database based on specified keywords
     * 
-    * @abstract
-    * 
     * @param  string   $keywords  Search keyword(s)
     * @param  integer  $per_page  Number of results per page
     * @param  integer  $page      Select the page number
-    * 
-    * @return \ImageBanks\ProviderSearchResults
     */
-    abstract protected function runSearch($keywords, $per_page = 24, $page = 1);
-
-    /**
-    * Search providers' database based on specified keywords
-    * 
-    * @param  string   $keywords  Search keyword(s)
-    * @param  integer  $per_page  Number of results per page
-    * @param  integer  $page      Select the page number
-    * 
-    * @return \ImageBanks\ProviderSearchResults
-    */
-    public final function search($keywords, $per_page = 24, $page = 1)
+    final public function search($keywords, $per_page = 24, $page = 1): ProviderSearchResults
         {
-        $search_results = $this->runSearch($keywords, $per_page, $page);
-
-        if(!($search_results instanceof \ImageBanks\ProviderSearchResults))
-            {
-            trigger_error("Provider '{$this->getName()}' search results must be of type ProviderSearchResults");
-            }
-
-        return $search_results;
+        return $this->runSearch($keywords, $per_page, $page);
         }
 
 
@@ -106,7 +86,7 @@ abstract class Provider
     * 
     * @return string
     */
-    public final function getTempDirPath()
+    final public function getTempDirPath()
         {
         return $this->temp_dir_path;
         }
@@ -120,7 +100,7 @@ abstract class Provider
     * 
     * @return boolean|string  Returns FALSE if no cache found or the content of the file
     */
-    protected final function getCache($id, $ttl)
+    final protected function getCache($id, $ttl)
         {
         $files = new \DirectoryIterator($this->temp_dir_path);
 
@@ -160,7 +140,7 @@ abstract class Provider
     * 
     * @return void
     */
-    protected final function setCache($id, $value)
+    final protected function setCache($id, $value)
         {
         $file = $this->temp_dir_path . DIRECTORY_SEPARATOR . $id;
 
@@ -182,13 +162,60 @@ abstract class Provider
         return $this->id;
         }
 
-    public final function getName()
+    final public function getName()
         {
         return $this->name;
         }
 
-    public final function getAllowedDownloadEndpoint()
+    final public function getAllowedDownloadEndpoint()
         {
         return $this->download_endpoint;
+        }
+
+    /** Determine if the Provider should show the view page when clicking on the search result preview image */
+    public function allowViewPage(): bool
+        {
+        return false;
+        }
+
+    /**
+     * Find Image Bank record by ID.
+     * @param int|string $id Record ID
+     */
+    public function findById($id): ProviderResult
+        {
+        return new ProviderResult($id, $this);
+        }
+
+    /**
+     * Retrieve non-metadata properties from Image Bank Provider for image ID.
+     * @param int|string $id Record ID
+     * @return array<string, string> The returned key must be the user friendly name (label), the value is just that.
+     */
+    public function getImageNonMetadataProperties($id): array
+        {
+        return [];
+        }
+
+    /**
+     * Retrieve image metadata from Image Bank Provider.
+     * @param int|string $id Record ID
+     * @return array<string, string> The returned key must be the user friendly name (label), the value is just that.
+     */
+    public function getImageMetadata($id): array
+        {
+        return [];
+        }
+
+    /**
+     * Get table view information for rendering on the plugins' view page
+     * @param int|string $id Record ID
+     */
+    public function getResourceDownloadOptionsTable($id): array
+        {
+        return [
+            'header' => [],
+            'data' => [$this->lang['collection_download_original']]
+        ];
         }
     }

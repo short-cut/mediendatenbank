@@ -2,7 +2,9 @@
 include dirname(__FILE__)."/../../../include/db.php";
 
 include dirname(__FILE__)."/../../../include/authenticate.php";
-if (!checkperm("t")) {exit ("Permission denied.");}
+
+$is_admin = checkperm("a");
+if (!$is_admin && !checkperm("lm")) {exit ("Permission denied.");}
 global $baseurl;
 
 
@@ -10,15 +12,15 @@ global $baseurl;
 include dirname(__FILE__) . "/../upgrade/upgrade.php";
 
 
-$offset=getvalescaped("offset",0,true);
+$offset=getval("offset",0,true);
 if (array_key_exists("findtext",$_POST)) {$offset=0;} # reset page counter when posting
-$findtext=getvalescaped("findtext","");
+$findtext=getval("findtext","");
 
-$delete=getvalescaped("delete","");
+$delete=getval("delete","");
 if ($delete!="" && enforcePostRequest(false))
 	{
 	# Delete license
-	sql_query("delete from license where ref='" . escape_check($delete) . "'");
+	ps_query("delete from license where ref= ?", ['i', $delete]);
 	}
 
 
@@ -35,11 +37,13 @@ $url_params = array(
 );
 ?>
 <div class="BasicsBox"> 
+<h1><?php echo $lang["managelicenses"]; ?></h1>
 <?php
     $links_trail = array(
         array(
-            'title' => $lang["teamcentre"],
-            'href'  => $baseurl_short . "pages/team/team_home.php"
+            'title' => !$is_admin ? htmlspecialchars($lang["home"]) : htmlspecialchars($lang["teamcentre"]),
+            'href'  => $baseurl_short . (!$is_admin ? "pages/home.php" : "pages/team/team_home.php"),
+            'menu'  => !$is_admin ? false : true
         ),
         array(
             'title' => $lang["managelicenses"]
@@ -53,19 +57,18 @@ $url_params = array(
 <input type=hidden name="delete" id="licensedelete" value="">
  
 <?php 
-$sql="";
+$sql = '';
+$params = [];
 if ($findtext!="")
     {
-    $sql="where description   like '%" . escape_check($findtext) . "%'";
-    $sql.="  or holder        like '%" . escape_check($findtext) . "%'";
-    $sql.="  or license_usage like '%" . escape_check($findtext) . "%'";
-    $sql.="  or description   like '%" . escape_check($findtext) . "%'";
-}
+    $sql    = "where description like CONCAT('%', ?, '%') or holder like CONCAT('%', ?, '%') or license_usage like CONCAT('%', ?, '%')";
+    $params = ['s', $findtext, 's', $findtext, 's', $findtext];
+    }
 
-$licenses=sql_query("select * from license $sql order by ref");
+$licenses=ps_query("select " . columns_in("license",null,"licensemanager") . " from license $sql order by ref", $params);
 
 # pager
-$per_page=15;
+$per_page = $default_perpage_list;
 $results=count($licenses);
 $totalpages=ceil($results/$per_page);
 $curpage=floor($offset/$per_page)+1;
@@ -114,8 +117,8 @@ for ($n=$offset;(($n<count($licenses)) && ($n<($offset+$per_page)));$n++)
 			<td><?php echo ($license["expires"]==""?$lang["no_expiry_date"]:nicedate($license["expires"])) ?></td>
 		
 			<td><div class="ListTools">
-			<a href="<?php echo generateURL($baseurl_short . "plugins/licensemanager/pages/edit.php",$url_params); ?>" onClick="return CentralSpaceLoad(this,true);">&gt;&nbsp;<?php echo $lang["action-edit"]?></a>
-			<a href="<?php echo generateURL($baseurl_short . "plugins/licensemanager/pages/delete.php",$url_params); ?>" onClick="return CentralSpaceLoad(this,true);">&gt;&nbsp;<?php echo $lang["action-delete"]?></a>
+			<a href="<?php echo generateURL($baseurl_short . "plugins/licensemanager/pages/edit.php",$url_params); ?>" onClick="return CentralSpaceLoad(this,true);"><i class="fas fa-edit"></i>&nbsp;<?php echo $lang["action-edit"]?></a>
+			<a href="<?php echo generateURL($baseurl_short . "plugins/licensemanager/pages/delete.php",$url_params); ?>" onClick="return CentralSpaceLoad(this,true);"><i class="fa fa-trash"></i>&nbsp;<?php echo $lang["action-delete"]?></a>
 			</div></td>
 	</tr>
 	<?php
@@ -132,7 +135,7 @@ for ($n=$offset;(($n<count($licenses)) && ($n<($offset+$per_page)));$n++)
 			<label for="find"><?php echo $lang["licensesearch"]?><br/></label>
 			<div class="tickset">
 			 <div class="Inline">			
-			<input type=text placeholder="<?php echo $lang['searchbytext']?>" name="findtext" id="findtext" value="<?php echo $findtext?>" maxlength="100" class="shrtwidth" />
+			<input type=text placeholder="<?php echo $lang['searchbytext']?>" name="findtext" id="findtext" value="<?php echo escape($findtext)?>" maxlength="100" class="shrtwidth" />
 			
 			<input type="button" value="<?php echo $lang['clearbutton']?>" onClick="$('findtext').value='';CentralSpacePost(document.getElementById('licenselist'));return false;" />
 			<input name="Submit" type="submit" value="&nbsp;&nbsp;<?php echo $lang["searchbutton"]?>&nbsp;&nbsp;" />
@@ -147,6 +150,3 @@ for ($n=$offset;(($n<count($licenses)) && ($n<($offset+$per_page)));$n++)
 <?php
 
 include dirname(__FILE__)."/../../../include/footer.php";
-
-?>
-

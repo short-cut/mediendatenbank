@@ -2,8 +2,9 @@
 include_once dirname(__FILE__) . '/../include/simplesaml_functions.php';
 function HookSimplesamlAllPreheaderoutput()
     {      
-    if(!simplesaml_php_check())
+    if(!simplesaml_php_check() || get_sysvar(SYSVAR_CURRENT_UPGRADE_LEVEL) != SYSTEM_UPGRADE_LEVEL)
         {
+        // If a new version then allow upgrade scripts to run first
         return false;
         }
 
@@ -32,7 +33,7 @@ function HookSimplesamlAllPreheaderoutput()
     // If normal user is logged in and allowing standard logins do nothing and return
     if ($simplesaml_allow_standard_login && isset($_COOKIE["user"]))
         {
-        $session_hash = escape_check($_COOKIE["user"]);
+        $session_hash = $_COOKIE["user"];
 
         $user_select_sql = new PreparedStatementQuery();
         $user_select_sql->sql = "u.session = ?";
@@ -61,25 +62,60 @@ function HookSimplesamlAllPreheaderoutput()
         }
 
 	// Check for exclusions
-    $k = getvalescaped('k', '');
-    if(
-        $simplesaml_allow_public_shares &&
-        '' != $k &&
-        (
-            // Hard to determine at this stage what we consider a collection/ resource ID so we
-            // use the most general ones
-            check_access_key_collection(str_replace('!collection', '', getvalescaped('search', '')), $k) ||
-            check_access_key(getvalescaped('ref', ''), $k)
-        )
-    )
+    $k = getval('k', '');
+    $resource = getval('ref', '');
+    $search = getval('search', '');
+    $collection_from_search=str_replace('!collection', '', $search);
+    $collection_add = getval('collection_add', '');
+    $c = getval('c', '');
+    $parent = getval('parent', '');
+
+    $collection_from_search = is_numeric($collection_from_search) ? (int)$collection_from_search : null;
+
+    $collection_add = is_numeric($collection_add) ? (int)$collection_add : null;
+
+    $c = is_numeric($c) ? (int)$c : null;
+
+    $parent = is_numeric($parent) ? (int) $parent : null;
+
+    $resource = is_numeric($resource) ? (int)$resource : null;
+
+    if( $simplesaml_allow_public_shares && '' !== $k )
         {
-        return true;
+        // Hard to determine at this stage what we consider a collection/ resource ID so we
+        // use the most general ones
+        if($collection_from_search && check_access_key_collection($collection_from_search, $k)) 
+            {
+            return true;
+            }
+        if($collection_add && check_access_key_collection($collection_add, $k)) 
+            {
+            return true;
+            }
+        if($c && check_access_key_collection($c, $k)) 
+            {
+            return true;
+            }
+        if($resource && check_access_key($resource, $k))
+            {
+            return true;
+            }
+        // External sharing of a featured collection category
+        if ($parent && check_access_key_collection($parent, $k))
+            {
+            return true;
+            }
         }
 
-	$url=str_replace("\\","/", $_SERVER["PHP_SELF"]);
+    $url=str_replace("\\","/", $_SERVER["PHP_SELF"]);
+    if ($simplesaml_allow_public_shares)
+        {
+        // Allow redirect for password protected external shares
+        $simplesaml_allowedpaths[] = '/pages/share_access.php';
+        }
 
-	foreach ($simplesaml_allowedpaths as $simplesaml_allowedpath)
-		{
+    foreach ($simplesaml_allowedpaths as $simplesaml_allowedpath)
+        {
         if('' == trim($simplesaml_allowedpath))
             {
             continue;
@@ -122,8 +158,7 @@ function HookSimplesamlAllProvideusercredentials()
         if(!$simplesaml_site_block && isset($anonymous_login) && trim($anonymous_login) !== '' && getval("usesso","")=="")
             {
             debug("simplesaml: checking for anonymous user");
-            $anonymous_login_escaped = escape_check($anonymous_login);
-            $anonymous_login_found   = sql_value("SELECT username AS `value` FROM user WHERE username = '{$anonymous_login_escaped}'", '');
+            $anonymous_login_found   = ps_value("SELECT username AS `value` FROM user WHERE username = ?", array("s",$anonymous_login), '');
 
             // If anonymous_login is not set to a real username then use SSO to authenticate
             if($anonymous_login_found == '')
@@ -188,30 +223,52 @@ function HookSimplesamlAllProvideusercredentials()
 
 		$attributes = simplesaml_getattributes();
 
-        if(strpos($simplesaml_username_attribute,",")!==false) // Do we have to join two fields together?
-		    {
-		    $username_attributes=explode(",",$simplesaml_username_attribute);
-		    $username ="";
-		    foreach ($username_attributes as $username_attribute)
+        // Construct username        
+        $username = "";
+        if(strlen($simplesaml_username_attribute) > 0)
+            {
+            $username_attributes=explode(",",$simplesaml_username_attribute);
+            $username_parts = [];
+            foreach ($username_attributes as $username_attribute)
                 {
-                if($username!=""){$username.=$simplesaml_username_separator;}
-                $username.=  $attributes[$username_attribute][0];
+                if(isset($attributes[$username_attribute][0]))
+                    {
+                    if(is_object($attributes[$username_attribute][0]))
+                        {
+                        $username_parts[] = $attributes[$username_attribute][0]->getValue();
+                        }
+                    elseif(is_string($attributes[$username_attribute][0]))
+                        {
+                        $username_parts[] = $attributes[$username_attribute][0];
+                        }
+                    }
                 }
-		    $username= $username . $simplesaml_username_suffix;
-		    }
-		else
-		    {
-            if(!isset($attributes[$simplesaml_username_attribute][0]) )
+            if(count($username_parts)>0)
                 {
-                $samlusername = simplesaml_getauthdata("saml:sp:NameID");
-                debug("simplesaml: username attribute not found. Setting to default user id " . $samlusername);
-                $username= $samlusername . $simplesaml_username_suffix;
+                $username = implode($simplesaml_username_separator,$username_parts);
                 }
-            else
-                {
-                $username=$attributes[$simplesaml_username_attribute][0] . $simplesaml_username_suffix;
-                }
-		    }
+            }
+        if($username == '')
+            {
+            debug("simplesaml: WARNING: no username found, attempting to use NameID");
+            // Attempt to fall back to NameID, truncated as necessary
+            $username = simplesaml_getauthdata("saml:sp:NameID");
+            }
+
+        if($username == '')
+            {
+            // no username, can't continue
+            debug("simplesaml: WARNING: no username found, aborting");
+            return false;
+            }
+
+        // truncate if necessary
+        if(strlen($username) > 50)
+            {
+            $username = mb_substr($username,0,15) . "_" . md5($username);
+            }
+
+        $username= $username . $simplesaml_username_suffix;
 
         // If local authorisation based on assertion/ claim is needed, check now and make sure we don't process any further!
         if(
@@ -269,14 +326,14 @@ function HookSimplesamlAllProvideusercredentials()
 
         $userid = 0;
         $update_hash = false; // Only update password hash if necessary as computationally intensive
-        $currentuser = sql_query("SELECT ref, usergroup, last_active FROM user WHERE username='" . escape_check($username) . "'");
+        $currentuser = ps_query("SELECT ref, usergroup, last_active FROM user WHERE username=?",array("s",$username));
         $legacy_username_used = false;
 
         // Attempt one more time with ".sso" suffix. Legacy way of distinguishing between SSO accounts and normal accounts
         if(is_array($currentuser) && count($currentuser) == 0)
             {
-            $legacy_username_escaped = escape_check("{$username}.sso");
-            $currentuser = sql_query("SELECT ref, usergroup, last_active FROM user WHERE username = '{$legacy_username_escaped}'");
+            $legacy_username = "{$username}.sso";
+            $currentuser = ps_query("SELECT ref, usergroup, last_active FROM user WHERE username = ?",array("s",$legacy_username));
             $legacy_username_used = true;
             }
 
@@ -286,13 +343,11 @@ function HookSimplesamlAllProvideusercredentials()
 
             if($legacy_username_used)
                 {
-                $username_escaped = escape_check($username);
-                $userid_escaped = escape_check($userid);
-                sql_query("UPDATE user SET username = '{$username_escaped}' WHERE ref = '{$userid_escaped}'");
+                ps_query("UPDATE user SET username = ? WHERE ref = ?",array("s",$username,"i",$userid));
                 }
 
             // Update hash if not logged on in last day
-            $lastactive = strtotime($currentuser[0]["last_active"]);
+            $lastactive = strtotime((string)$currentuser[0]["last_active"]);
             if($lastactive < date(time() - (60*60*24)))
                 {
                 $update_hash = true;
@@ -349,7 +404,7 @@ function HookSimplesamlAllProvideusercredentials()
 			{
             // User authenticated, but does not exist
             // First see if there is a matching account
-            $email_matches=sql_query("SELECT ref, username, fullname, origin FROM user WHERE email='" . escape_check($email) . "'");				
+            $email_matches=ps_query("SELECT ref, username, fullname, origin FROM user WHERE email=?",array("s",$email));				
 
             if(count($email_matches)>0 && trim($email) != "")
 				{
@@ -369,7 +424,7 @@ function HookSimplesamlAllProvideusercredentials()
                         if (filter_var($simplesaml_multiple_email_notify, FILTER_VALIDATE_EMAIL) && getval("usesso","") != "")
                             {
                             // Already account(s) with this email address, notify the administrator (provided it is an actual attempt to pevent unnecessary duplicates)
-                            simplesaml_duplicate_notify($username,$group,$email,$email_matches,$email,$userid);
+                            simplesaml_duplicate_notify($username,$group,$email,$email_matches,$userid);
                             }
                         // We are blocking accounts with the same email
                         if($simplesaml_allow_standard_login)
@@ -421,35 +476,47 @@ function HookSimplesamlAllProvideusercredentials()
 			// Update user info
 			global $simplesaml_update_group, $session_autologout;
             $hash_update = "";
+            $sql = "UPDATE user SET origin='simplesaml', username=?,";
+            $params=array("s",$username);
+
             if($update_hash)
                 {
                 $password_hash = rs_password_hash('RSSAML' . generateSecureKey(64) . $username);
-                $hash_update = "password = '$password_hash', ";
+                $sql .= "password = ?, ";
+                $params[]="s";$params[]=$password_hash;
                 }
-            $sql = "UPDATE user SET origin='simplesaml', username='" . escape_check($username) . "'," . $hash_update . " fullname='" . escape_check($displayname) . "'";
-            
+
+            $sql.=" fullname=?";
+            $params[]="s";$params[]=$displayname;
+
             if(isset($email) && $email != "")
                 {
                 // Only set email if provided. Allows accounts without an email address to have one set by the admin without it getting overwritten
-                $sql .= ", email='" . escape_check($email) . "'";
+                $sql .= ", email=?";
+                $params[]="s";$params[]=$email;
                 }
             if(isset($comment))
                 {
-                $sql .= ",comments=concat(comments,'\n" . date("Y-m-d") . " " . escape_check($comment) . "')";
+                $sql .= ",comments=concat(comments,?)";
+                $params[]="s";$params[]="\n" . date("Y-m-d") . " " . $comment;
+
                 log_activity($comment, LOG_CODE_UNSPECIFIED, 'simplesaml', 'user', 'origin', $userid, null, (isset($origin) ? $origin : null), $userid);
                 }
 			if($simplesaml_update_group || (isset($currentuser[0]["usergroup"]) && $currentuser[0]["usergroup"] == ""))
 				{
-				$sql .= ", usergroup = '$group'";
+				$sql .= ", usergroup = ?";
+                $params[]="i";$params[]=$group;
 				}
             if(0 < count($custom_attributes))
                 {
                 $custom_attributes = json_encode($custom_attributes);
-                $sql .=",simplesaml_custom_attributes = '" . escape_check($custom_attributes) . "'";
+                $sql .=",simplesaml_custom_attributes = ?";
+                $params[]="s";$params[]=$custom_attributes;
                 }
 
-			$sql .= " WHERE ref = '$userid'";
-			sql_query($sql);
+			$sql .= " WHERE ref = ?";
+            $params[]="i";$params[]=$userid;
+			ps_query($sql,$params);
 
             $user_select_sql = new PreparedStatementQuery();
             $user_select_sql->sql = "u.username = ?";
@@ -469,17 +536,32 @@ function HookSimplesamlAllLoginformlink()
             return false;
             }
 
-		// Add a link to login.php, as this page may still be seen if $simplesaml_allow_standard_login is set to true
-		global $baseurl, $lang, $simplesaml_login;
-		
-		// Don't show link to use SSO to login if this has been disabled
+        // Include in redirect any resource or collection parameter if present so we load to that page rather than home.
+        $parameters = array('usesso' => 'true');
+        $url_params = explode('?', getval("url",""));
+        parse_str(str_replace('&amp;', '&', ($url_params[1] ?? "")), $url_params);
+
+        if (isset($url_params['c']))
+            {
+            $parameters['c'] = $url_params['c'];
+            }
+            
+        if (isset($url_params['r']))
+            {
+            $parameters['r'] = $url_params['r'];
+            }
+
+        // Add a link to login.php, as this page may still be seen if $simplesaml_allow_standard_login is set to true
+        global $baseurl, $lang, $simplesaml_login;
+
+        // Don't show link to use SSO to login if this has been disabled
         if(!$simplesaml_login)
             {
             return false;
             }
         ?>
-		<a href="<?php echo $baseurl; ?>/?usesso=true"><i class="fas fa-fw fa-key"></i>&nbsp;<?php echo $lang['simplesaml_use_sso']; ?></a><br/>
-		<?php
+        <a href="<?php echo generateURL($baseurl, $parameters); ?>"><i class="fas fa-fw fa-key"></i>&nbsp;<?php echo strip_tags_and_attributes($lang['simplesaml_use_sso']); ?></a><br/>
+        <?php
         }
 
 function HookSimplesamlLoginPostlogout()
@@ -529,7 +611,7 @@ function HookSimplesamlAllReplaceheadernav1anon()
         return false;
         }
 
-    global $baseurl, $lang, $anon_login_modal, $contact_link, $simplesaml_prefer_standard_login, $simplesaml_site_block, $simplesaml_allow_standard_login, $simplesaml_login;
+    global $baseurl, $lang, $contact_link, $simplesaml_prefer_standard_login, $simplesaml_site_block, $simplesaml_allow_standard_login, $simplesaml_login;
 
     // Don't show any link if signed in via SAML already and standard logins have been disabled
     if(!$simplesaml_allow_standard_login && !$simplesaml_login && simplesaml_is_authenticated())
@@ -542,16 +624,10 @@ function HookSimplesamlAllReplaceheadernav1anon()
         return false;
         }
 
-    $onClick = '';
-
-    if($anon_login_modal)
-        {
-        $onClick = 'onClick="return ModalLoad(this, true);"';
-        }
         ?>
     <ul>
         <li>
-            <a href="<?php echo $baseurl; ?>/?usesso=true"<?php echo $onClick; ?>><?php echo $lang['login']; ?></a>
+            <a href="<?php echo $baseurl; ?>/?usesso=true"><?php echo $lang['login']; ?></a>
         </li>
     <?php
     if($contact_link)
@@ -611,7 +687,7 @@ function HookSimplesamlAllCheck_access_key()
 
         $validate_user = validate_user($user_select_sql);
 
-        if(is_array($validate_user[0]) && !empty($validate_user[0]))
+        if(is_array($validate_user) && is_array($validate_user[0]) && !empty($validate_user[0]))
             {
             setup_user($validate_user[0]);
             $is_authenticated = true;
@@ -622,46 +698,55 @@ function HookSimplesamlAllCheck_access_key()
     return false;
     }
 
-function HookSimplesamlAllExtra_fail_checks()
+function HookSimplesamlAllExtra_checks()
     {
+    $return = array();  // Array containing any errors / warnings found.
+
     // Check if incompatible with PHP version
-    $simplesaml_fail = [
-        'name' => 'simplesaml',
-        'info' => $GLOBALS['lang']['simplesaml_healthcheck_error'],
+    $simplesaml_php_check = [
+        'status' => 'FAIL',
+        'info' => $GLOBALS['lang']['simplesaml_healthcheck_error'] . ' PHP',
+        'severity' => SEVERITY_CRITICAL,
+        'severity_text' => $GLOBALS["lang"]["severity-level_" . SEVERITY_CRITICAL],
     ];
 
     $GLOBALS['use_error_exception'] = true;
     try
         {
-        $samlok = simplesaml_php_check();
+        if (!simplesaml_php_check())
+            {
+            $return['simplesaml_php'] = $simplesaml_php_check;
+            }
         }
     catch (Exception $e)
         {
-        return $simplesaml_fail;
+        $return['simplesaml_php_exception'] = $simplesaml_php_check;
         }
     unset($GLOBALS['use_error_exception']);
 
-    return $samlok ? false : $simplesaml_fail;
-    }
-
-function HookSimplesamlAllExtra_warn_checks()
-    {
     // Check if SAML library needs updating (if pre-9.7 SP not using ResourceSpace config)
-    $simplesaml_warn = [
-        'name' => 'simplesaml',
+    $simplesaml_config_check = [
+        'status' => 'FAIL',
         'info' => $GLOBALS['lang']['simplesaml_healthcheck_error'],
+        'severity' => SEVERITY_NOTICE
     ];
 
     $GLOBALS['use_error_exception'] = true;
     try
         {
-        $samlok = simplesaml_config_check();
+        if (!simplesaml_config_check())
+            {
+            $return['saml_config_check'] = $simplesaml_config_check;
+            }
         }
     catch (Exception $e)
         {
-        return array($simplesaml_warn);
+        $return['saml_config_exception'] = $simplesaml_config_check;
         }
     unset($GLOBALS['use_error_exception']);
 
-    return $samlok ? false : array($simplesaml_warn);
+    if (count($return) > 0)
+        {
+        return $return;
+        }
     }

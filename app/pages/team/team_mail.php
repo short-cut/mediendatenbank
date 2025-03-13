@@ -13,7 +13,7 @@ $message_type = intval(getval("message_type",MESSAGE_ENUM_NOTIFICATION_TYPE_EMAI
 
 if (getval("send","")!="" && enforcePostRequest(false))
 	{
-	$result=bulk_mail(getvalescaped("users",""),getvalescaped("subject",""),getvalescaped("text",""),getval("html","")=="yes",$message_type,getval("url",""));
+	$result=bulk_mail(getval("users",""),getval("subject",""),getval("text",""),getval("html","")=="yes",$message_type,getval("url",""));
 	if ($result=="")
 		{
 		switch($message_type)
@@ -65,7 +65,8 @@ switch($message_type){
 $links_trail = array(
     array(
         'title' => $lang["teamcentre"],
-        'href'  => $baseurl_short . "pages/team/team_home.php"
+        'href'  => $baseurl_short . "pages/team/team_home.php",
+		'menu' =>  true
     ),
     array(
         'title' => $title,
@@ -105,20 +106,19 @@ if (isset($error)) { ?><div class="FormError"><?php echo $error?></div><?php } ?
 </div>
 
 <div id="message_screen" style="<?php if($message_type!=MESSAGE_ENUM_NOTIFICATION_TYPE_SCREEN && $message_type!=(MESSAGE_ENUM_NOTIFICATION_TYPE_EMAIL | MESSAGE_ENUM_NOTIFICATION_TYPE_SCREEN)) {?>display:none;<?php } ?>">
-	<div class="Question"><label><?php echo $lang["message_url"]?></label><input name="url" type="text" class="stdwidth Inline required" value="<?php echo getval("url",""); ?>"><div class="clearerleft"></div></div>
+	<div class="Question"><label><?php echo $lang["message_url"]?></label><input name="url" type="text" class="stdwidth Inline required" value="<?php echo escape(getval("url","")); ?>"><div class="clearerleft"></div></div>
 </div>
 
 <div id="message_email" style="<?php if($message_type!==MESSAGE_ENUM_NOTIFICATION_TYPE_EMAIL && $message_type!=(MESSAGE_ENUM_NOTIFICATION_TYPE_EMAIL | MESSAGE_ENUM_NOTIFICATION_TYPE_SCREEN)) {?>display:none;<?php } ?>">
 	<div class="Question"><label><?php echo $lang["emailhtml"]?></label><input name="html" type="checkbox" value="yes" <?php if (getval("html","")=="yes") { ?>checked<?php } ?>><div class="clearerleft"> </div></div>
-	<div class="Question"><label><?php echo $lang["emailsubject"]?></label><input name="subject" type="text" class="stdwidth Inline required" value="<?php echo getval("subject",$applicationname)?>"><div class="clearerleft"> </div></div>
+	<div class="Question"><label><?php echo $lang["emailsubject"]?></label><input name="subject" type="text" class="stdwidth Inline required" value="<?php echo escape(getval("subject",$applicationname))?>"><div class="clearerleft"> </div></div>
 </div>
 
 <div class="Question"><label><?php echo $lang["text"]?></label><textarea name="text" class="stdwidth Inline required" rows=25 cols=50><?php echo htmlspecialchars(getval("text",""))?></textarea><div class="clearerleft"> </div></div>
 
 <?php hook("additionalemailfield");?>
 
-<div class="QuestionSubmit">
-<label for="buttons"> </label>			
+<div class="QuestionSubmit">		
 <input name="send" type="submit" value="&nbsp;&nbsp;<?php echo $lang["send"]?>&nbsp;&nbsp;" />
 </div>
 </form>

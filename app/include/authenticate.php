@@ -1,6 +1,7 @@
 <?php
 include_once __DIR__ . '/login_functions.php';
 
+debug("[authenticate.php] Reached authenticate page...");
 # authenticate user based on cookie
 
 $valid=true;
@@ -10,6 +11,8 @@ $is_authenticated=false;
 
 if (array_key_exists("user",$_COOKIE) || array_key_exists("user",$_GET) || isset($anonymous_login) || hook('provideusercredentials'))
     {
+    debug("[authenticate.php] Attempting to resolve user session...");
+
     $username="";
     // Resolve anonymous login user if it is configured at domain level
     if(isset($anonymous_login) && is_array($anonymous_login))
@@ -22,11 +25,11 @@ if (array_key_exists("user",$_COOKIE) || array_key_exists("user",$_GET) || isset
     // Establish session hash
     if (array_key_exists("user",$_GET))
         {
-        $session_hash=escape_check($_GET["user"]);
+        $session_hash=$_GET["user"];
         }
     elseif (array_key_exists("user",$_COOKIE))
         {
-        $session_hash=escape_check($_COOKIE["user"]);
+        $session_hash=$_COOKIE["user"];
         }
     elseif (isset($anonymous_login))
         {
@@ -54,15 +57,19 @@ if (array_key_exists("user",$_COOKIE) || array_key_exists("user",$_GET) || isset
 
     if(count($userdata) > 0)
         {
+        debug("[authenticate.php] User valid!");
+
         $valid = true;
         setup_user($userdata[0]);
 
-        if ($password_expiry>0 && !checkperm("p") && $allow_password_change && in_array($pagename, array("user_change_password","index","collections")) === false && strlen(trim($userdata[0]["password_last_change"]))>0 && getval("modal","")=="")
+        if ($password_expiry>0 && !checkperm("p") && $allow_password_change && in_array($pagename, array("user_change_password","index","collections")) === false && strlen(trim((string) $userdata[0]["password_last_change"]))>0 && getval("modal","")=="")
         	{
         	# Redirect the user to the password change page if their password has expired.
-	        $last_password_change=time()-strtotime($userdata[0]["password_last_change"]);
+	        $last_password_change=time()-strtotime((string) $userdata[0]["password_last_change"]);
 		if ($last_password_change>($password_expiry*60*60*24))
 			{
+            debug("[authenticate.php] Redirecting user to change password...");
+
 			?>
 			<script>
 			top.location.href="<?php echo $baseurl_short?>pages/user/user_change_password.php?expired=true";
@@ -71,23 +78,25 @@ if (array_key_exists("user",$_COOKIE) || array_key_exists("user",$_GET) || isset
 			}
         	}
         
-        if (!isset($system_login) && strlen(trim($userdata[0]["last_active"]))>0)
+        if (!isset($system_login) && strlen(trim((string)$userdata[0]["last_active"]))>0)
         	{
 	        if ($userdata[0]["idle_seconds"]>($session_length*60))
 	        	{
+                debug("[authenticate.php] Session length expired!");
           	    # Last active more than $session_length mins ago?
 				$al="";if (isset($anonymous_login)) {$al=$anonymous_login;}
 				
 				if ($session_autologout && $username!=$al) # If auto logout enabled, but this is not the anonymous user, log them out.
 					{
+                    debug("[authenticate.php] Autologging out user.");
 					# Reached the end of valid session time, auto log out the user.
 					
 					# Remove session
 					ps_query("update user set logged_in = 0, session = '' where ref= ?",array("i",$userref));
 					hook("removeuseridcookie");
 					# Blank cookie / var
-					rs_setcookie("user", "", time() - 3600, "", "", substr($baseurl,0,5)=="https", true);					
-					rs_setcookie("user", "", time() - 3600, "/pages", "", substr($baseurl,0,5)=="https", true);
+					rs_setcookie("user", "", -1, "", "", substr($baseurl,0,5)=="https", true);					
+					rs_setcookie("user", "", -1, "/pages", "", substr($baseurl,0,5)=="https", true);
 					unset($username);
 		
 					if (isset($anonymous_login))
@@ -128,7 +137,7 @@ if (!$valid && isset($anonymous_autouser_group))
     # Automatically create a users for anonymous access, and place them in a user group.
     
 	# Prepare to create the user.
-	$email=trim(getvalescaped("email","")) ;
+	$email=trim(getval("email","")) ;
 	$username="anonymous" . ps_value("select max(ref)+1 value from user", array(), 0); # Make up a username.
 	$password=make_password();
     $password_hash = rs_password_hash("RS{$username}{$password}");
@@ -141,7 +150,7 @@ if (!$valid && isset($anonymous_autouser_group))
     rs_setcookie("user", $session_hash, 100, "", "", substr($baseurl,0,5)=="https", true);
 
     // Setup the user
-    $login_session_hash = (isset($login_data['session_hash']) ? escape_check($login_data['session_hash']) : '');
+    $login_session_hash = (isset($login_data['session_hash']) ? $login_data['session_hash'] : '');
     $user_select_sql = new PreparedStatementQuery();
     $user_select_sql->sql = "u.session=?";
     $user_select_sql->parameters = ["s",$login_session_hash];
@@ -157,10 +166,12 @@ if (!$valid && isset($anonymous_autouser_group))
     
 if (!$valid && !isset($system_login))
     {
+    debug("[authenticate.php] User not valid!");
 	$_SERVER['REQUEST_URI'] = ( isset($_SERVER['REQUEST_URI']) ?
 	$_SERVER['REQUEST_URI'] : $_SERVER['SCRIPT_NAME'] . (( isset($_SERVER
 	['QUERY_STRING']) ? '?' . $_SERVER['QUERY_STRING'] : '')));
     $path = $_SERVER["REQUEST_URI"];
+    debug("[authenticate.php] path = $path");
     
     if(strpos($path,"/ajax") !== false)
         {
@@ -198,6 +209,7 @@ if (!$valid && !isset($system_login))
     else
         {
         $url = generateURL($baseurl . "/login.php",$redirparams);
+        debug("[authenticate.php] Redirecting to $url");
         redirect($url);
         exit();
         }
@@ -217,15 +229,11 @@ if (isset($ip_restrict_group)){
 		$allow=ip_matches($ip, $ip_restrict);
 		}
 
-	if (!$allow)
-		{
-		if ($iprestrict_friendlyerror)
-			{
-			exit("Sorry, but the IP address you are using to access the system (" . $ip . ") is not in the permitted list. Please contact an administrator.");
-			}
-		header("HTTP/1.0 403 Access Denied");
-		exit("Access denied.");
-		}
+    if (!$allow)
+        {
+        header("HTTP/1.0 403 Access Denied");
+        exit("Access denied.");
+        }
 	}
 }
 
@@ -245,7 +253,7 @@ if($terms_login && 0 == $useracceptedterms && in_array($pagename, array("reload_
 
 if (isset($_SERVER["HTTP_USER_AGENT"]))
 	{
-	$last_browser=escape_check(substr($_SERVER["HTTP_USER_AGENT"],0,250));
+	$last_browser=substr($_SERVER["HTTP_USER_AGENT"],0,250);
 	}
 else
 	{ 
@@ -279,7 +287,7 @@ else
 		$parameters=array
 			(
 			"s",$language,
-			"s",$usergroup
+			"i",$usergroup
 			);
 
 		if ($pagename!="admin_content") // Load all content on the admin_content page to allow management.
@@ -309,7 +317,6 @@ else
 # Load group specific plugins and reorder plugins list
 $plugins= array();
 $active_plugins = (ps_query("SELECT name,enabled_groups, config, config_json, disable_group_select FROM plugins WHERE inst_version >= 0 ORDER BY priority", array(), "plugins"));
-
 
 foreach($active_plugins as $plugin)
 	{
@@ -343,13 +350,36 @@ foreach($plugins as $plugin)
 // Load user config options
 process_config_options($userref);
 
+// Once system wide/user preferences and user group config overrides have loaded, any config based dependencies should be checked and loaded.
+if(!$disable_geocoding)
+    {
+    include_once __DIR__ . '/map_functions.php';
+    }
+
 hook('handleuserref','',array($userref));
+
+// Set a trace ID which can be used to correlate events within this request (requires $debug_extended_info)
+$trace_id_components = [
+    getmypid(),
+    $_SERVER['REQUEST_TIME_FLOAT'],
+    $GLOBALS['pagename'], # already set in db.php
+    http_build_query($_GET),
+    $GLOBALS['userref'],
+];
+$GLOBALS['debug_trace_id'] = generate_trace_id($trace_id_components);
+debug(sprintf(
+    'User %s (ID %s) set its debug_trace_id to "%s" (components: %s)',
+    $GLOBALS['username'],
+    $GLOBALS['userref'],
+    $GLOBALS['debug_trace_id'],
+    json_encode($trace_id_components)
+));
 
 $is_authenticated=true;
 
 // Checks user has opted to see the full site view rather than
 // the responsive version on a device
-if(true == getvalescaped('ui_view_full_site', false))
+if(true == getval('ui_view_full_site', false))
     {
     $responsive_ui = false;
     }
@@ -377,4 +407,11 @@ if(
         }
 
     exit($lang["error-csrf-verification-failed"]);
+    }
+elseif (defined('API_CALL') && $_SERVER['REQUEST_METHOD'] === 'POST' && !isValidCSRFToken($csrf_token, $usersession))
+    {
+    ajax_send_response(
+        400,
+        ajax_response_fail(ajax_build_message("{$lang['error-csrf-verification']}: {$lang['error_invalid_input']}"))
+    );
     }

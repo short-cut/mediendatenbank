@@ -6,13 +6,13 @@
 include '../../include/db.php';
 include '../../include/authenticate.php';
 
-$ref=getvalescaped("ref","",true);
+$ref=getval("ref","",true);
 $print=(getval("print","")!=""); # Print mode?
 
 if ($ref!="" && $_SERVER['REQUEST_METHOD']=="GET")
     {
     # Load a saved report
-    $report=sql_query("select * from user_report where ref='$ref' and user='$userref'");if (count($report)==0) {exit("Report not found.");}
+    $report=ps_query("select " . columns_in("user_report") . " from user_report where ref= ? and user= ?", ['i', $ref, 'i', $userref]);if (count($report)==0) {exit("Report not found.");}
     $report=$report[0];
     $params = unserialize($report['params']);
 
@@ -25,23 +25,23 @@ if ($ref!="" && $_SERVER['REQUEST_METHOD']=="GET")
 
 if (!checkperm("t")) {exit ("Permission denied.");}
 
-$offset=getvalescaped("offset",0,true);
-$findtext=getvalescaped("findtext","");
-$activity_type=getvalescaped("activity_type","");
+$offset=getval("offset",0,true);
+$findtext=getval("findtext","");
+$activity_type=getval("activity_type","");
 
-$resource_type=getvalescaped("resource_type","");
-$period=getvalescaped("period",$reporting_periods_default[1]);
+$resource_type=getval("resource_type","");
+$period=getval("period",$reporting_periods_default[1]);
 $period_init=$period;
-$period_days=getvalescaped("period_days","");
-$from_y = getvalescaped("from-y","");
-$from_m = getvalescaped("from-m","");
-$from_d = getvalescaped("from-d","");
-$to_y = getvalescaped("to-y","");
-$to_m = getvalescaped("to-m","");
-$to_d = getvalescaped("to-d","");
-$groupselect=getvalescaped("groupselect","viewall");
-$collection=getvalescaped("collection","");
-$external=getvalescaped("external","");
+$period_days=getval("period_days","");
+$from_y = getval("from-y","");
+$from_m = getval("from-m","");
+$from_d = getval("from-d","");
+$to_y = getval("to-y","");
+$to_m = getval("to-m","");
+$to_d = getval("to-d","");
+$groupselect=getval("groupselect","viewall");
+$collection=getval("collection","");
+$external=getval("external","");
 
 
 if ($groupselect=="select" && isset($_POST["groups"]) && is_array($_POST["groups"]))
@@ -69,14 +69,20 @@ if (getval("name", "") != "" && getval("save", "") != "" && enforcePostRequest(g
     if ($ref=="")
         {
         # New report
-        sql_query("insert into user_report(name,user) values ('" . getvalescaped("name","") . "','$userref')");
+        ps_query("insert into user_report(name,user) values (?, ?)", ['s', getval("name",""), 'i', $userref]);
         $ref=sql_insert_id();
         }
     # Saving
     unset($_POST[$CSRF_token_identifier]);
     unset($_POST['save']);
     $params=serialize($_POST);
-    sql_query("update user_report set `name`='" . getvalescaped("name","") . "',`params`='" . escape_check($params) . "' where ref='$ref' and user='$userref'");
+    ps_query(
+        "update user_report set `name`= ?,`params`= ? where ref= ? and user= ?", 
+        ['s', getval("name",""), 
+         's', $params, 
+         'i', $ref, 
+         'i', $userref]
+    );
     }
     
 
@@ -87,21 +93,25 @@ if ($print)
     {
     ?><html><head>
         <style>
-        .pie {transform: scale(0.45);transform-origin: 0 0;}
-        .line {transform: scale(0.35);transform-origin: 0 0;}
         a,.CollapsibleSectionHead {display:none;}
         </style>
 
     <link href="<?php echo $baseurl ?>/css/global.css" rel="stylesheet" type="text/css" media="screen,projection,print" />
     <link href="<?php echo $baseurl ?>/css/colour.css" rel="stylesheet" type="text/css" media="screen,projection,print" />
 
-    <script src="<?php echo $baseurl ?>/lib/js/jquery-3.6.0.min.js?css_reload_key=152"></script>
-    <script src="<?php echo $baseurl ?>/lib/js/jquery-ui-1.12.1.min.js?css_reload_key=152" type="text/javascript"></script>
-    <!-- FLOT for graphs -->
-    <script language="javascript" type="text/javascript" src="<?php echo $baseurl ?>/lib/flot/jquery.flot.js"></script> 
-    <script language="javascript" type="text/javascript" src="<?php echo $baseurl ?>/lib/flot/jquery.flot.time.js"></script> 
-    <script language="javascript" type="text/javascript" src="<?php echo $baseurl ?>/lib/flot/jquery.flot.pie.js"></script>
-    <script language="javascript" type="text/javascript" src="<?php echo $baseurl ?>/lib/flot/jquery.flot.tooltip.min.js"></script>
+    <!-- Load jQuery and jQueryUI -->
+    <script src="<?php echo $baseurl . $jquery_path; ?>?css_reload_key=<?php echo $css_reload_key; ?>"></script>
+    <script src="<?php echo $baseurl. $jquery_ui_path?>?css_reload_key=<?php echo $css_reload_key; ?>" type="text/javascript"></script>
+    <script src="<?php echo $baseurl; ?>/lib/js/jquery.layout.js?css_reload_key=<?php echo $css_reload_key?>"></script>
+    <link type="text/css" href="<?php echo $baseurl?>/css/smoothness/jquery-ui.min.css?css_reload_key=<?php echo $css_reload_key?>" rel="stylesheet" />
+    <script src="<?php echo $baseurl?>/lib/js/jquery.ui.touch-punch.min.js"></script>
+    <script type="text/javascript" src="<?php echo $baseurl?>/lib/js/jquery.tshift.min.js"></script>
+    <script type="text/javascript" src="<?php echo $baseurl?>/lib/js/jquery-periodical-updater.js"></script>
+
+    <!-- Chart.js for graphs -->
+    <script language="javascript" type="module" src="<?php echo $baseurl_short; ?>lib/js/chartjs-4-4-0.js"></script>
+    <script language="javascript" type="module" src="<?php echo $baseurl_short; ?>lib/js/date-fns.js"></script>
+    <script language="javascript" type="module" src="<?php echo $baseurl_short; ?>lib/js/chartjs-adapter-date-fns.js"></script>
 
     </head><body onload="window.setTimeout('window.print();',3000);"><?php
     }
@@ -112,11 +122,13 @@ else
 ?>
 
 <div class="BasicsBox">
+    <h1><?php echo $ref != "" ? $lang["edit_report"] : $lang["new_report"]; ?></h1>
     <?php
     $links_trail = array(
         array(
             'title' => $lang["teamcentre"],
-            'href'  => $baseurl_short . "pages/team/team_home.php"
+            'href'  => $baseurl_short . "pages/team/team_home.php",
+            'menu' =>  true
         ),
         array(
             'title' => $lang["rse_analytics"],
@@ -250,16 +262,8 @@ for ($n=0;$n<count($list);$n++)
 </div>
 
 
-
-
-
-
-
-
-
 <div class="QuestionSubmit">
-    <input type="hidden" name="save" value="save report">
-<label for="buttons"> </label>			
+    <input type="hidden" name="save" value="save report">	
 <input name="update" type="submit" value="&nbsp;&nbsp;<?php echo $lang["update_report"]?>&nbsp;&nbsp;" />
 <input name="save" type="submit" onClick="if (document.getElementById('report_name').value=='') {alert('<?php echo addslashes($lang["report_please_enter_name"]) ?>');}" value="&nbsp;&nbsp;<?php echo $lang["save_report"]?>&nbsp;&nbsp;" />
 </div>
@@ -279,9 +283,25 @@ for ($n=0;$n<count($types);$n++)
 	{
         if (($activity_type=="" || $activity_type==$types[$n]) && ($collection=="" || in_array($types[$n],$resource_activity_types)))
             {
-            $graph_params="report=" . $ref . "&n=" . $n . "&activity_type=" . urlencode($types[$n]) . "&groups=" . urlencode(join(",",$groups)) . "&from-y=" . $from_y . "&from-m=" . $from_m ."&from-d=" . $from_d . "&to-y=" . $to_y . "&to-m=" . $to_m ."&to-d=" . $to_d . "&period=" . $period . "&period_days=" . $period_days . "&collection=" . $collection  . "&resource_type=" . $resource_type . "&external=" . $external;
-            #echo $graph_params;
-            
+            $graph_params=array(
+                "report"        => $ref,
+                "n"             => $n,
+                "activity_type" => $types[$n],
+                "groups"        => join(",",$groups),
+                "from-y"        => $from_y,
+                "from-m"        => $from_m,
+                "from-d"        => $from_d,
+                "to-y"          => $to_y,
+                "to-m"          => $to_m,
+                "to-d"          => $to_d,
+                "period"        => $period,
+                "period_days"   => $period_days,
+                "collection"    => $collection,
+                "resource_type" => $resource_type,
+                "external"      => $external,
+                "print"         => $print??0
+            );
+
             # Show the object breakdown for certain types only.
             $show_breakdown=false;
             $show_pieresourcetype=false;
@@ -343,11 +363,11 @@ for ($n=0;$n<count($types);$n++)
             <?php if ($activity_type=="") { ?></div><hr style="clear:both;" /><div style="page-break-inside: avoid;"><?php } ?>
             <script>
             jQuery(function () {
-            <?php if ($show_breakdown) { ?>jQuery('#pie<?php echo $n ?>').load("<?php echo $baseurl_short ?>pages/team/ajax/graph.php?type=pie&<?php echo $graph_params ?>");<?php } ?>
-            <?php if ($show_piegroup) { ?>jQuery('#piegroup<?php echo $n ?>').load("<?php echo $baseurl_short ?>pages/team/ajax/graph.php?type=piegroup&<?php echo $graph_params ?>");<?php } ?>
-            <?php if ($show_pieresourcetype) { ?>jQuery('#pieresourcetype<?php echo $n ?>').load("<?php echo $baseurl_short ?>pages/team/ajax/graph.php?type=pieresourcetype&<?php echo $graph_params ?>");<?php } ?>
-            <?php if ($show_line) { ?>jQuery('#line<?php echo $n ?>').load("<?php echo $baseurl_short ?>pages/team/ajax/graph.php?type=line&<?php echo $graph_params ?>");<?php } ?>
-            <?php if ($show_summary) { ?>jQuery('#summary<?php echo $n ?>').load("<?php echo $baseurl_short ?>pages/team/ajax/graph.php?type=summary&<?php echo $graph_params ?>");<?php } ?>
+            <?php if ($show_breakdown)          { ?>jQuery('#pie<?php echo $n ?>').load("<?php echo generateURL($baseurl_short . "pages/team/ajax/graph.php",$graph_params,["type"=>"pie"])?>");<?php } ?>
+            <?php if ($show_piegroup)           { ?>jQuery('#piegroup<?php echo $n ?>').load("<?php echo generateURL($baseurl_short . "pages/team/ajax/graph.php",$graph_params,["type"=>"piegroup"])?>");<?php } ?>
+            <?php if ($show_pieresourcetype)    { ?>jQuery('#pieresourcetype<?php echo $n ?>').load("<?php echo generateURL($baseurl_short . "pages/team/ajax/graph.php",$graph_params,["type"=>"pieresourcetype"])?>");<?php } ?>
+            <?php if ($show_line)               { ?>jQuery('#line<?php echo $n ?>').load("<?php echo  generateURL($baseurl_short . "pages/team/ajax/graph.php",$graph_params,["type"=>"line"])?>");<?php } ?>
+            <?php if ($show_summary)            { ?>jQuery('#summary<?php echo $n ?>').load("<?php echo generateURL($baseurl_short . "pages/team/ajax/graph.php",$graph_params,["type"=>"summary"]) ?>");<?php } ?>
             
             });
             </script>

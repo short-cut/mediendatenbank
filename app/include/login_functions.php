@@ -8,7 +8,7 @@
 function perform_login($loginuser="",$loginpass="")
 	{
     global $scramble_key, $lang, $max_login_attempts_wait_minutes, $max_login_attempts_per_ip, $max_login_attempts_per_username,
-    $global_cookies, $username, $password, $password_hash, $session_hash, $usergroup;
+    $username, $password, $password_hash, $session_hash, $usergroup;
 
     $result = [];
     $result['valid'] = $valid = false;
@@ -35,7 +35,7 @@ function perform_login($loginuser="",$loginpass="")
         }
 
     // User logs in
-    if($found_user_record && rs_password_verify($password, $user_data['password'], ['username' => $username]))
+    if($found_user_record && rs_password_verify($password, $user_data['password'], ['username' => $username]) && $password != "")
         {
         $password_hash_info = get_password_hash_info();
         $algo = $password_hash_info['algo'];
@@ -114,7 +114,7 @@ function perform_login($loginuser="",$loginpass="")
         $result['ref'] = $userref;
 
         
-        $language = getvalescaped("language", "");
+        $language = getval("language", "");
 		ps_query("
             UPDATE user
                SET session=?,
@@ -281,13 +281,6 @@ function set_login_cookies($user, $session_hash, $language = "", $user_preferenc
 
     # Set default resource types
     rs_setcookie('restypes', $default_res_types);
-
-    $userpreferences = ($user_preferences) ? ps_query("SELECT user, `value` AS colour_theme FROM user_preferences WHERE user = ? AND parameter = 'colour_theme'",array("i",$user)) : FALSE;
-    $userpreferences = ($userpreferences && isset($userpreferences[0])) ? $userpreferences[0]: FALSE;
-    if($userpreferences && isset($userpreferences["colour_theme"]) && $userpreferences["colour_theme"]!="" && (!isset($_COOKIE["colour_theme"]) || $userpreferences["colour_theme"]!=$_COOKIE["colour_theme"]))
-        {
-        rs_setcookie("colour_theme", $userpreferences["colour_theme"],100, "/", "", substr($baseurl,0,5)=="https", true);
-        }
     }
 
 /**
@@ -359,6 +352,13 @@ function rs_password_verify(string $password, string $hash, array $data)
     // case anymore) -or- when someone resets it manually in the database
     else if($password === $hash)
         {
+        return true;
+        }
+    else if(isset($GLOBALS["scramble_key_old"]) && $GLOBALS["migrating_scrambled"]
+        && password_verify(hash_hmac('sha256', $RS_madeup_pass, $GLOBALS['scramble_key_old']), $hash) )
+        {
+        // Force user to change password if password_expiry is enabled
+        ps_query("UPDATE user SET password_last_change = '1970-01-01' WHERE username = ?", array("s",$data['username']));
         return true;
         }
 

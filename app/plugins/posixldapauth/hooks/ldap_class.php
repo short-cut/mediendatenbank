@@ -120,72 +120,77 @@ class ldapAuth
 			if ($this->ldap_debug) { error_log( __FILE__ . " " . __METHOD__ . " " . __LINE__ . " Auth to LDAP with " . $this->ldaprdn); }
 		}
 		
-		if (@ldap_bind($this->ldapconn, $this->ldaprdn, $this->ldappass)) {
-			// now check if this is AD, and if so, set the DN correctly!
-			if ($this->ldap_debug) { error_log( __FILE__ . " " . __METHOD__ . " " . __LINE__ . " Auth Succesfull for " . $this->ldaprdn); }
-			if ($ldapType == 1)
-			{
-				// get the shortname from the username (ie user@domain becomes user)
-				$usercn = stristr($username,"@",true);
-				if ($this->ldap_debug) { error_log ("user cn = ". $usercn ); }
-				// set the search filter * attributes we want
-				
-				// removed to specify user principal name as this might be more reliable. April 2014
-				$filter="(samaccountname=" . ldap_escape($usercn, "", LDAP_ESCAPE_FILTER) . ")";
-				
-				//$filter="(userprincipalname=".$username.")";
-				$attributes=array("dn","cn");
-				
-				// search from the base dn down for the user:
-				if ($this->ldap_debug) { error_log( __FILE__ . " " . __METHOD__ . " " . __LINE__ . " Searching  " . $this->ldapconfig['basedn'] . " for " . $filter); }
+        $GLOBALS["use_error_exception"] = true;
+        try {
+            if (ldap_bind($this->ldapconn, $this->ldaprdn, $this->ldappass)) {
+                // now check if this is AD, and if so, set the DN correctly!
+                if ($this->ldap_debug) { error_log( __FILE__ . " " . __METHOD__ . " " . __LINE__ . " Auth Succesfull for " . $this->ldaprdn); }
+                if ($ldapType == 1)
+                {
+                    // get the shortname from the username (ie user@domain becomes user)
+                    $usercn = stristr($username,"@",true);
+                    if ($this->ldap_debug) { error_log ("user cn = ". $usercn ); }
+                    // set the search filter * attributes we want
+                    
+                    // removed to specify user principal name as this might be more reliable. April 2014
+                    $filter="(samaccountname=" . ldap_escape($usercn, "", LDAP_ESCAPE_FILTER) . ")";
+                    
+                    //$filter="(userprincipalname=".$username.")";
+                    $attributes=array("dn","cn");
+                    
+                    // search from the base dn down for the user:
+                    if ($this->ldap_debug) { error_log( __FILE__ . " " . __METHOD__ . " " . __LINE__ . " Searching  " . $this->ldapconfig['basedn'] . " for " . $filter); }
 
-				if (!($search = ldap_search($this->ldapconn, $this->ldapconfig['basedn'], $filter,$attributes))) {
-				     die($lang['posixldapauth_unable_to_search_ldap_server']);
-				}	
-				// get the info
-				$number_returned = ldap_count_entries($this->ldapconn, $search);
-				
-				if ($number_returned == 0) 
-				{
-					// Houston we have a problem, we have not managed to find the account even though we can bind with it !
-					// We are going to guess that samaccountname (pre windows 2000 logon name) is not the same as the 
-					// user portion of the userPrincipalName.
-					if ($this->ldap_debug) { error_log( __FILE__ . " " . __METHOD__ . " " . __LINE__ . " Num entries returned = " . $number_returned ); }
-					if ($this->ldap_debug) { error_log( __FILE__ . " " . __METHOD__ . " " . __LINE__ . " searching on userPrincipalName " . $username ); }
-					$filter="(userprincipalname=" . ldap_escape($username, "", LDAP_ESCAPE_FILTER) . ")";
-					
-					// search
-					if (!($search = ldap_search($this->ldapconn, $this->ldapconfig['basedn'], $filter,$attributes))) {
-					     die($lang['posixldapauth_unable_to_search_ldap_server']);
-					}	
-					// get the info
-					$number_returned = ldap_count_entries($this->ldapconn, $search);
-					if ($number_returned == 0) 
-					{
-						// we still have a problem
-						if ($this->ldap_debug) { error_log( __FILE__ . " " . __METHOD__ . " " . __LINE__ . " account not found with userPrincipalName " . $username ); }
-						// fail the auth
-						return 0;
-					}
-				}
-				
-				// we should definitly have the info now!
-				
-				$info = ldap_get_entries($this->ldapconn, $search);
-				
-				//print_r ($info);
-				// set the rdn
-				$this->ldaprdn = $info[0]["dn"];
-				
-			}
-	        return 1;
-	    } else {
-	        if ($this->ldap_debug) { error_log( __FILE__ . " " . __METHOD__ . " " . __LINE__ . " Auth Failed " . $this->userName . " " . ldap_error($this->ldapconn)); }
-	        return 0;
-	    }
-		
+                    if (!($search = ldap_search($this->ldapconn, $this->ldapconfig['basedn'], $filter,$attributes))) {
+                        die($lang['posixldapauth_unable_to_search_ldap_server']);
+                    }	
+                    // get the info
+                    $number_returned = ldap_count_entries($this->ldapconn, $search);
+                    
+                    if ($number_returned == 0) 
+                    {
+                        // Houston we have a problem, we have not managed to find the account even though we can bind with it !
+                        // We are going to guess that samaccountname (pre windows 2000 logon name) is not the same as the 
+                        // user portion of the userPrincipalName.
+                        if ($this->ldap_debug) { error_log( __FILE__ . " " . __METHOD__ . " " . __LINE__ . " Num entries returned = " . $number_returned ); }
+                        if ($this->ldap_debug) { error_log( __FILE__ . " " . __METHOD__ . " " . __LINE__ . " searching on userPrincipalName " . $username ); }
+                        $filter="(userprincipalname=" . ldap_escape($username, "", LDAP_ESCAPE_FILTER) . ")";
+                        
+                        // search
+                        if (!($search = ldap_search($this->ldapconn, $this->ldapconfig['basedn'], $filter,$attributes))) {
+                            die($lang['posixldapauth_unable_to_search_ldap_server']);
+                        }	
+                        // get the info
+                        $number_returned = ldap_count_entries($this->ldapconn, $search);
+                        if ($number_returned == 0) 
+                        {
+                            // we still have a problem
+                            if ($this->ldap_debug) { error_log( __FILE__ . " " . __METHOD__ . " " . __LINE__ . " account not found with userPrincipalName " . $username ); }
+                            // fail the auth
+                            return 0;
+                        }
+                    }
+                    
+                    // we should definitly have the info now!
+                    
+                    $info = ldap_get_entries($this->ldapconn, $search);
+                    
+                    // set the rdn
+                    $this->ldaprdn = $info[0]["dn"];
+                    
+                }
+                return 1;
+            } else {
+                if ($this->ldap_debug) { error_log( __FILE__ . " " . __METHOD__ . " " . __LINE__ . " Auth Failed " . $this->userName . " " . ldap_error($this->ldapconn)); }
+                return 0;
+            }
+        }
+        catch (Exception $e){
+            debug("posixldapauth - unable to bind to server");
+            return 0;
+            }
+        unset($GLOBALS["use_error_exception"]);
 	}
-	
 	
 	
 	/** 	
@@ -205,10 +210,8 @@ class ldapAuth
 		//$filter = "(cn=".$this->userName.")";
 		$filter="(objectclass=*)";
 		$retArr = array("sn", "givenname", "mail","cn");
-		//echo $this->ldaprdn;
 		$res = ldap_search($this->ldapconn,$this->ldaprdn,$filter,$retArr);
 		$info = ldap_get_entries($this->ldapconn, $res);
-		//print_r( $info );
 		$retVar = array();
 		
 		// build the return values
@@ -230,15 +233,11 @@ class ldapAuth
 	*/
 	function checkGroup($groupId)
 	{
-		//echo $this->ldapconfig['basedn'];		
 		$found = false;
-		
-	
 		$dn = "cn=groups," . $this->ldapconfig['basedn'];
 		$gid = "(gidnumber=" . $groupId . ")";
 		$res = ldap_search($this->ldapconn,$dn,$gid,array("memberuid"));
 		$info = ldap_get_entries($this->ldapconn, $res); 
-		//print_r($info);
 		$x =  count($info[0]['memberuid']) - 1;
 		for ($l = 0; $l < $x; $l++)
 		{
@@ -355,8 +354,6 @@ class ldapAuth
 		// we check each part of the returned array to find the member field identify as the array might not be in order!
 		// This also helps prevent it bombing if it can't find the member field identifier, ie it's been overridden wrongly.
 		if ($this->ldap_debug) { error_log(  __METHOD__ . " " . __LINE__ . " Searching for user  " . $this->$userField ); }
-		//echo "<pre>";
-		//print_r($info);
 		
 		foreach ($info as $level1) 
 		{
@@ -439,7 +436,6 @@ class ldapAuth
 		}
 		
 		error_log(  __FILE__ . " " . __METHOD__ . " " . __LINE__ ." - ldap_search ( ". $dn . "," . $filter . ")");
-		//print_r($this->ldapconfig);
 		
 		if (!($sr = ldap_search($this->ldapconn, $dn, $filter,$attributes)))
 		{
@@ -501,4 +497,3 @@ class ldapAuth
 	}
 	
 }
-?>

@@ -146,7 +146,7 @@ function falcon_link_publish($resources,$template_text,$template_tags)
         curl_setopt($curl, CURLOPT_HTTPHEADER, array("Content-Type: application/json;charset=utf-8"));
         curl_setopt($curl, CURLOPT_POST, 1);
         curl_setopt($curl, CURLOPT_POSTFIELDS,$falcon_post_params);
-        curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, 0 );
+        curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, 1 );
         curl_setopt($curl, CURLOPT_RETURNTRANSFER, 1 );
         curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, 2 );
         
@@ -162,7 +162,7 @@ function falcon_link_publish($resources,$template_text,$template_tags)
                 $falcon_errors[] = $lang["falcon_link_error_falcon_api"];
                 }
                 
-            $result["results"][$ref] = $lang["falcon_link_error_falcon_api_detailed"] . " '" . strip_tags($curl_response) . "'";;
+            $result["results"][$ref] = $lang["falcon_link_error_falcon_api_detailed"] . " '" . strip_tags($curl_response) . "'";
             if ($curl_info['http_code'] == 502)
                 {
                 $result["results"][$ref] .= ". " . $lang["falcon_link_error_falcon_check_tags"];
@@ -236,7 +236,7 @@ function falcon_link_archive($resources)
         curl_setopt($curl, CURLOPT_HTTPHEADER, array("Content-Type: application/json;charset=utf-8"));
         curl_setopt($curl, CURLOPT_POST, 1);
         curl_setopt($curl, CURLOPT_POSTFIELDS,$falcon_post_params);
-        curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, 0 );
+        curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, 1 );
         curl_setopt($curl, CURLOPT_RETURNTRANSFER, 1 );
         curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, 2 );
         

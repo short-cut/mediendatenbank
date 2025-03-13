@@ -5,7 +5,9 @@
 # for example types that use GhostScript or FFmpeg.
 #
 
-global $imagemagick_path, $imagemagick_preserve_profiles, $imagemagick_quality, $imagemagick_colorspace, $ghostscript_path, $pdf_pages, $antiword_path, $unoconv_path, $pdf_resolution, $pdf_dynamic_rip, $ffmpeg_audio_extensions, $ffmpeg_audio_params, $qlpreview_path,$ffmpeg_supported_extensions, $qlpreview_exclude_extensions, $ffmpeg_global_options,$ffmpeg_snapshot_fraction, $ffmpeg_snapshot_seconds,$ffmpeg_no_new_snapshots, $lang, $dUseCIEColor, $blender_path;
+global $imagemagick_path, $imagemagick_preserve_profiles, $imagemagick_quality, $imagemagick_colorspace, $ghostscript_path, $pdf_pages, $antiword_path, $unoconv_path, $pdf_resolution,
+$pdf_dynamic_rip, $ffmpeg_audio_extensions, $ffmpeg_audio_params, $qlpreview_path,$ffmpeg_supported_extensions, $ffmpeg_global_options,$ffmpeg_snapshot_fraction, $ffmpeg_snapshot_seconds,
+$ffmpeg_no_new_snapshots, $lang, $dUseCIEColor, $blender_path, $ffmpeg_preview_gif,$resource_view_use_pre, $debug_log, $debug_log_override;
 
 resource_log($ref,LOG_CODE_TRANSFORMED,'','','',$lang['createpreviews'] . ":\n");
 
@@ -27,20 +29,23 @@ else
     $file=get_resource_path($ref,true,"tmp",false,$extension);
     $target=get_resource_path($ref,true,"tmp",false,"jpg");
     }
-    
+
+# Check if GIF is to be treated as a video type for the creation of previews
+if ($ffmpeg_preview_gif) {$ffmpeg_supported_extensions[] = 'gif';}
+
 # Set up ImageMagick
 putenv("MAGICK_HOME=" . $imagemagick_path);
 
 $snapshotcheck=false;
 if (in_array($extension, $ffmpeg_supported_extensions)){
     $snapshotcheck=file_exists(get_resource_path($ref,true,"pre",false,'jpg',-1,1,false,""));
-    if ($snapshotcheck){sql_query("update resource set has_image=1 where ref='$ref'");}
+    if ($snapshotcheck){ps_query("update resource set has_image=1 where ref=?",array("i",$ref));}
 }
 
 if ($alternative==-1 && !($snapshotcheck && in_array($extension, $ffmpeg_supported_extensions) && $ffmpeg_no_new_snapshots))
     {
     # Reset the 'has thumbnail image' status in case previewing fails with this new file. 
-    sql_query("update resource set has_image=0 where ref='$ref'"); 
+    ps_query("update resource set has_image=0 where ref=?",array("i",$ref)); 
     }
 
 
@@ -80,7 +85,7 @@ if (is_array($preview_preprocessing_results)){
     For everything except Audio/Video files, attempt to generate a QuickLook preview first.
    ----------------------------------------
 */
-if (isset($qlpreview_path) && !in_array($extension, $qlpreview_exclude_extensions) && !in_array($extension, $ffmpeg_supported_extensions) && !in_array($extension, $ffmpeg_audio_extensions) && !isset($newfile))
+if (isset($qlpreview_path) && !in_array($extension, ["tif","tiff"]) && !in_array($extension, $ffmpeg_supported_extensions) && !in_array($extension, $ffmpeg_audio_extensions) && !isset($newfile))
     {
     $qlpreview_command=$qlpreview_path."/qlpreview -generatePreviewOnly yes -imageType jpg -maxWidth 800 -maxHeight 800 -asIcon no -preferFileIcon no -inPath " . escapeshellarg($file) . " -outPath " . escapeshellarg($target);
     debug("qlpreview command: " . $qlpreview_command);
@@ -123,23 +128,21 @@ if ($exiftool_fullpath!=false)
                     {
                     # Watermark creation for additional pages.
                     global $watermark;
-                    $preview_quality=get_preview_quality($size);
-                    $scr_size=sql_query("select width,height from preview_size where id='scr'");
+                    $scr_size=ps_query("SELECT width,height FROM preview_size WHERE id='scr'");
                     if(empty($scr_size))
                         {
                         # since this is not an application required size we can't assume there's a record for it
-                        $scr_size=sql_query("select width,height from preview_size where id='pre'");
+                        $scr_size=ps_query("SELECT width,height FROM preview_size WHERE id='pre'");
                         }
                     $scr_width=$scr_size[0]['width'];
-                    $scr_height=$scr_size[0]['height'];            
+                    $scr_height=$scr_size[0]['height'];
                     if (!hook("replacewatermarkcreation","",array($ref,$size,$n,$alternative)))
                         {
-                        if (isset($watermark) && $alternative==-1)
+                        if ($watermark !== '' && $alternative==-1)
                             {
                             $path=get_resource_path($ref,true,$size,false,"",-1,$n,true,"",$alternative);
                             if (file_exists($path)) {unlink($path);}
-                            $watermarkreal=dirname(__FILE__). "/../" . $watermark;
-                            $command2 = $convert_fullpath . " \"$target\"[0] -quality $preview_quality -resize " . escapeshellarg($scr_width) . "x" . escapeshellarg($scr_height) . " -tile " . escapeshellarg($watermarkreal) . " -draw \"rectangle 0,0 $scr_width,$scr_height\" " . escapeshellarg($path); 
+                            $command2 = $convert_fullpath . " \"$target\"[0] -quality $imagemagick_quality -resize " . escapeshellarg($scr_width) . "x" . escapeshellarg($scr_height) . " -tile " . escapeshellarg($watermark) . " -draw \"rectangle 0,0 $scr_width,$scr_height\" " . escapeshellarg($path); 
                             $output=run_command($command2);
                             }
                         }
@@ -147,17 +150,18 @@ if ($exiftool_fullpath!=false)
                 }
 
                 # Set (new resource) / update (recreate previews) page count for multi page preview if more than one preview present.
-                $ref_escaped = escape_check($ref);
-                $sql = "SELECT count(*) AS value FROM `resource_dimensions` WHERE resource = '$ref_escaped'";
-                $query = sql_value($sql, 0);
+                $sql = "SELECT count(*) AS value FROM `resource_dimensions` WHERE resource = ?";
+                $query = ps_value($sql,array("i",$ref), 0);
         
                 if($query == 0)
                     {
-                    sql_query("INSERT INTO resource_dimensions (resource, page_count, file_size) VALUES ('{$ref_escaped}', '{$n}', '{$filesize_indd}')");
+                    $parameters=array("i",$ref, "i",$n, "i",$filesize_indd);
+                    ps_query("INSERT INTO resource_dimensions (resource, page_count, file_size) VALUES (?, ?, ?)",$parameters);
                     }
                 else
                     {
-                    sql_query("UPDATE resource_dimensions SET page_count = '{$n}' WHERE resource = '{$ref_escaped}'");
+                    $parameters=array("i",$n, "i",$ref);
+                    ps_query("UPDATE resource_dimensions SET page_count = ? WHERE resource = ?",$parameters);
                     } 
 
                 $n=0;
@@ -354,20 +358,14 @@ if ( (($extension=="pages") || ($extension=="numbers") || (!isset($unoconv_path)
 global $unoconv_extensions;
 if (in_array($extension,$unoconv_extensions) && $extension!='pdf' && isset($unoconv_path) && !isset($newfile))
     {
-    global $config_windows;
-    $unocommand=$unoconv_path . "/unoconv";
-    if (!file_exists($unocommand)) {exit("Unoconv executable not found at '$unoconv_path'");}
-    if($config_windows)
-       {
-       global $unoconv_python_path;
-       $cmd_uno_python_path=$unoconv_python_path . DIRECTORY_SEPARATOR . 'python.exe';
-       if(!file_exists($cmd_uno_python_path))
-            {
-            exit("Unoconv's OpenOffice Python executable not found at '$unoconv_python_path'");
-            }
-       }
-    $cmd=($config_windows ? escapeshellarg($cmd_uno_python_path) . ' ' : '') . escapeshellarg($unocommand) . " --format=pdf " . escapeshellarg($file);
-    $output=run_command($cmd);
+    $unocommand = get_utility_path('unoconv');
+    if(!$unocommand)
+        {
+        exit("Unoconv executable not found");
+        }
+
+    $output = run_command("{$unocommand} " . ($debug_log || $debug_log_override ? '-v' : '') . " --format=pdf %file", false, ['%file' => $file]);
+    debug('Preview_preprocessing : ' . $output);
 
     # Check for extracted text - if found, it has already been extracted from the uploaded file so don't replace it with the text from this pdf.
     global $extracted_text_field;
@@ -375,7 +373,7 @@ if (in_array($extension,$unoconv_extensions) && $extension!='pdf' && isset($unoc
     if (isset($extracted_text_field))
         {
         $extract_pdf_text = true;
-        $current_extracted_text = sql_value("select value from resource_data where resource='$ref' and resource_type_field='$extracted_text_field'","");
+        $current_extracted_text = get_data_by_field($ref,$extracted_text_field);
         if (!empty($current_extracted_text))
             {
             $extract_pdf_text = false;    
@@ -423,13 +421,16 @@ if (in_array($extension,$unoconv_extensions) && $extension!='pdf' && isset($unoc
     else if (file_exists($pdffile))
         {
         # Attach this PDF file as an alternative download.
-        sql_query("delete from resource_alt_files where resource = '".$ref."' and unoconv='1'");    
+        ps_query("delete from resource_alt_files where resource = ? and unoconv='1'",array("i",$ref));    
         $alt_ref=add_alternative_file($ref,"PDF version");
         $alt_path=get_resource_path($ref,true,"",false,"pdf",-1,1,false,"",$alt_ref);
         global $lang;   
         $alt_description=$lang['unoconv_pdf'];
         copy($pdffile,$alt_path);unlink($pdffile);
-        sql_query("update resource_alt_files set file_name='$ref-converted.pdf',description='$alt_description',file_extension='pdf',file_size='".filesize_unlimited($alt_path)."',unoconv='1' where resource='$ref' and ref='$alt_ref'");
+
+        $parameters=array("s",$ref."-converted.pdf", "s",$alt_description, "i",filesize_unlimited($alt_path), "i",$ref, "i",$alt_ref);
+        ps_query("UPDATE resource_alt_files 
+                    SET file_name=?, description=?, file_extension='pdf', file_size=?, unoconv='1' where resource=? and ref=?",$parameters);
 
         # Set vars so we continue generating thumbs/previews as if this is a PDF file
         $extension="pdf";
@@ -466,26 +467,38 @@ global $calibre_extensions;
 global $calibre_path;
 if (in_array($extension,$calibre_extensions) && isset($calibre_path) && !isset($newfile))
     {
-    $calibrecommand=$calibre_path . "/ebook-convert";
-    if (!file_exists($calibrecommand)) {exit("Calibre executable not found at '$calibre_path'");}
+    $calibrecommand = get_utility_path('calibre');
+    if(!$calibrecommand)
+        {
+        exit("Calibre executable not found at '$calibre_path'");
+        }
     
     $path_parts=pathinfo($file);
     $basename_minus_extension=remove_extension($path_parts['basename']);
     $pdffile=$path_parts['dirname']."/".$basename_minus_extension.".pdf";
 
-    $cmd="xvfb-run ". $calibrecommand . " " . escapeshellarg($file) . " " . escapeshellarg($pdffile) ." ";
-    $wait=run_command($cmd);
+    $wait=run_command(
+        "{$calibrecommand} %file %pdffile ",
+        false,
+        [
+            '%file' => $file,
+            '%pdffile' => $pdffile,
+        ]
+    );
 
     if (file_exists($pdffile))
         {
         # Attach this PDF file as an alternative download.
-        sql_query("delete from resource_alt_files where resource = '".$ref."' and unoconv='1'");    
+        ps_query("delete from resource_alt_files where resource = ? and unoconv='1'",array("i",$ref));    
         $alt_ref=add_alternative_file($ref,"PDF version");
         $alt_path=get_resource_path($ref,true,"",false,"pdf",-1,1,false,"",$alt_ref);
         global $lang;
         $alt_description=$lang['calibre_pdf'];  
         copy($pdffile,$alt_path);unlink($pdffile);
-        sql_query("update resource_alt_files set file_name='$ref-converted.pdf',description='$alt_description',file_extension='pdf',file_size='".filesize_unlimited($alt_path)."',unoconv='1' where resource='$ref' and ref='$alt_ref'");
+
+        $parameters=array("s",$ref."-converted.pdf", "s",$alt_description, "i",filesize_unlimited($alt_path), "i",$ref, "i",$alt_ref);
+        ps_query("UPDATE resource_alt_files 
+                    SET file_name=?, description=?, file_extension='pdf', file_size=? ,unoconv='1' where resource=? and ref=?",$parameters);
 
         # Set vars so we continue generating thumbs/previews as if this is a PDF file
         $extension="pdf";
@@ -533,13 +546,19 @@ if ((($extension=="docx") || ($extension=="xlsx") || ($extension=="pptx") || ($e
 
 if ($extension=="blend" && isset($blender_path) && !isset($newfile))
     {
-    $blendercommand=$blender_path;  
-    if (!file_exists($blendercommand)|| is_dir($blendercommand)) {$blendercommand=$blender_path . "/blender";}
-    if (!file_exists($blendercommand)) {$blendercommand=$blender_path . "\blender.exe";}
-    if (!file_exists($blendercommand)) {exit("Could not find blender application. '$blendercommand'");} 
+    $blendercommand = get_utility_path('blender');
+    if(!$blendercommand)
+        {
+        exit("Could not find blender application. '$blendercommand'");
+        } 
 
-    $cmd=$blendercommand. " -b ".escapeshellarg($file)." -F JPEG -o $target -f 1";
-    $error=run_command($cmd);
+    $error = run_command(
+        "{$blendercommand} -b %file -F JPEG -o %target -f 1",
+        false,
+        [
+            '%file' => $file,
+            '%target' => $target,
+        ]);
 
     if (file_exists($target."0001"))
         {
@@ -564,12 +583,19 @@ if ($extension=="blend" && isset($blender_path) && !isset($newfile))
 */
 if ($extension=="doc" && isset($antiword_path) && isset($ghostscript_path) && !isset($newfile))
     {
-    $command=$antiword_path . "/antiword";
-    if (!file_exists($command)) {$command=$antiword_path . "\antiword.exe";}
-    if (!file_exists($command)) {exit("Antiword executable not found at '$antiword_path'");}
+    $command = get_utility_path('antiword');
+    if(!$command)
+        {
+        exit("Antiword executable not found at '$antiword_path'");
+        }
 
-    $cmd=$command . " -p a4 " . escapeshellarg($file) . " > \"" . $target . ".ps" . "\"";
-    $output=run_command($cmd);
+    $output = run_command(
+        "{$command} -p a4 %file > %target",
+        false,
+        [
+            '%file' => $file,
+            '%target' => "{$target}.ps",
+        ]);
 
     if (file_exists($target . ".ps"))
         {
@@ -719,7 +745,7 @@ else if (($ffmpeg_fullpath!=false) && !isset($newfile) && in_array($extension, $
                 }
             
             
-            $snapshot_size    = sql_query('SELECT width, height FROM preview_size WHERE id = "pre"');
+            $snapshot_size    = ps_query('SELECT width, height FROM preview_size WHERE id = "pre"');
 
             if(isset($snapshot_size[0]) && 0 < count($snapshot_size[0]))
                 {
@@ -815,7 +841,7 @@ if (($ffmpeg_fullpath!=false) && in_array($extension, $ffmpeg_audio_extensions))
 
     if(!file_exists($mp3file))
         {
-        sql_query("update resource set preview_attempts=ifnull(preview_attempts,0) + 1 where ref='$ref'");
+        ps_query("UPDATE resource SET preview_attempts=ifnull(preview_attempts,0) + 1 where ref=?",array("i",$ref));
         echo debug("Failed to process resource " . $ref . " - MP3 creation failed.");
         }   
     }
@@ -889,10 +915,10 @@ if ((!isset($newfile)) && (!in_array($extension, $ffmpeg_audio_extensions))&& (!
     if ($extension=="ai") {$pdf_pages=1;}
     if ($extension=="ps") {$pdf_pages=1;}
     $resolution=$pdf_resolution;
-    $scr_size=sql_query("select width,height from preview_size where id='scr'");
+    $scr_size=ps_query("select width,height from preview_size where id='scr'");
     if(empty($scr_size)){
         # since this is not an application required size we can't assume there's a record for it
-        $scr_size=sql_query("select width,height from preview_size where id='pre'");
+        $scr_size=ps_query("select width,height from preview_size where id='pre'");
     }
     $scr_width=$scr_size[0]['width'];
     $scr_height=$scr_size[0]['height'];
@@ -908,37 +934,49 @@ if ((!isset($newfile)) && (!in_array($extension, $ffmpeg_audio_extensions))&& (!
         * that will give us a source bitmap of approximately 1600 pixels.
         */
 
-            if ($extension=="pdf"){
-                
-                $pdfinfocommand="pdfinfo ".escapeshellarg($file);
-                $pdfinfo=shell_exec($pdfinfocommand);
-                $pdfinfo=explode("\n",$pdfinfo);
-                $pdfinfo=preg_grep("/\bPage\b.+\bsize\b/",$pdfinfo);
+            if ($extension == "pdf")
+                {
+                $pdfinfocommand = "pdfinfo " . escapeshellarg($file);
+                $pdfinfo = shell_exec($pdfinfocommand);
+                $pdfinfo = explode("\n", $pdfinfo);
+                $pdfinfo = preg_grep("/\bPage\b.+\bsize\b/", $pdfinfo);
                 sort($pdfinfo);
-                #die(print_r($pdfinfo));
-                if (isset($pdfinfo[0])){
-                    $pdfinfo=$pdfinfo[0];
+
+                if (isset($pdfinfo[0]))
+                    {
+                    $pdfinfo = $pdfinfo[0];
                     }
-                else {
-                    $pdfinfo="";
+                else
+                    {
+                    $pdfinfo = "";
                     }
-                if ($pdfinfo!=""){  
-                    $pdfinfo=explode(":",$pdfinfo);
-                    $wh=explode("x",$pdfinfo[1]);   
-                    $w=round(trim($wh[0]));
-                    $h=explode(" ",$wh[1]); 
-                    $h=round(trim($h[1]));
-                    if($w>$h){
-                        $pdf_max_dim=$w;
+
+                if ($pdfinfo != "")
+                    {
+                    $pdfinfo = explode(":", $pdfinfo);
+                    $wh = explode("x", $pdfinfo[1]);
+                    $w = round(trim($wh[0]));
+                    $h = explode(" ", $wh[1]);
+                    $h = round(trim($h[1]));
+                    if($w > $h)
+                        {
+                        $pdf_max_dim = $w;
                         }
                     else{
-                        $pdf_max_dim=$h;
+                        $pdf_max_dim = $h;
                         }
-                    $resolution=ceil((max($scr_width,$scr_height)*2)/($pdf_max_dim/72));
+
+                    if ($pdf_max_dim != 0)
+                        {
+                        $resolution = ceil((max($scr_width, $scr_height) * 2) / ($pdf_max_dim / 72));
+                        }
+                    else
+                        {
+                        $resolution = $pdf_resolution;
+                        }
+                    }
                 }
-                
-                
-            }
+
             if ($extension=="eps"){
                 # Locate imagemagick.
                 $identify_fullpath = get_utility_path("im-identify");
@@ -977,14 +1015,12 @@ if ((!isset($newfile)) && (!in_array($extension, $ffmpeg_audio_extensions))&& (!
     for ($n=1;$n<=$pdf_pages;$n++)
         {
         # Set up target file
-        $size="";if ($n>1) {$size="scr";} # Use screen size for other pages.
+        $size="";if ($n>1) {$resource_view_use_pre?$size="pre":$size="scr";}
         $target=get_resource_path($ref,true,$size,false,"jpg",-1,$n,false,"",$alternative); 
         if (file_exists($target)) {unlink($target);}
-        
-        $preview_quality=get_preview_quality($size);
 
         if ($dUseCIEColor){$dUseCIEColor=" -dUseCIEColor ";} else {$dUseCIEColor="";}
-        $gscommand2 = $ghostscript_fullpath . " -dBATCH -r".$resolution." ".$dUseCIEColor." -dNOPAUSE -sDEVICE=jpeg -dJPEGQ=".$preview_quality." -sOutputFile=" . escapeshellarg($target) . "  -dFirstPage=" . $n . " -dLastPage=" . $n . " -dEPSCrop -dUseCropBox " . escapeshellarg($file);
+        $gscommand2 = $ghostscript_fullpath . " -dBATCH -r".$resolution." ".$dUseCIEColor." -dNOPAUSE -sDEVICE=jpeg -dJPEGQ=" . $imagemagick_quality . " -sOutputFile=" . escapeshellarg($target) . "  -dFirstPage=" . $n . " -dLastPage=" . $n . " -dEPSCrop -dUseCropBox " . escapeshellarg($file);
         $output=run_command($gscommand2);
 
         # Stop trying when after the last page
@@ -1006,19 +1042,17 @@ if ((!isset($newfile)) && (!in_array($extension, $ffmpeg_audio_extensions))&& (!
         # resize directly to the screen size (no other sizes needed)
          if (file_exists($target)&& $n!=1)
             {
-            $command2 = $convert_fullpath . " " . $prefix . escapeshellarg($target) . "[0] -quality $preview_quality -resize " . escapeshellarg($scr_width) . "x" . escapeshellarg($scr_height) . " ".escapeshellarg($target);
+            $command2 = $convert_fullpath . " " . $prefix . escapeshellarg($target) . "[0] -quality $imagemagick_quality -resize " . escapeshellarg($scr_width) . "x" . escapeshellarg($scr_height) . " ".escapeshellarg($target);
             $output=run_command($command2); $pagecount=$n;
 
             # Add a watermarked image too?
             global $watermark;
             if (!hook("replacewatermarkcreation","",array($ref,$size,$n,$alternative))){
-                if (isset($watermark) && $alternative==-1)
+                if ($watermark !== '' && $alternative==-1)
                     {
                 $path=get_resource_path($ref,true,$size,false,"",-1,$n,true,"",$alternative);
                 if (file_exists($path)) {unlink($path);}
-                    $watermarkreal=dirname(__FILE__). "/../" . $watermark;
-                    
-                $command2 = $convert_fullpath . " \"$target\"[0] $profile -quality $preview_quality -resize " . escapeshellarg($scr_width) . "x" . escapeshellarg($scr_height) . " -tile " . escapeshellarg($watermarkreal) . " -draw \"rectangle 0,0 $scr_width,$scr_height\" " . escapeshellarg($path); 
+                $command2 = $convert_fullpath . " \"$target\"[0] $profile -quality $imagemagick_quality -resize " . escapeshellarg($scr_width) . "x" . escapeshellarg($scr_height) . " -tile " . escapeshellarg($watermark) . " -draw \"rectangle 0,0 $scr_width,$scr_height\" " . escapeshellarg($path); 
                     $output=run_command($command2);
                 }
             }
@@ -1029,7 +1063,7 @@ if ((!isset($newfile)) && (!in_array($extension, $ffmpeg_audio_extensions))&& (!
         if (file_exists($target) && $pdf_split_pages_to_resources)
             {
             # Create a new resource based upon the metadata/type of the current resource.
-            $copy=copy_resource($ref);
+            $copy=copy_resource($ref,-1,$lang["createdfromsplittingpdf"]);
                         
             # Find out the path to the original file.
             $copy_path=get_resource_path($copy,true,"",true,"pdf");
@@ -1039,7 +1073,7 @@ if ((!isset($newfile)) && (!in_array($extension, $ffmpeg_audio_extensions))&& (!
             $output=run_command($gscommand2);
 
             # Update the file extension
-            sql_query("update resource set file_extension='pdf' where ref='$copy'");
+            ps_query("update resource set file_extension='pdf' where ref=?",array("i",$copy));
         
             # Create preview for the page.
             $pdf_split_pages_to_resources=false; # So we don't get stuck in a loop creating split pages for the single page PDFs.
@@ -1048,38 +1082,38 @@ if ((!isset($newfile)) && (!in_array($extension, $ffmpeg_audio_extensions))&& (!
             }
             
         }
-        // set page number
-        if (isset($pagecount) && $alternative!=-1){
-            sql_query("update resource_alt_files set page_count=$pagecount where ref=$alternative");
+        // set page number and record filesize
+        $filesize = filesize_unlimited($file);
+        if (isset($pagecount) && $alternative != -1)
+            {
+            ps_query("UPDATE resource_alt_files SET page_count = ?, file_size = ? where ref = ?", array("i", $pagecount, "i", $filesize, "i", $alternative));
             }
-        else if (isset($pagecount)){
-
-            $pagecount_escaped = escape_check($pagecount);
-            $ref_escaped = escape_check($ref);
-            $sql = "SELECT count(*) AS value FROM `resource_dimensions` WHERE resource = '$ref_escaped'";
-            $query = sql_value($sql, 0);
+        else if (isset($pagecount))
+            {
+            $sql = "SELECT count(*) AS value FROM `resource_dimensions` WHERE resource = ?";
+            $query = ps_value($sql, array("i", $ref), 0);
 
             if($query == 0)
                 {
-                sql_query("INSERT INTO resource_dimensions (resource, page_count) VALUES ('{$ref_escaped}', '{$pagecount_escaped}')");
+                ps_query("INSERT INTO resource_dimensions (resource, page_count, file_size) VALUES (?, ?, ?)", array("i", $ref, "i", $pagecount, "i", $filesize));
                 }
             else
                 {
-                sql_query("UPDATE resource_dimensions SET page_count = '{$pagecount_escaped}' WHERE resource = '{$ref_escaped}'");
-                }            
+                ps_query("UPDATE resource_dimensions SET page_count = ?, file_size = ? WHERE resource = ?", array("i", $pagecount, "i", $filesize, "i", $ref));
+                }
             }
-    }
+        }
     else
         {
         # Not a PDF file, so single extraction only.
-            create_previews_using_im($ref,false,$extension,$previewonly,false,$alternative,$ingested, $onlysizes);
-            }
+        create_previews_using_im($ref, false, $extension, $previewonly, false, $alternative, $ingested, $onlysizes);
+        }
     }
 
 $non_image_types = config_merge_non_image_types();
 
 # If a file has been created, generate previews just as if a JPG was uploaded.
-if (isset($newfile))
+if (isset($newfile) && file_exists($newfile))
     {
     if($GLOBALS['non_image_types_generate_preview_only'] && in_array($extension,config_merge_non_image_types()))
         {

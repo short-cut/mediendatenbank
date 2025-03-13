@@ -12,6 +12,7 @@ $obfuscate      = ($system_download_config_force_obfuscation || $job_data["obfus
 $userref        = $job_data["userref"];
 $separatesql    = $job_data["separatesql"] == "true"; 
 $path           = $mysql_bin_path . "/mysqldump";
+$cmd_db_pass    = $mysql_password === '' ? '' : '-p' . escapeshellarg($mysql_password);
 
 if(!$system_download_config)
     {
@@ -50,9 +51,17 @@ if(!isset($joberror))
         echo "Exporting table " . $exporttable . "\n";
         $dumpfile = $separatesql ? $dumppath . "/" . $exporttable . ".sql" : $dumppath . "/resourcespace.sql";
 
-        // Add the 'CREATE TABLE' command
-        $dumpcmd = $path . " -h " . $mysql_server . " -u " . $mysql_username . ($mysql_password == "" ? "" : " -p" . $mysql_password) . " " . $mysql_db . " --no-data " . $exporttable . " >> " . $dumpfile;
-        run_command($dumpcmd);
+        run_command(
+            "{$path} -h db_host -u db_user {$cmd_db_pass} --no-tablespaces --no-data db_name export_table >> dump_file",
+            false,
+            [
+                'db_host' => $mysql_server,
+                'db_user' => $mysql_username,
+                'db_name' => $mysql_db,
+                'export_table' => $exporttable,
+                'dump_file' => $dumpfile,
+            ]
+        );
         
         $sql = "SET sql_mode = '';\n"; // Ensure that any old values that may not now be valid are still accepted into new DB
         $output = fopen($dumpfile,'a');
@@ -61,7 +70,7 @@ if(!isset($joberror))
 
         // Get data 
         $exportcondition = isset($exportoptions["exportcondition"]) ? $exportoptions["exportcondition"] : "";
-        $datarows = sql_query("SELECT * FROM " . $exporttable . " " . $exportcondition); 
+        $datarows = ps_query("SELECT * FROM " . $exporttable . " " . $exportcondition, array()); 
         
         if(count($datarows) > 0)
             {
@@ -69,7 +78,7 @@ if(!isset($joberror))
             array_walk($datarows, 'alter_data',(isset($exportoptions["scramble"]) && $obfuscate) ? $exportoptions["scramble"] : array());
             
             // Get columns to insert
-            $columns = array_map("escape_check",array_keys($datarows[0]));
+            $columns = array_keys($datarows[0]);
 
             $sql = "";
             foreach($datarows as $datarow)
@@ -82,24 +91,28 @@ if(!isset($joberror))
             fwrite($output,$sql);
             fclose($output);
             }
-        
+
         if($separatesql)
             {
-            $zip->addFile($dumpfile, "mysql/" . $exporttable . ".sql");   
+            $zip->addFile($dumpfile, "mysql/" . $exporttable . ".sql");
             }
         }
-    
+
     if(!$separatesql)
         {
-        $zip->addFile($dumpfile, "mysql/resourcespace.sql");   
+        $zip->addFile($dumpfile, "mysql/resourcespace.sql");
         }
 
     $zip->close();
 
+    # Log this 
+    log_activity($lang["exportdata"], LOG_CODE_DOWNLOADED);
+    debug("Job handler 'config_export' created zip download file {$dumpfile}");
+
     if(file_exists($zipfile))
         {
         $download_url = $baseurl_short . "pages/download.php?userfile=" . $userref . "_" . $randstring . ".zip";
-        $message = $lang["exportcomplete"];;
+        $message = $lang["exportcomplete"];
         message_add($job["user"],$message,$download_url,0);
         if($offline_job_delete_completed)
             {

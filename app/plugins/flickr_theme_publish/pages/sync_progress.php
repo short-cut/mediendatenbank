@@ -11,9 +11,9 @@ flickr_get_access_token($userref,(isset($_GET['oauth_verifier']) && $_GET['oauth
 
 include "../../../include/header.php";
 
-$theme=getvalescaped("theme","");
-$private=getvalescaped("permission","");
-$publish_type=getvalescaped("publish_type","");
+$theme=getval("theme","");
+$private=getval("permission","");
+$publish_type=getval("publish_type","");
 $id="flickr_".$theme;
 $progress_file=get_temp_dir(false,$id) . "/progress_file.txt";
 
@@ -50,7 +50,7 @@ $progress_file=get_temp_dir(false,$id) . "/progress_file.txt";
 				<img id="image_processing" src="">
 			</div>
 		</div>
-	<?php }
+<?php }
 			
 	if($flickr_nice_progress_metadata){?>
 		<div id="image_metadata">

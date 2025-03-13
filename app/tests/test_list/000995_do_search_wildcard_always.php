@@ -1,8 +1,9 @@
 <?php
-
-if (php_sapi_name()!=="cli") {exit("This utility is command line only.");}
+command_line_only();
 
 // Check $wildcard_always_applied search e.g. "cat" will always match "catch", "catalogue", "category"
+$wildcard_always_applied_cache = $wildcard_always_applied;
+$wildcard_always_applied=false;
 
 $resourcea=create_resource(1,0);
 $resourceb=create_resource(1,0);
@@ -61,7 +62,6 @@ if(count($results)!=1 || !isset($results[0]['ref']) || $results[0]['ref']!=$reso
 
 
 // SUBTEST E
-// Now test wildcard_always_applied_leading
 // Do search for 'vwqnth' (should return 0 results)
 $results=do_search('vwqnth');
 if(is_array($results)) 
@@ -70,19 +70,7 @@ if(is_array($results))
     return false;
     }
 
+$wildcard_always_applied = $wildcard_always_applied_cache;
 
-// SUBTEST F
-$wildcard_always_applied_leading = true;
-// Do search again for 'vwqnth' - should now return resource b)
-$results=do_search('vwqnth');
-if(count($results)!=1 || !isset($results[0]['ref']) || $results[0]['ref']!=$resourceb) 
-    {
-    echo "ERROR - SUBTEST F\n";
-    return false;
-    }
-
-
-$wildcard_always_applied=false;
-$wildcard_always_applied_leading = false;
 
 return true;

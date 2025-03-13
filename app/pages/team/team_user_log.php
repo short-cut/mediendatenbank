@@ -9,13 +9,13 @@ include "../../include/db.php";
 
 include "../../include/authenticate.php";
 
-$offset=getvalescaped("offset",0,true);
-$ref=getvalescaped("ref","",true);
+$offset=getval("offset",0,true);
+$ref=getval("ref","",true);
 $userdata=get_user($ref);
 $backurl=getval("backurl","");
 
 # pager
-$per_page=getvalescaped("per_page_list_log",15);rs_setcookie('per_page_list_log', $per_page);
+$per_page=getval("per_page_list_log",15);rs_setcookie('per_page_list_log', $per_page);
 
 include "../../include/header.php";
 $log=get_user_log($ref, $offset+$per_page);
@@ -28,8 +28,8 @@ $jumpcount=1;
 
 ?>
 <div class="BasicsBox">
-<?php if ($backurl!="none"){?><p><a href="<?php echo $backurl?>" onClick="return CentralSpaceLoad(this,true);"><?php echo LINK_CARET_BACK ?><?php echo $lang["manageusers"]?></a></p><?php } ?>
-<?php if (!hook("replaceuserlogheader")){?><h1><?php echo $lang["userlog"] . ": " . $userdata["fullname"]?></h1><?php } ?>
+<?php if ($backurl!="none"){?><p><a href="<?php echo escape($backurl);?>" onClick="return CentralSpaceLoad(this,true);"><?php echo LINK_CARET_BACK ?><?php echo escape($lang["manageusers"]); ?></a></p><?php } ?>
+<?php if (!hook("replaceuserlogheader")){?><h1><?php echo escape("{$lang["userlog"]}: {$userdata["fullname"]}"); ?></h1><?php } ?>
 <div class="TopInpageNav">
 <div class="InpageNavLeftBlock"><?php echo $lang["resultsdisplay"]?>:
 	<?php 

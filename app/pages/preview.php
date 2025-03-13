@@ -3,7 +3,7 @@ include "../include/db.php";
 
 
 # External access support (authenticate only if no key provided, or if invalid access key provided)
-$k=getvalescaped("k","");if (($k=="") || (!check_access_key(getvalescaped("ref","",true),$k))) {include "../include/authenticate.php";}
+$k=getval("k","");if (($k=="") || (!check_access_key(getval("ref","",true),$k))) {include "../include/authenticate.php";}
 
 include_once '../include/annotation_functions.php';
 
@@ -18,15 +18,14 @@ if($thumbs != "unset" && $thumbs != "hide")
 $thumbs = "hide";
 rs_setcookie("thumbs", $thumbs, 1000,"","",false,false);
 
-$ref=getvalescaped("ref","",true);
-$search=getvalescaped("search","");
-$offset=getvalescaped("offset",0,true);
-$order_by=getvalescaped("order_by","");
-$archive=getvalescaped("archive","",true);
-$restypes=getvalescaped("restypes","");
-$starsearch=getvalescaped("starsearch","");
-$page=getvalescaped("page",1,true);
-$alternative=getvalescaped("alternative", -1, true);
+$ref=getval("ref","",true);
+$search=getval("search","");
+$offset=getval("offset",0,true);
+$order_by=getval("order_by","");
+$archive=getval("archive","",true);
+$restypes=getval("restypes","");
+$page=getval("page",1,true);
+$alternative=getval("alternative", -1, true);
 if (strpos($search,"!")!==false) {$restypes="";}
 
 check_order_by_in_table_joins($order_by);
@@ -78,27 +77,27 @@ if ($go!="")
 	{
     $origref = $ref; # Store the reference of the resource before we move, in case we need to revert this.
 
-	# Re-run the search and locate the next and previous records.
-	$modified_result_set=hook("modifypagingresult"); 
-	if ($modified_result_set){
-		$result=$modified_result_set;
-	} else {
-		$result=do_search($search,$restypes,$order_by,$archive,-1,$sort,false,$starsearch,false,false,"",false,true,true);
-	}
-	if (is_array($result))
-		{
-		# Locate this resource
-		$pos=-1;
-		for ($n=0;$n<count($result);$n++)
-			{
-			if ($result[$n]["ref"]==$ref) {$pos=$n;}
-			}
-		if ($pos!=-1)
-			{
-			if (($go=="previous") && ($pos>0)) {$ref=$result[$pos-1]["ref"];}
-			if (($go=="next") && ($pos<($n-1))) {$ref=$result[$pos+1]["ref"];if (($pos+1)>=($offset+72)) {$offset=$pos+1;}} # move to next page if we've advanced far enough
-			}
-		}
+    # Re-run the search and locate the next and previous records.
+    $modified_result_set=hook("modifypagingresult"); 
+    if ($modified_result_set){
+        $result=$modified_result_set;
+    } else {
+        $result=do_search($search,$restypes,$order_by,$archive,-1,$sort,false,DEPRECATED_STARSEARCH,false,false,"",false,true,true);
+    }
+    if (is_array($result) && !empty($result))
+        {
+        # Locate this resource
+        $pos=-1;
+        for ($n=0;$n<count($result);$n++)
+            {
+            if ($result[$n]["ref"]==$ref) {$pos=$n;}
+            }
+        if ($pos!=-1)
+            {
+            if (($go=="previous") && ($pos>0)) {$ref=$result[$pos-1]["ref"];}
+            if (($go=="next") && ($pos<($n-1))) {$ref=$result[$pos+1]["ref"];if (($pos+1)>=($offset+72)) {$offset=$pos+1;}} # move to next page if we've advanced far enough
+            }
+        }
 
     # Option to replace the key via a plugin (used by resourceconnect plugin).
     $newkey = hook("nextpreviewregeneratekey");
@@ -116,15 +115,14 @@ $ext="jpg";
 if ($ext!="" && $ext!="gif" && $ext!="jpg" && $ext!="png") {$ext="jpg";$border=false;} # Supports types that have been created using ImageMagick
 
 
-# Load access level
+# Check permissions (error message is not pretty but they shouldn't ever arrive at this page unless entering a URL manually)
 $access=get_resource_access($ref);
-$use_watermark=check_use_watermark();
+if($access == RESOURCE_ACCESS_CONFIDENTIAL) 
+    {
+    exit("This is a confidential resource.");
+    }
 
-# check permissions (error message is not pretty but they shouldn't ever arrive at this page unless entering a URL manually)
-if ($access==2) 
-		{
-		exit("This is a confidential resource.");
-		}
+$use_watermark=check_use_watermark();
 
 hook('replacepreview');
 
@@ -137,16 +135,14 @@ if (!file_exists(get_resource_path($ref,true,"scr",false,$ext,-1,$nextpage,$use_
 
 # Locate the resource
 $path = get_resource_path($ref, true, 'scr', false, $ext, true, $page, $use_watermark, '', $alternative);
-
-if(file_exists($path) && (resource_download_allowed($ref, 'scr', $resource['resource_type']) || $use_watermark))
+if(!resource_has_access_denied_by_RT_size($resource['resource_type'], 'scr') && file_exists($path) && !skip_scr_size_preview($access))
     {
     $url = get_resource_path($ref, false, 'scr', false, $ext, true, $page, $use_watermark, '', $alternative);
     }
 else
     {
     $path = get_resource_path($ref, true, 'pre', false, $ext, true, $page, $use_watermark, '', $alternative);
-
-    if(file_exists($path))
+    if(!resource_has_access_denied_by_RT_size($resource['resource_type'], 'pre') && file_exists($path))
         {
         $url = get_resource_path($ref, false, 'pre', false, $ext, true, $page, $use_watermark, '', $alternative);
         }
@@ -189,12 +185,12 @@ include "../include/header.php";
 <?php } /*end hook replacepreviewbacktoview*/ ?>
 <?php if ($k=="") { ?>
 
-<?php if (!checkperm("b") && !(($userrequestmode==2 || $userrequestmode==3) && $basket_stores_size) && !in_array($resource["resource_type"],$collection_block_restypes)) { ?>
+<?php if (!checkperm("b") && !(($userrequestmode==2 || $userrequestmode==3)) && !in_array($resource["resource_type"],$collection_block_restypes)) { ?>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-<?php echo add_to_collection_link(htmlspecialchars($ref),htmlspecialchars($search))?><i aria-hidden="true" class="fa fa-plus-circle"></i>&nbsp;<?php echo $lang["action-addtocollection"]?></a><?php } ?>
-<?php if ($search=="!collection" . $usercollection) { ?>&nbsp;&nbsp;<?php echo remove_from_collection_link(htmlspecialchars($ref),htmlspecialchars($search))?><i aria-hidden="true" class="fa fa-minus-circle"></i>&nbsp;<?php echo $lang["action-removefromcollection"]?></a><?php }
+<?php echo add_to_collection_link(htmlspecialchars($ref))?><i aria-hidden="true" class="fa fa-plus-circle"></i>&nbsp;<?php echo htmlspecialchars($lang["action-addtocollection"]) ?></a><?php } ?>
+<?php if ($search=="!collection" . $usercollection) { ?>&nbsp;&nbsp;<?php echo remove_from_collection_link(htmlspecialchars($ref))?><i aria-hidden="true" class="fa fa-minus-circle"></i>&nbsp;<?php echo htmlspecialchars($lang["action-removefromcollection"]) ?></a><?php }
 
-if($annotate_enabled)
+if(count(canSeeAnnotationsFields()) > 0)
     {
     ?>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
     <a href="#" onclick="toggleAnnotationsOption(this); return false;">
@@ -225,7 +221,7 @@ if ($alternative != "-1")
         "sort"        =>  $sort,
         "archive"     =>  $archive,
         "thumbs"      =>  $thumbs_show);
-        
+
          ?>
          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
          <a class="prevLink fa fa-arrow-left" onClick="return CentralSpaceLoad(this,true);" href="<?php echo generateURL($baseurl_short . "pages/preview.php", $defaultparams, isset($alt_previous)?array("alternative"=>$alt_previous):"");?>" title="<?php echo $lang["previousresult"]?>"></a>
@@ -283,9 +279,15 @@ if (!hook("replacepreviewpager")){
 
 <td valign="middle"><?php if ($resource['file_extension']!="jpg" && $previouspage!=-1 &&resource_download_allowed($ref,"scr",$resource["resource_type"])) { ?><a onClick="return CentralSpaceLoad(this);" href="<?php echo $baseurl_short?>pages/preview.php?ref=<?php echo urlencode($ref) ?>&alternative=<?php echo urlencode($alternative)?>&ext=<?php echo urlencode($ext)?>&k=<?php echo urlencode($k)?>&search=<?php echo urlencode($search)?>&offset=<?php echo urlencode($offset)?>&order_by=<?php echo urlencode($order_by)?>&sort=<?php echo urlencode($sort)?><?php if($saved_thumbs_state=="show"){?>&thumbs=show<?php } ?>&archive=<?php echo urlencode($archive)?>&page=<?php echo urlencode($previouspage)?>" class="PDFnav  pagePrev">&lt;</a><?php } 
 elseif ($nextpage!=-1 && resource_download_allowed($ref,"scr",$resource["resource_type"]) || $use_watermark) { ?><a href="#" class="PDFnav pagePrev">&nbsp;&nbsp;&nbsp;</a><?php } ?></td>
-<?php $video_preview_file=get_resource_path($ref,true,"pre",false,$ffmpeg_preview_extension,-1,1,false,"",$alternative);
-if (!file_exists($video_preview_file)) {$video_preview_file=get_resource_path($ref,true,"",false,$ffmpeg_preview_extension,-1,1,false,"",$alternative);}
-if (!(isset($resource['is_transcoding']) && $resource['is_transcoding']==1) && file_exists($video_preview_file) && (strpos(strtolower($video_preview_file),".".$ffmpeg_preview_extension)!==false))
+<?php 
+$video_preview_file=get_resource_path($ref,true,"pre",false,$ffmpeg_preview_extension,-1,1,false,"",$alternative);
+$block_video_playback = resource_has_access_denied_by_RT_size($resource['resource_type'], 'pre');
+if (!file_exists($video_preview_file) || $block_video_playback) 
+    {
+    $video_preview_file=get_resource_path($ref,true,"",false,$ffmpeg_preview_extension,-1,1,false,"",$alternative);
+    $block_video_playback = resource_has_access_denied_by_RT_size($resource['resource_type'], '');
+    }
+if (!(isset($resource['is_transcoding']) && $resource['is_transcoding']==1) && file_exists($video_preview_file) && !resource_has_access_denied_by_RT_size($resource['resource_type'], 'pre') && !$block_video_playback && (strpos(strtolower($video_preview_file),".".$ffmpeg_preview_extension)!==false))
 	{
 	# Include the video player if a video preview exists for this resource.
 	$download_multisize=false;
@@ -308,7 +310,7 @@ if (!(isset($resource['is_transcoding']) && $resource['is_transcoding']==1) && f
                          class="Picture"
                          src="<?php echo $url; ?>"
                          <?php
-                         if($annotate_enabled)
+                         if(count(canSeeAnnotationsFields()) > 0)
                             {
                             ?>
                             data-original="<?php echo "{$baseurl}/annotation/resource/{$ref}"; ?>"
@@ -350,7 +352,7 @@ if ($show_resource_title_in_titlebar){
 	}
 }
 
-if($annotate_enabled)
+if(count(canSeeAnnotationsFields()) > 0)
     {
     ?>
     <!-- Annotorious -->
@@ -389,7 +391,7 @@ if($annotate_enabled)
                 annotations_endpoint: '<?php echo $baseurl; ?>/pages/ajax/annotations.php',
                 nodes_endpoint      : '<?php echo $baseurl; ?>/pages/ajax/get_nodes.php',
                 resource            : <?php echo (int) $ref; ?>,
-                read_only           : <?php echo ($annotate_read_only ? 'true' : 'false'); ?>,
+                read_only           : false,
                 // First page of a document is exactly the same as the preview
                 page                : <?php echo (1 >= $page ? 0 : (int) $page); ?>,
                 // We pass CSRF token identifier separately in order to know what to get in the Annotorious plugin file
@@ -472,4 +474,3 @@ if($annotate_enabled)
     }
 
 include "../include/footer.php";
-?>

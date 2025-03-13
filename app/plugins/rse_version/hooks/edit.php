@@ -1,10 +1,10 @@
 <?php
 
-function HookRse_versionEditEdit_all_extra_modes()
+function HookRse_versionEditEdit_all_extra_modes($field)
     {
     global $lang;
     ?>
-    <option value="Revert"><?php echo $lang["revertmetadatatodatetime"] ?></option>
+    <option value="Revert"><?php echo htmlspecialchars($lang["revertmetadatatodatetime"]); ?></option>
     <?php
     }
     
@@ -14,9 +14,10 @@ function HookRse_versionEditEdit_all_extra_modes()
 
 function HookRse_versionEditEdit_all_mode_js()
     {
-    # Add to the JS executed when a mode selector is changed on 'edit all'
+    # Add to the JS executed when a mode selector is changed on 'edit all', but not immediately after the preceding closing brace
     global $n;
-    ?>var r=document.getElementById('revert_<?php echo $n?>');
+    ?>
+    var r=document.getElementById('revert_<?php echo (int) $n?>');
     if (this.value=='Revert')
         {
          /* 
@@ -48,36 +49,15 @@ function HookRse_versionEditEdit_all_after_findreplace($field,$n)
     {
     # Add a revert date/time box after 'edit all' mode selector when reversion mode selected.
     global $lang;
+    $initial_revert_to_date=offset_user_local_timezone(date('YmdHis'), 'Y-m-d H:i');
     ?>
-    <div class="Question" id="revert_<?php echo $n?>" style="display:none;border-top:none;">
+    <div class="Question" id="revert_<?php echo (int) $n?>" style="display:none;border-top:none;">
     <label>&nbsp;</label>
-    <input type="text" name="revert_<?php echo $field["ref"]?>" class="stdwidth" value="<?php echo date("Y-m-d H:i"); ?>" />
+    <input type="text" name="revert_<?php echo (int) $field["ref"]?>" class="stdwidth" value="<?php echo escape($initial_revert_to_date); ?>" />
     </div>
     <?php
     }
     
-    
-function HookRse_versionEditSave_resource_data_multi_extra_modes($ref,$field)
-    {
-    # Process the batch revert action - hooks in to the save operation (save_resource_data_multi())
-    				
-    # Remove text/option(s) mode?
-    if (getval("modeselect_" . $field["ref"],"")=="Revert")
-            {
-            $revert_date=getval("revert_" . $field["ref"],"");
-            
-            # Find the value of this field as of this date and time in the resource log.
-            $parameters=array("i",$ref, "i",$field["ref"], "s",$revert_date);
-            $value=ps_value("SELECT previous_value value from resource_log 
-                where resource=? and resource_type_field=? 
-                and (type='e' or type='m') and date>? and previous_value is not null order by date limit 1",$parameters,-1);
-           
-            if ($value!=-1) {return $value;}
-            }
-    return false;
-    }
-
-
 function HookRse_versionEditBefore_status_question()
     {
     global $lang;
@@ -111,10 +91,10 @@ function HookRse_versionEditBefore_status_question()
         });
     </script>
     <div class="Question" id="edit_mode_status" style="display: none; padding-bottom: 0px; margin-bottom: 0px;">
-        <label><?php echo $lang["editmode"]; ?></label>
+        <label><?php echo htmlspecialchars($lang["editmode"]); ?></label>
         <select id="modeselect_status" class="stdwidth" name="modeselect_status" onchange="modeselect_status_onchange(this);">
             <option value=""></option>
-            <option value="revert"><?php echo $lang["revertmetadatatodatetime"]; ?></option>
+            <option value="revert"><?php echo htmlspecialchars($lang["revertmetadatatodatetime"]); ?></option>
         </select>
         <script>
         function modeselect_status_onchange(el)
@@ -140,7 +120,6 @@ function HookRse_versionEditBefore_status_question()
         <div class="clearerleft"></div>
     </div>
     <div class="Question" id="revert_status_to_date" style="display: none; border-top: none;">
-        <label></label>
         <input type="text" name="revert_status_to_date" class="stdwidth" value="<?php echo date("Y-m-d H:i"); ?>" />
         <div class="clearerleft"></div>
     </div>

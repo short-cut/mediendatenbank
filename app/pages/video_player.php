@@ -1,38 +1,24 @@
 <?php
 # Video player - plays the preview file created to preview video resources.
 include_once __DIR__ . '/../include/video_functions.php';
-global $alternative,$css_reload_key,$display,$video_search_play_hover,$video_view_play_hover,$video_preview_play_hover,$video_player_thumbs_view_alt,
-$video_player_thumbs_view_alt_name,$keyboard_navigation_video_search,$keyboard_navigation_video_view,$keyboard_navigation_video_preview,
-$video_hls_streams,$video_preview_player_hls,$video_preview_hls_support,$resource;
-
-$ref_escaped                               = escape_check($ref);
-$video_player_thumbs_view_alt_name_escaped = escape_check($video_player_thumbs_view_alt_name);
+global $alternative,$css_reload_key,$display,$video_search_play_hover,$video_view_play_hover,$video_preview_play_hover,
+$keyboard_navigation_video_search,$keyboard_navigation_video_view,$keyboard_navigation_video_preview,
+$video_hls_streams,$video_preview_player_hls,$video_preview_hls_support,$resource, $ffmpeg_preview_gif;
 
 # Check for search page and the use of an alt file for video playback
 $use_video_alts = false;
 $alternative = is_null($alternative) ? -1 : $alternative;
 
-if(
-       $video_player_thumbs_view_alt
-    && isset($video_player_thumbs_view_alt_name)
-    && 'search' == $pagename
-    && 'list' != $display
-)
-    {
-    $use_video_alts = true;
-
-    $alternative = sql_value("
-            SELECT ref AS `value`
-              FROM resource_alt_files
-             WHERE resource = '{$ref_escaped}'
-               AND name = '{$video_player_thumbs_view_alt_name_escaped}'
-        ",
-        -1);
-    }
-
 //Create array of video sources
 $video_preview_sources=array();
 $vidindex=0;
+
+$view_as_gif = false;
+if ($ffmpeg_preview_gif && $resource['file_extension'] == 'gif' && $alternative === -1)
+    {
+    $view_as_gif = true;
+    $video_preview_hls_support = 0;
+    }
 
 if($video_preview_hls_support!=1 || !$video_preview_player_hls) 
 	{
@@ -41,7 +27,7 @@ if($video_preview_hls_support!=1 || !$video_preview_player_hls)
 
 	if(file_exists($video_preview))
 		{
-		$video_preview_path = get_resource_path($ref, false, 'pre', false, $ffmpeg_preview_extension, true, 1, false, '', $alternative, false);
+		$video_preview_path = get_resource_path($ref, false, 'pre', false, $ffmpeg_preview_extension, true, 1, false, '', $alternative, true);
 		$video_preview_type = "video/{$ffmpeg_preview_extension}";
 		}		
 			
@@ -50,9 +36,14 @@ if($video_preview_hls_support!=1 || !$video_preview_player_hls)
 		# Attempt to play the source file direct (not a preview). For direct MP4 upload support - the file itself is an MP4. Or, with the preview functionality disabled, we simply allow playback of uploaded video files.
 		$origvideofile = get_resource_path($ref, true, '', false, $resource['file_extension'], true, 1, false, '', $alternative);
 
-		if(file_exists($origvideofile) && in_array($resource['file_extension'],array("mp4","mov"))) # Check video js supported file type
+        if(file_exists($origvideofile) && strtolower($resource['file_extension']) == "mp4") # Check video js supported file type
 			{
-			$video_preview_path = get_resource_path($ref, false, '', false, $resource['file_extension'], true, 1, false, '', $alternative, false);
+			$video_preview_path = get_resource_path($ref, false, $hide_real_filepath ? 'videojs' : '', false, $resource['file_extension'], true, 1, false, '', $alternative, false);
+			if (!$hide_real_filepath && strpos($video_preview_path, 'download.php') !== false)
+				{
+				// A direct URL to the file was expected but download.php was used instead. Original file maybe within staticsync's $syncdir (no ingest mode).
+				$video_preview_path = str_replace('size=&', 'size=videojs&', $video_preview_path);
+				}
 			$video_preview_type = "video/{$ffmpeg_preview_extension}";
 			}
 		}
@@ -67,8 +58,8 @@ if($video_preview_hls_support!=1 || !$video_preview_player_hls)
 		$vidindex++;
 		}
 	}
-	
-if($video_preview_hls_support!=0)
+
+if($video_preview_hls_support!=0 && !$view_as_gif)
 	{
 	$playlistfile=get_resource_path($ref,true,"pre",false,"m3u8",-1,1,false,"",$alternative,false);
 	if(file_exists($playlistfile))
@@ -92,7 +83,7 @@ if($use_video_alts)
     $alternative = -1;
     }
 	
-if(isset($videojs_resolution_selection))
+if(isset($videojs_resolution_selection) && !$view_as_gif)
 	{
 	// Add in each version of the hls stream
 	foreach ($video_hls_streams as $video_hls_stream)
@@ -122,7 +113,8 @@ if(isset($videojs_resolution_selection))
 			$video_preview_sources[0]["label"]=isset($videojs_resolution_selection[$s]['label'])?$videojs_resolution_selection[$s]['label']:"";
 			}
 		else{
-			$alt_data=sql_query("select * from resource_alt_files where resource='" . escape_check($ref) . "' and name='{$videojs_resolution_selection[$s]['name']}'");
+			$alt_data=ps_query("select " . columns_in("resource_alt_files") . " from resource_alt_files where resource=? and name=?",
+		array("i",$ref,"s",$videojs_resolution_selection[$s]['name']));
 			if(!empty($alt_data))
 				{
 				$alt_data = $alt_data[0];
@@ -210,7 +202,17 @@ if(isset($videojs_resolution_selection))
 		id="<?php echo $context ?>_<?php echo $display ?>_introvideo<?php echo $ref?>"
 		controls
 		data-setup='{ 
-			<?php if($play_on_hover){?>
+                <?php if ($view_as_gif)
+                     {
+                     ?>
+                     "controls": false,
+                     "autoplay": true,
+                     "loop": true,
+                     "muted": true
+                     <?php
+                     }
+                ?>
+			<?php if($play_on_hover && !$view_as_gif){?>
 				"loadingSpinner" : false,
 				"TextTrackDisplay" : true,
 				"nativeTextTracks": false,
@@ -229,7 +231,7 @@ if(isset($videojs_resolution_selection))
 					<?php } ?>
 				}
 			<?php }
-			if(isset($videojs_resolution_selection) && count($video_preview_sources)>0)
+			if(isset($videojs_resolution_selection) && count($video_preview_sources)>0 && !$view_as_gif)
 				{?>
 				"plugins": {
 						"videoJsResolutionSwitcher": {
@@ -249,11 +251,11 @@ if(isset($videojs_resolution_selection))
 		preload="<?php echo $preload?>"
 		width="<?php echo $width?>" 
 		height="<?php echo $height?>" 
-		class="video-js vjs-default-skin vjs-big-play-centered <?php if($pagename=='search'){echo "video-$display";}?>" 
+		class="video-js vjs-default-skin vjs-big-play-centered <?php if($pagename=='search'){echo "video-$display";} if($view_as_gif){echo ' vjs-gif-transparent';}?>" 
 		poster="<?php echo $thumb_raw?>"
 		<?php if($play_on_hover){ ?>
-			onmouseout="videojs_<?php echo $context ?>_<?php echo $display ?>_introvideo<?php echo $ref ?>[0].pause();"
-			onmouseover="videojs_<?php echo $context ?>_<?php echo $display ?>_introvideo<?php echo $ref ?>[0].play();"
+			onmouseout="videojs_<?php echo $context ?>_<?php echo $display ?>_introvideo<?php echo $ref ?>[0].pause();<?php echo ($pagename!=='search'? "jQuery('.vjs-big-play-button').show();": '');?>"
+			onmouseover="videojs_<?php echo $context ?>_<?php echo $display ?>_introvideo<?php echo $ref ?>[0].play();<?php echo ($pagename!=='search'? "jQuery('.vjs-big-play-button').hide();": '');?>"
 		<?php } ?>
 		>
 		<?php				
@@ -268,7 +270,7 @@ if(isset($videojs_resolution_selection))
 		<?php display_video_subtitles($ref,$access); ?>
 	</video>
 
-<?php if($play_on_hover){ ?>	
+<?php if($play_on_hover && !$view_as_gif){ ?>	
 		<script>
 		var videojs_<?php echo $context ?>_<?php echo $display ?>_introvideo<?php echo $ref ?> = jQuery('#<?php echo $context ?>_<?php echo $display ?>_introvideo<?php echo $ref ?>');
 		</script>

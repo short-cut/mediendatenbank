@@ -1,6 +1,5 @@
 <?php
 /* -------- Drop down list ------------------ */ 
-global $default_to_first_node_for_fields;
 
 // Selected nodes should be used most of the times.
 // When searching, an array of searched_nodes can be found instead
@@ -8,11 +7,6 @@ global $default_to_first_node_for_fields;
 if(!isset($selected_nodes))
     {
     $selected_nodes = array();
-
-    if(isset($searched_nodes) && is_array($selected_nodes))
-        {
-        $selected_nodes = $selected_nodes;
-        }
     }
 
 if((bool) $field['automatic_nodes_ordering'])
@@ -34,8 +28,8 @@ if((bool) $field['automatic_nodes_ordering'])
             }
             ?>>
 <?php
-global $default_to_first_node_for_fields, $pagename;
-if(!hook('replacedropdowndefault', '', array($field)) && (!in_array($field["ref"],$default_to_first_node_for_fields) || (in_array($field["ref"],$default_to_first_node_for_fields) && $pagename=="edit" && getval("uploader","")=="" && $value=='')))
+global $pagename;
+if(!hook('replacedropdowndefault', '', array($field)))
     {
     ?>
     <option value=""></option>
@@ -47,7 +41,16 @@ foreach($field['nodes'] as $node)
     if('' != trim($node['name']))
         {
         ?>
-        <option value="<?php echo htmlspecialchars(trim($node['ref'])); ?>"<?php if(in_array($node['ref'], $selected_nodes) || (isset($user_set_values[$field['ref']]) && $node['ref']==$user_set_values[$field['ref']])) { ?> selected<?php } ?>><?php echo htmlspecialchars(trim(i18n_get_translated($node['name']))); ?></option>
+        <option value="<?php echo htmlspecialchars(trim($node['ref'])); ?>"
+        <?php 
+        // When editing multiple resources, we don't want to preselect any options; the user must make the necessary selection
+        if((!$multiple || $copyfrom != '')
+            && in_array($node['ref'], $selected_nodes) || (isset($user_set_values[$field['ref']]) 
+            && $node['ref']==$user_set_values[$field['ref']])) 
+            { ?>
+             selected
+             <?php 
+            } ?>><?php echo htmlspecialchars(trim(i18n_get_translated($node['name']))); ?></option>
         <?php
         }
     }

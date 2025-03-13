@@ -15,7 +15,7 @@ if (substr($sapi_type, 0, 3) != 'cli')
     header("Content-type: text/plain");
     set_time_limit(0);
     # ex. pages/tools/update_exiftool_field.php?fieldrefs=75,3&blanks=true
-    $fieldrefs = getvalescaped("fieldrefs",0);
+    $fieldrefs = getval("fieldrefs",0);
     if ($fieldrefs==0)
         {
         echo "Please add a list of field IDs to the fieldrefs url parameter, which are the ref numbers of the fields that you would like exiftool to extract from." . PHP_EOL . PHP_EOL;
@@ -32,8 +32,8 @@ if (substr($sapi_type, 0, 3) != 'cli')
         }
     $blanks = getval("blanks","true") == "true"; // if new value is blank, it will replace the old value.
     $fieldrefs = explode(",",$fieldrefs);
-    $collectionid = getvalescaped("col", 0, true);
-    $overwrite = getvalescaped("overwrite","") != "";  // If true and field already has value it will overwrite the existing value
+    $collectionid = getval("col", 0, true);
+    $overwrite = getval("overwrite","") != "";  // If true and field already has value it will overwrite the existing value
 	}
 else
 	{
@@ -76,15 +76,15 @@ if ($exiftool_fullpath==false) {die ("Could not find Exiftool.");}
 
 foreach ($fieldrefs as $fieldref)
     {
-    $fieldref_info= sql_query("select exiftool_field,exiftool_filter,title,resource_type,name,type from resource_type_field where ref='$fieldref'");
-    if (!isset($fieldref_info[0])){die("field $fieldref doesn't exist");}
-    $title=$fieldref_info[0]["title"];
-    $name=$fieldref_info[0]["name"];
-    $type=$fieldref_info[0]["type"];
-    $exiftool_filter=$fieldref_info[0]["exiftool_filter"];
-    $exiftool_tag=$fieldref_info[0]["exiftool_field"];
-    $field_resource_type=$fieldref_info[0]["resource_type"];
-    
+    $fieldref_info = get_resource_type_field($fieldref);
+
+    if (!$fieldref_info){die("field $fieldref doesn't exist");}
+    $title=(string)$fieldref_info["title"];
+    $name=(string)$fieldref_info["name"];
+    $type=(int)$fieldref_info["type"];
+    $exiftool_filter=(string)$fieldref_info["exiftool_filter"];
+    $exiftool_tag=(string)$fieldref_info["exiftool_field"];
+    $restypes = !is_null($fieldref_info["resource_types"])?explode(",",(string)$fieldref_info["resource_types"]):[];
     if ($exiftool_tag=="")
         {
         die ("Please add an exiftool mapping to your $title Field");
@@ -95,20 +95,27 @@ foreach ($fieldrefs as $fieldref)
     $join="";
     $condition = "";
     $conditionand = "";
+    $params = [];
     if ($collectionid != 0)
         {
-        $join=" inner join collection_resource on collection_resource.resource=resource.ref "; 
-        $condition = "where collection_resource.collection = '$collectionid' ";
-        $conditionand = "and collection_resource.collection = '$collectionid' ";
+        $join=" INNER JOIN collection_resource ON collection_resource.resource=resource.ref "; 
+        $condition = "WHERE collection_resource.collection = ?";
+        $conditionand = "AND collection_resource.collection = ?";
+        $params  = ['i', $collectionid];
         }
     
-    if($field_resource_type==0)
+    if($fieldref_info["global"]===1)
         {
-        $rd=sql_query("select ref,file_extension from resource $join $condition order by ref");
+        $rd= ps_query("SELECT ref,file_extension FROM resource $join $condition ORDER BY ref", $params);
+        }
+    else if (empty($restypes))
+        {
+        echo "Field $fieldref not assigned to any fields or global, skipping...\n";
+        continue;
         }
     else
         {
-        $rd=sql_query("select ref,file_extension from resource $join where resource_type=$field_resource_type $conditionand order by ref");
+        $rd= ps_query("SELECT ref,file_extension FROM resource $join WHERE resource_type IN(" . ps_param_insert(count($restypes)) . ") $conditionand ORDER BY ref", array_merge(ps_param_fill($restypes,"i"), $params));
         }	
     $exiftool_tags=explode(",",$exiftool_tag);
     for ($n=0;$n<count($rd);$n++)
@@ -139,7 +146,10 @@ foreach ($fieldrefs as $fieldref)
                     exit("ERROR: exiftool tags do not use spaces please check the tags used in the fields options for Field " . $fieldref);
                     }
                 $command = $exiftool_fullpath . " -s -s -s -f -m -d \"%Y-%m-%d %H:%M:%S\" -" . trim($current_exiftool_tag) . " " . escapeshellarg($image);
-                echo $command . PHP_EOL;
+                if(PHP_SAPI == "cli")
+                    {
+                    echo $command . PHP_EOL;
+                    }
                 $current_value = iptc_return_utf8(trim(run_command($command)));
                 if ($current_value != "-")
                     {
@@ -151,7 +161,7 @@ foreach ($fieldrefs as $fieldref)
                 $plugin="../../plugins/exiftool_filter_" . $name . ".php";
                 if ($exiftool_filter!="")
                     {
-                    eval($exiftool_filter);
+                    eval(eval_check_signed($exiftool_filter));
                     }
                 if (file_exists($plugin))
                     {

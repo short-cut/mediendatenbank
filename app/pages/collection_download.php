@@ -3,17 +3,19 @@ ini_set('zlib.output_compression','off'); // disable PHP output compression sinc
 include "../include/db.php";
 
 # External access support (authenticate only if no key provided, or if invalid access key provided)
-$k=getvalescaped("k","");if (($k=="") || (!check_access_key_collection(getvalescaped("collection","",true),$k))) {include "../include/authenticate.php";}include_once '../include/csv_export_functions.php';
+$k=getval("k","");
+if (($k=="") || (!check_access_key_collection(getval("collection","",true),$k))) {include "../include/authenticate.php";}
+include_once '../include/csv_export_functions.php';
 include_once '../include/pdf_functions.php';
 ob_end_clean();
 $uniqid="";$id="";
-$collection=getvalescaped("collection","",true);  if ($k!=""){$usercollection=$collection;}
-$size=getvalescaped("size","");
-$submitted=getvalescaped("submitted","");
-$includetext=getvalescaped("text","false");
-$useoriginal=getvalescaped("use_original","no");
+$collection=getval("collection","",true);  if ($k!=""){$usercollection=$collection;}
+$size=getval("size","");
+$submitted=getval("submitted","");
+$includetext=getval("text","false");
+$useoriginal=getval("use_original","no");
 $collectiondata=get_collection($collection);
-$tardisabled=getvalescaped("tardownload","")=="off";
+$tardisabled=getval("tardownload","")=="off";
 $include_csv_file = getval('include_csv_file', '');
 
 if($k != "" || (isset($anonymous_login) && $username == $anonymous_login))
@@ -44,11 +46,11 @@ else
 		}
 	}
 	
-$settings_id=(isset($collection_download_settings) && count($collection_download_settings)>1)?getvalescaped("settings",""):0;
+$settings_id=(isset($collection_download_settings) && count($collection_download_settings)>1)?getval("settings",""):0;
 $uniqid=getval("id",uniqid("Col" . $collection));
 
-$usage = getvalescaped('usage', '-1');
-$usagecomment = getvalescaped('usagecomment', '');
+$usage = getval('usage', '-1');
+$usagecomment = getval('usagecomment', '');
 
 // set the time limit to unlimited, default 300 is not sufficient here.
 set_time_limit(0);
@@ -92,7 +94,7 @@ for ($n=0;$n<count($result);$n++)
 	$ref=$result[$n]["ref"];
 	# Load access level (0,1,2) for this resource
 	$access=get_resource_access($result[$n]);
-	
+    
     # Get all possible sizes for this resource. If largest available has been requested then include internal or user could end up with no file depite being able to see the preview
 	$sizes=get_all_image_sizes($size=="largest",$access>=1);
 
@@ -106,16 +108,45 @@ for ($n=0;$n<count($result);$n++)
 	# check for the availability of each size and load it to the available_sizes array
 	foreach ($sizes as $sizeinfo)
 		{
-		$size_id=$sizeinfo['id'];
-		$size_extension = get_extension($result[$n], $size_id);
-		$p=get_resource_path($ref,true,$size_id,false,$size_extension);
+        if(in_array($result[$n]['file_extension'], $ffmpeg_supported_extensions))
+            {
+            $size_id=$sizeinfo['id'];
+            //Video files only have a 'pre' sized derivative so flesh out the sizes array with that.
+            $p = get_resource_path($ref,true,'pre',false,$result[$n]['file_extension']);
+            $size_id = 'pre';
+            if(resource_download_allowed($ref,$size_id,$result[$n]['resource_type']))
+                {            
+                if (hook('size_is_available', '', array($result[$n], $p, $size_id)) || file_exists($p))
+                    {
+                    $available_sizes[$sizeinfo['id']][]=$ref;
+                    }
+                }
+            }
+        elseif(in_array($result[$n]['file_extension'], array_merge($ffmpeg_audio_extensions, ['mp3'])))
+            {
+            //Audio files are ported to mp3 and do not have different preview sizes
+            $p = get_resource_path($ref,true,'',false,'mp3');
+            if(resource_download_allowed($ref,'',$result[$n]['resource_type']))
+                {            
+                if (hook('size_is_available', '', array($result[$n], $p, '')) || file_exists($p))
+                    {
+                    $available_sizes[$sizeinfo['id']][]=$ref;
+                    }
+                }
+            }
+        else
+            {
+            $size_id=$sizeinfo['id'];
+            $size_extension = get_extension($result[$n], $size_id);
+            $p=get_resource_path($ref,true,$size_id,false,$size_extension);
 
-		if (resource_download_allowed($ref,$size_id,$result[$n]['resource_type']))
-			{
-			if (hook('size_is_available', '', array($result[$n], $p, $size_id)) || file_exists($p))
-				$available_sizes[$size_id][]=$ref;
-			}
-		}
+            if (resource_download_allowed($ref,$size_id,$result[$n]['resource_type']))
+                {
+                if (hook('size_is_available', '', array($result[$n], $p, $size_id)) || file_exists($p))
+                    $available_sizes[$size_id][]=$ref;
+                }
+            }
+        }
 
     if(in_array($result[$n]['resource_type'], $data_only_resource_types))
         {
@@ -162,7 +193,7 @@ if ($submitted != "")
 	if($exiftool_write && !$force_exiftool_write_metadata && !$collection_download_tar)
 		{
 		$exiftool_write_option = false;
-		if('yes' == getvalescaped('write_metadata_on_download', ''))
+		if('yes' == getval('write_metadata_on_download', ''))
 			{
 			$exiftool_write_option = true;
 			}
@@ -217,7 +248,7 @@ if ($submitted != "")
 	for ($n=0;$n<count($result);$n++)
 		{
         $ref = $result[$n]['ref'];
-        
+        $usesize = null;
         if($size=="largest")
             {
             foreach($available_sizes as $available_size => $resources)
@@ -238,7 +269,11 @@ if ($submitted != "")
             {
             $usesize = ($size == 'original') ? "" : $size;
             }        
-
+        if($usesize === null)
+            {
+            unset($result[$n]);
+            continue;
+            }
         $use_watermark=check_use_watermark();
             
 
@@ -256,6 +291,7 @@ if ($submitted != "")
 			$totalsize+=filesize_unlimited($f);
 			}
 		}
+        $result = array_values($result);
 	if ($totalsize>$collection_download_max_size  && !$collection_download_tar)
 		{
 		?>
@@ -267,7 +303,7 @@ if ($submitted != "")
 		exit();
 		}
 	
-    $id=getvalescaped("id","");
+    $id=getval("id","");
     if(!ctype_alnum($id)){exit($lang["error"]);}
 	// Get a temporary directory for this download - $id should be unique
 	$usertempdir=get_temp_dir(false,"rs_" . $userref . "_" . $id);
@@ -347,8 +383,25 @@ if ($submitted != "")
                 $usesize = ($size == 'original') ? "" : $size;
                 }      
             
-            $pextension = get_extension($result[$n], $usesize);
-            $p=get_resource_path($ref,true,$usesize,false,$pextension,-1,1,$use_watermark);
+            if(in_array($result[$n]['file_extension'], $ffmpeg_supported_extensions) && $usesize !== '')
+                {
+                // Supported video formats will only have a pre sized derivative
+                $pextension = $ffmpeg_preview_extension;
+                $p = get_resource_path($ref,true,'pre',false,$pextension,-1,1);
+                $usesize = 'pre';
+                }
+            elseif(in_array($result[$n]['file_extension'], array_merge($ffmpeg_audio_extensions, ['mp3'])) && $usesize !== '')
+                {
+                //Supported audio formats are ported to mp3
+                $pextension = 'mp3';
+                $p = get_resource_path($ref,true,'',false,'mp3',-1,1);
+                $usesize = '';
+                }
+            else
+                {
+                $pextension = get_extension($result[$n], $usesize);
+                $p=get_resource_path($ref,true,$usesize,false,$pextension,-1,1,$use_watermark);
+                }
 
 			# Determine whether target exists
 			$subbed_original = false;
@@ -450,7 +503,7 @@ if ($submitted != "")
 					update_zip_progress_file("file ".$n);
 					}
 
-                collection_download_log_resource_ready($tmpfile, $deletion_array, $ref);
+                collection_download_log_resource_ready($tmpfile, $deletion_array, $ref, $usesize);
 				}
 			}
 
@@ -460,9 +513,10 @@ if ($submitted != "")
         {
         collection_download_process_data_only_types($result, $id, $collection_download_tar, $usertempdir, $zip, $path, $deletion_array);
         }
-    else if('' == $path)
+    if('' == $path)
         {
-        exit($lang['nothing_to_download']);
+        update_zip_progress_file('nothing_to_download');
+        exit(escape($lang['nothing_to_download']));
         }
 
     collection_download_process_summary_notes(
@@ -506,7 +560,14 @@ if ($submitted != "")
 
 	collection_download_process_collection_download_name($filename, $collection, $size, $suffix, $collectiondata);
 		
-    collection_download_process_archive_command($collection_download_tar, $zip, $filename, $usertempdir, $archiver, $settings_id, $zipfile);
+    $completed = collection_download_process_archive_command($collection_download_tar, $zip, $filename, $usertempdir, $archiver, $settings_id, $zipfile);
+
+    if ($completed)
+        {
+        // A tar file was requested. Nothing further to do.
+        collection_log($collection, LOG_CODE_COLLECTION_COLLECTION_DOWNLOADED, "", "tar - " . $size);
+        exit();
+        }
 
     collection_download_clean_temp_files($deletion_array);
 
@@ -523,25 +584,24 @@ if ($submitted != "")
 	ignore_user_abort(true); // collection download has a problem with leaving junk files when this script is aborted client side. This seems to fix that by letting the process run its course.
 	set_time_limit(0);
 
-	if (!hook("replacefileoutput"))
-		{
-		# New method
-		$sent = 0;
-		$handle = fopen($zipfile, "r");
-	
-		// Now we need to loop through the file and echo out chunks of file data
-		while($sent < $filesize)
-			{
-			echo fread($handle, $download_chunk_size);
-			$sent += $download_chunk_size;
-			}
-		}
-		
-	# Remove archive.
-	//unlink($zipfile);
-	//unlink($progress_file);
-	if ($use_zip_extension)
-		{
+    # New method
+    $sent = 0;
+    $handle = fopen($zipfile, "r");
+
+    // Now we need to loop through the file and echo out chunks of file data
+    while($sent < $filesize)
+        {
+        echo fread($handle, $download_chunk_size);
+        $sent += $download_chunk_size;
+        }
+
+    // File send complete, log to daily stat
+    daily_stat('Downloaded KB', 0, floor($sent/1024));
+    
+    # Remove archive.
+    if ($use_zip_extension)
+        {
+        $GLOBALS["use_error_exception"]=true;
         try {
             rmdir(get_temp_dir(false,$id));
             }
@@ -549,17 +609,22 @@ if ($submitted != "")
             {
             debug("collection_download: Attempt delete temp folder failed. Reason: {$e->getMessage()}");
             }
-        collection_log($collection,"Z","","-".$size);
-		}
-	hook('beforedownloadcollectionexit');
-	exit();
-	}
+        unset($GLOBALS["use_error_exception"]);
+        }
+    collection_log($collection, LOG_CODE_COLLECTION_COLLECTION_DOWNLOADED, "", $size);
+    hook('beforedownloadcollectionexit');
+    exit();
+    }
+
 include "../include/header.php";
 
 ?>
 <div class="BasicsBox">
 <?php if($k!=""){
-	?><p><a href="<?php echo $baseurl_short?>pages/search.php?search=!collection<?php echo $collection?>&k=<?php echo $k?>" onclick="return CentralSpaceLoad(this,true);">< <?php echo $lang['back']?></a></p><?php
+    $urlparams = array(
+        "search"      =>  "!collection".$collection,
+        "k"           =>  $k);
+	?><p><a href="<?php echo generateURL($baseurl_short."pages/search.php",$urlparams); ?>" onclick="return CentralSpaceLoad(this,true);">< <?php echo htmlspecialchars($lang['back'])?></a></p><?php
 }?>
 
 <h1><?php echo $lang["downloadzip"]?></h1>
@@ -601,7 +666,7 @@ function ajax_download(download_offline, tar)
         }
     else
         {
-        progress= jQuery("progress3").PeriodicalUpdater("<?php echo $baseurl_short?>pages/ajax/collection_download_progress.php?id=<?php echo urlencode($uniqid) ?>&user=<?php echo urlencode($userref) ?>", {
+        progress= jQuery("progress3").PeriodicalUpdater("<?php echo $baseurl_short?>pages/ajax/collection_download_progress.php?id=<?php echo urlencode((string)$uniqid) ?>&user=<?php echo urlencode((string)$userref) ?>", {
                 method: 'post',          // method; get or post
                 data: '',               //  e.g. {name: "John", greeting: "hello"}
                 minTimeout: 500,       // starting value for the timeout in milliseconds
@@ -612,19 +677,24 @@ function ajax_download(download_offline, tar)
                  if (remoteData.indexOf("file")!=-1){
                             var numfiles=remoteData.replace("file ","");
                             if (numfiles==1){
-                                var message=numfiles+' <?php echo $lang['fileaddedtozip']?>';
+                                var message=numfiles+' <?php echo escape($lang['fileaddedtozip'])?>';
                             } else { 
-                                var message=numfiles+' <?php echo $lang['filesaddedtozip']?>';
+                                var message=numfiles+' <?php echo escape($lang['filesaddedtozip'])?>';
                             }    
                             var status=(numfiles/<?php echo count($result)?>*100)+"%";
                             console.log(status);
                             document.getElementById('progress2').innerHTML=message;
                         }
                         else if (remoteData=="complete"){ 
-                           document.getElementById('progress2').innerHTML="<?php echo $lang['zipcomplete']?>";
-                           document.getElementById('progress').style.display="none";
-                           progress.stop();    
-                        }  
+                            document.getElementById('progress2').innerHTML="<?php echo escape($lang['zipcomplete'])?>";
+                            document.getElementById('progress').style.display="none";
+                            progress.stop();
+                        }
+                        else if (remoteData=="nothing_to_download"){
+                            document.getElementById('progress2').innerHTML="<?php echo escape($lang['nothing_to_download'])?>";
+                            document.getElementById('progress').style.display="none";
+                            progress.stop();
+                        }
                         else {
                             // fix zip message or allow any
                             console.log(remoteData);
@@ -646,7 +716,7 @@ function ajax_download(download_offline, tar)
 
 
 	<input type=hidden name="id" value="<?php echo htmlspecialchars($uniqid) ?>">
-	<iframe id="downloadiframe" <?php if (!$debug_direct_download){?>style="display:none;"<?php } ?>></iframe>
+	<iframe id="downloadiframe" style="display:none;"></iframe>
 
 
 <?php 
@@ -819,5 +889,3 @@ if($exiftool_write && !$force_exiftool_write_metadata)
 </div>
 <?php 
 include "../include/footer.php";
-?>
-

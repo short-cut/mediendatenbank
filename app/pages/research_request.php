@@ -26,10 +26,28 @@ if ($save)
         $error_description = true;
         }
 
-    if (isset($anonymous_login) && $anonymous_login == $username && $email == "")
+    if (isset($anonymous_login) && $anonymous_login == $username)
         {
-        $errors = true;
-        $error_email = true;
+        if($email == "")
+            {
+            $errors = true;
+            $error_email = true;
+            }
+
+        $spamcode = getval("antispamcode","");
+        $usercode = getval("antispam","");
+        $spamtime = getval("antispamtime",0);
+
+        if($spamtime<(time()-180) || $spamtime>time())
+            {
+            $errors = true;
+            $antispam_error=$lang["expiredantispam"];    
+            }
+        elseif(!hook('replaceantispam_check') && !verify_antispam($spamcode, $usercode, $spamtime))
+            {
+            $errors = true;
+            $antispam_error=$lang["requiredantispam"];
+            }
         }
 
     if(count_errors($processed_rr_cfields) > 0)
@@ -116,15 +134,15 @@ include "../include/header.php";
             ?>
             <div class="Question" id="email">
                 <label for="email"><?php echo $lang["email"]?></label>
-                <input id="email" name="email" class="stdwidth" type="text" value="<?php echo htmlspecialchars($email) ?>">
+                <input id="email" name="email" class="stdwidth" type="text" maxlength="200" value="<?php echo htmlspecialchars($email) ?>">
                 <div class="clearerleft"> </div>
                 <?php if (isset($error_email)) { ?><div class="FormError"><?php echo $lang["setup-emailerr"]?></div><?php } ?>
             </div>
-        <?php } ?>
+<?php } ?>
 
         <div class="Question" id="contacttelephone">
             <label for="contact"><?php echo $lang["contacttelephone"]?></label>
-            <input id="contact" name="contact" class="stdwidth" type="text" value="<?php echo htmlspecialchars(getval("contact","")) ?>">
+            <input id="contact" name="contact" class="stdwidth" type="text" maxlength="100" value="<?php echo htmlspecialchars(getval("contact","")) ?>">
             <div class="clearerleft"></div>
         </div>
 
@@ -176,9 +194,17 @@ include "../include/header.php";
             {
             include dirname(__FILE__) . "/../plugins/research_request.php";
             }
+
+        if (isset($anonymous_login) && $anonymous_login == $username && !hook("replaceantispam"))
+            {
+            if(isset($antispam_error))
+                {
+                error_alert($antispam_error, false);
+                }
+            render_antispam_question();
+            }
         ?>
-        <div class="QuestionSubmit">
-            <label for="buttons"> </label>          
+        <div class="QuestionSubmit">      
             <input name="save" type="submit" value="&nbsp;&nbsp;<?php echo $lang["sendrequest"]?>&nbsp;&nbsp;" />
         </div>
 

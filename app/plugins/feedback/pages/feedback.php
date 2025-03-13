@@ -11,7 +11,7 @@ if(!is_dir($storagedir . "/feedback"))
     }
     
 # Load config
-$config 			  = get_feedback_config(__DIR__ . '../config/config.php');
+$config 			  = get_feedback_config(__DIR__ . '/../config/config.php');
 $feedback_questions   = $config['questions'];
 $feedback_prompt_text = $config['prompt_text'];
 
@@ -116,7 +116,7 @@ if (getval("send","")!="" && enforcePostRequest(false))
 		fclose($f);
 		
 		# install email template
-		$result = ps_query("SELECT * FROM site_text WHERE page='all' AND name = 'emailfeedback'");
+		$result = ps_query("SELECT " . columns_in("site_text") . " FROM site_text WHERE page='all' AND name = 'emailfeedback'");
 		if (count($result) == 0)
 			{
 			$email_text = "[img_headerlogo][message] [text_footer]";
@@ -171,16 +171,16 @@ for ($n=0;$n<count($feedback_questions);$n++)
 		?>
 		<div class="Question" style="border-top:none;">
 		<label style="width:250px;padding-right:5px;" for="question_<?php echo $n?>"><?php echo $text;?></label>
-		
+
 		<?php if ($type==1) {  # Normal text box
 		?>
-		<input type=text name="question_<?php echo $n?>" id="question_<?php echo $n?>" class="stdwidth" value="<?php echo htmlspecialchars(getvalescaped("question_" . $n,""))?>">
-		<?php } ?>
+		<input type=text name="question_<?php echo $n?>" id="question_<?php echo $n?>" class="stdwidth" value="<?php echo htmlspecialchars(getval("question_" . $n,""))?>">
+<?php } ?>
 
 		<?php if ($type==2) { # Large text box 
 		?>
-		<textarea name="question_<?php echo $n?>" id="question_<?php echo $n?>" class="stdwidth" rows="5"><?php echo htmlspecialchars(getvalescaped("question_" . $n,""))?></textarea>
-		<?php } ?>
+		<textarea name="question_<?php echo $n?>" id="question_<?php echo $n?>" class="stdwidth" rows="5"><?php echo htmlspecialchars(getval("question_" . $n,""))?></textarea>
+<?php } ?>
 
 		<?php if ($type==3) { # Single Select List
 				?>
@@ -188,31 +188,31 @@ for ($n=0;$n<count($feedback_questions);$n++)
 		<?php foreach (explode(",",$feedback_questions[$n]["options"]) as $option)
 			{
 			?>
-			<tr><td width="1"><input type="radio" name="question_<?php echo $n?>" value="<?php echo htmlspecialchars($option);?>" <?php if ($option==getvalescaped("question_" . $n,"")) { ?>checked<?php } ?>></td><td><?php echo htmlspecialchars($option);?></td></tr>
+			<tr><td width="1"><input type="radio" name="question_<?php echo $n?>" value="<?php echo htmlspecialchars($option);?>" <?php if ($option==getval("question_" . $n,"")) { ?>checked<?php } ?>></td><td><?php echo htmlspecialchars($option);?></td></tr>
 			<?php
 			}
 		?>
 		</table>
-		<?php } ?>
-		
+<?php } ?>
+
 		<?php if ($type==5) { # Multi Select List
 		?>
 		<table cellpadding=2 cellspacing=0>
 		<?php $opt=0;foreach (explode(",",$feedback_questions[$n]["options"]) as $option)
 			{
 			?>
-			<tr><td width="1"><input type="checkbox" name="question_<?php echo $n?>_<?php echo $opt?>" value="yes" <?php if (getvalescaped("question_" . $n . "_" . $opt,"")!="") { ?>checked<?php } ?>></td><td><?php echo htmlspecialchars($option);?></td></tr>
+			<tr><td width="1"><input type="checkbox" name="question_<?php echo $n?>_<?php echo $opt?>" value="yes" <?php if (getval("question_" . $n . "_" . $opt,"")!="") { ?>checked<?php } ?>></td><td><?php echo htmlspecialchars($option);?></td></tr>
 			<?php
 			$opt++;
 			}
 		?>
 		</table>
-		<?php } ?>
+<?php } ?>
 
-		
+
 		<div class="clearerleft"> </div>
 		</div>
-		<?php
+<?php
 		}
 	}
 
@@ -223,11 +223,11 @@ if (!isset($userref))
 	<br><br>
 		<div class="Question" style="border-top:none;">
 		<label style="width:250px;padding-right:5px;" for="username"><?php echo $lang["feedback_your_full_name"]?></label>
-		
-		<input type=text name="username" id="username" class="stdwidth" value="<?php echo htmlspecialchars(getvalescaped("username",""))?>">
+
+		<input type=text name="username" id="username" class="stdwidth" value="<?php echo htmlspecialchars(getval("username",""))?>">
 		<div class="clearerleft"> </div>
 		</div>
-	<?php
+<?php
 	}
 ?>
 

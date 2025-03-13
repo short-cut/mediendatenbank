@@ -23,7 +23,7 @@ $url_params=
     ($filter_by_permissions ? "&filterbypermissions={$filter_by_permissions}" : "");
 
 # create new record from callback
-$new_group_name=getvalescaped("newusergroupname","");
+$new_group_name=getval("newusergroupname","");
 if ($new_group_name!="" && enforcePostRequest(false))
     {
     $setoptions =array("request_mode" => 1, "name" => $new_group_name);
@@ -37,30 +37,30 @@ if ($new_group_name!="" && enforcePostRequest(false))
     exit;
     }
 
-$ref=getvalescaped("ref","");
+$ref=getval("ref","");
 
-if (!sql_value("select ref as value from usergroup where ref='{$ref}'",false))
+if (!ps_value("select ref as value from usergroup where ref = ?", array("i", $ref), false))
     {
     redirect("{$baseurl_short}pages/admin/admin_group_management.php?{$url_params}");       // fail safe by returning to the user group management page if duff ref passed
     exit;
     }
 
-$dependant_user_count=sql_value("select count(*) as value from user where usergroup='{$ref}'",0);
-$dependant_groups=sql_value("select count(*) as value from usergroup where parent='{$ref}'",0);
-$has_dependants=$dependant_user_count + $dependant_groups > 0;
-    
+$dependant_user_count = ps_value("select count(*) as value from user where usergroup = ?", array("i", $ref), 0);
+$dependant_groups = ps_value("select count(*) as value from usergroup where parent = ?", array("i", $ref), 0);
+$has_dependants = $dependant_user_count + $dependant_groups > 0;
+
 if (!$has_dependants && getval("deleteme",false) && enforcePostRequest(false))
     {
-    sql_query("delete from usergroup where ref='{$ref}'");
+    ps_query("delete from usergroup where ref = ?", array("i", $ref));
     log_activity('',LOG_CODE_DELETED,null,'usergroup',null,$ref);
 
     // No need to keep any records of language content for this user group
-    sql_query('DELETE FROM site_text WHERE specific_to_group = "' . $ref . '";');
+    ps_query('DELETE FROM site_text WHERE specific_to_group = ?', array("i", $ref));
 
     redirect("{$baseurl_short}pages/admin/admin_group_management.php?{$url_params}");       // return to the user group management page
     exit;
     }
-    
+
 if (getval("save",false) && enforcePostRequest(false))
     {
     $error = false;
@@ -68,9 +68,9 @@ if (getval("save",false) && enforcePostRequest(false))
 
     if (isset($_POST['removelogo']))
         {
-        $logo_extension=sql_value("select group_specific_logo as value from usergroup where ref='{$ref}'", false);
+        $logo_extension = ps_value("select group_specific_logo as value from usergroup where ref = ?", array("i", $ref), false);
         $logo_filename="{$logo_dir}/group{$ref}.{$logo_extension}";
-        
+
         if ($logo_extension && file_exists($logo_filename) && unlink($logo_filename))
             {
             $logo_extension="";
@@ -92,7 +92,7 @@ if (getval("save",false) && enforcePostRequest(false))
             $logo_pathinfo=pathinfo($_FILES['grouplogo']['name']);
             $logo_extension=$logo_pathinfo['extension'];
             $logo_filename="{$logo_dir}/group{$ref}.{$logo_extension}";
-            
+
             if(!in_array(strtolower($logo_extension), array("jpg","jpeg","gif","svg","png")))
                 {
                 //trigger_error('You are not allowed to upload "' . $logo_extension . '" files to the system!');
@@ -108,58 +108,68 @@ if (getval("save",false) && enforcePostRequest(false))
 
         if (isset($logo_extension))
             {
-            $logo_extension_escaped = escape_check($logo_extension);
-            sql_query("UPDATE usergroup SET group_specific_logo = '{$logo_extension_escaped}' WHERE ref = '{$ref}'");
+            ps_query("UPDATE usergroup SET group_specific_logo = ? WHERE ref = ?", array("s", $logo_extension, "i", $ref));
             log_activity(null,null,null,'usergroup','group_specific_logo',$ref);
             }
 
+    $update_sql_params = array();
     foreach (array("name","permissions","parent","search_filter","search_filter_id","edit_filter","edit_filter_id","derestrict_filter",
                     "derestrict_filter_id","resource_defaults","config_options","welcome_message","ip_restrict","request_mode",
                     "allow_registration_selection","inherit_flags", "download_limit","download_log_days") as $column)		
-		
-		{
+
+        {
         if ($execution_lockout && $column=="config_options")
             {
             # Do not allow config overrides to be changed from UI if $execution_lockout is set.
             continue;
             }
 
-		if (in_array($column,array("allow_registration_selection")))
-			{
-			$val=getval($column,"0") ? "1" : "0";
-			}
-
-		elseif($column=="inherit_flags" && getvalescaped($column,'')!="")
-			{
-			$val=implode(",",getvalescaped($column,''));
-			}
-		elseif(in_array($column,array("parent","download_limit","download_log_days","search_filter_id","edit_filter_id","derestrict_filter_id")))
-			{
-			$val=getval($column,0,true);
-			}
-		elseif($column=="request_mode")
-			{
-			$val=getval($column, 1, true);
+        if (in_array($column,array("allow_registration_selection")))
+            {
+            $val=getval($column,"0") ? "1" : "0";
+            $update_sql_params = array_merge($update_sql_params, array("i", $val));
             }
-		else
-			{
-			$val=getvalescaped($column,"");
-			}
 
-		if (isset($sql))
-			{
-			$sql.=",";
-			}
-		else
-			{
-			$sql="update usergroup set ";
-			}		
-		$sql.="{$column}='{$val}'";
-		log_activity(null,LOG_CODE_EDITED,$val,'usergroup',$column,$ref);
-		}
-    
-    $sql.=" where ref='{$ref}'";
-    sql_query($sql);
+        elseif($column=="inherit_flags" && getval($column,'')!="")
+            {
+            $val = getval($column,'');
+            if (is_array($val))
+                {
+                $val=implode(",", $val);
+                }
+            $update_sql_params = array_merge($update_sql_params, array("s", $val));
+            }
+        elseif(in_array($column,array("parent","download_limit","download_log_days","search_filter_id","edit_filter_id","derestrict_filter_id")))
+            {
+            $val=getval($column,0,true);
+            $update_sql_params = array_merge($update_sql_params, array("i", $val));
+            }
+        elseif($column=="request_mode")
+            {
+            $val=getval($column, 1, true);
+            $update_sql_params = array_merge($update_sql_params, array("i", $val));
+            }
+        else
+            {
+            $val=getval($column,"");
+            $update_sql_params = array_merge($update_sql_params, array("s", $val));
+            }
+
+        if (isset($sql))
+            {
+            $sql.=",";
+            }
+        else
+            {
+            $sql="update usergroup set ";
+            }
+        $sql.="{$column} = ?";
+        log_activity(null,LOG_CODE_EDITED,$val,'usergroup',$column,$ref);
+        }
+
+    $sql.=" where ref = ?";
+    $update_sql_params = array_merge($update_sql_params, array("i", $ref));
+    ps_query($sql, $update_sql_params);
 
 	hook("usergroup_edit_add_form_save","",array($ref));
 	if(!$error)
@@ -175,7 +185,7 @@ $record = get_usergroup($ref);
 function dump_config_default_options()
     {   
     global $baseurl_short;
-    
+
     $config_defaults = file_get_contents("../../include/config.default.php");
     $config_defaults = preg_replace("/\<\?php|\?\>/s","",$config_defaults);     // remove php open and close tags
     $config_defaults = preg_replace("/\/\*.*?\*\//s","",$config_defaults);      // remove multi-line comments
@@ -188,14 +198,14 @@ function dump_config_default_options()
         $matches[1][$i]=preg_replace('/\n\s+/s',"\n",$matches[1][$i]);      // white space at the start of new lines
         $matches[1][$i]=preg_replace('/^\s*/s','',$matches[1][$i]);     // leading white space
         $matches[1][$i]=preg_replace('/\s*$/s','',$matches[1][$i]);     // trailing white space
-        
+
         $matches[3][$i]=preg_replace('/\#|(\/\/)/s','',$matches[3][$i]);        // hashes and double forward slash comments
         $matches[3][$i]=preg_replace('/\n\s+/s',"\n",$matches[3][$i]);      // white space at the start of new lines
         $matches[3][$i]=preg_replace('/^\s*/s','',$matches[3][$i]);     // leading white space
         $matches[3][$i]=preg_replace('/\s*$/s','',$matches[3][$i]);     // trailing white space     
-        
+
         if ($matches[1][$i]!="" && $matches[3][$i]!="") $matches[1][$i].="\n";
-            
+
         echo "<option value=\"" . nl2br (htmlentities ($matches[1][$i] . $matches[3][$i],ENT_COMPAT)) . "\">" . htmlentities ($matches[2][$i]) . "</option>\n";
         }
     }
@@ -205,11 +215,13 @@ include "../../include/header.php";
 ?><form method="post" enctype="multipart/form-data" action="<?php echo $baseurl_short; ?>pages/admin/admin_group_management_edit.php?ref=<?php echo $ref . $url_params ?>" id="mainform" class="FormWide">
     <?php generateFormToken("mainform"); ?>
     <div class="BasicsBox">
+    <h1><?php echo $lang["page-title_user_group_management_edit"]; ?></h1>
     <?php
         $links_trail = array(
             array(
                 'title' => $lang["systemsetup"],
-                'href'  => $baseurl_short . "pages/admin/admin_home.php"
+                'href'  => $baseurl_short . "pages/admin/admin_home.php",
+		        'menu' =>  true
             ),
             array(
                 'title' => $lang["page-title_user_group_management"],
@@ -247,7 +259,7 @@ include "../../include/header.php";
 
         <div class="Question">
             <label for="permissions"><?php echo $lang["property-permissions"]; ?></label>
-            
+
             <?php if ($record['parent'])
                 {?>
                 <label><?php echo $lang["property-permissions_inherit"] ?></label>
@@ -255,16 +267,12 @@ include "../../include/header.php";
                 <div class="clearerleft"></div> 
                 <?php
                 }?>
-                
+
             <div id ="permissions_area" <?php if(in_array("permissions",$record['inherit'])){echo "style=display:none;";} ?>>
-                <label></label>
-                <input type="button" class="stdwidth" onclick="return CentralSpaceLoad('<?php echo $baseurl_short; ?>pages/admin/admin_group_permissions.php?ref=<?php echo $ref . $url_params; ?>',true);" value="<?php echo $lang["launchpermissionsmanager"]; ?>"></input>                       
-                <div class="clearerleft"></div>         
-                <label></label>
-                <textarea name="permissions" class="stdwidth" rows="5" cols="50"><?php echo $record['permissions']; ?></textarea>
+                <input type="button" class="stdwidth<?php echo $record['parent'] ? ' label-spacer' : ''; ?>" onclick="return CentralSpaceLoad('<?php echo $baseurl_short; ?>pages/admin/admin_group_permissions.php?ref=<?php echo escape($ref . $url_params); ?>',true);" value="<?php echo htmlspecialchars($lang["launchpermissionsmanager"]); ?>"></input>                       
                 <div class="clearerleft"></div>
                 <label></label>
-                <div><?php echo $lang["documentation-permissions"]; ?></div>
+                <textarea name="permissions" class="stdwidth" rows="5" cols="50"><?php echo htmlspecialchars((string) $record['permissions']); ?></textarea>
                 <div class="clearerleft"></div>
             </div> <!-- End of permissions_area -->
         </div>
@@ -274,14 +282,13 @@ include "../../include/header.php";
             <select name="parent" class="stdwidth">
                 <option value="0" ><?php if ($record['parent']) echo $lang["property-user_group_remove_parent"]; ?></option>
                 <?php
-                $groups=sql_query("select ref, name from usergroup order by name");
-
+                $groups=get_usergroups();
                 foreach ($groups as $group)
                 {
                     if ($group['ref']==$ref) continue;      // not allowed to be the parent of itself
 
                     ?>              <option <?php if ($record['parent']==$group['ref']) { ?> selected="true" <?php } ?>value="<?php echo $group['ref']; ?>"><?php echo $group['name']; ?></option>
-                <?php
+<?php
                 }
                 ?>          </select>
             <div class="clearerleft"></div>
@@ -300,107 +307,60 @@ include "../../include/header.php";
         <?php
         $filters = get_filters("name","ASC");
         $filters[] = array("ref" => -1, "name" => $lang["disabled"]);
-
-		if ($search_filter_nodes)
-			{
-            // Show filter selector if already migrated or no filter has been set
-            // Add the option to indicate filter migration failed
-			?>
-			<div class="Question">
-				<label for="search_filter_id"><?php echo $lang["property-search_filter"]; ?></label>
-				<select name="search_filter_id" class="stdwidth">
-					<?php
-					echo "<option value='0' >" . ($record['search_filter_id'] ? $lang["filter_none"] : $lang["select"]) . "</option>";
-					foreach	($filters as $filter)
-						{
-						echo "<option value='" . $filter['ref'] . "' " . ($record['search_filter_id'] == $filter['ref'] ? " selected " : "") . ">" . i18n_get_translated($filter['name']) . "</option>";
-						}
-                    ?>
-				</select>
-				<div class="clearerleft"></div>
-			</div>
-			<?php	
-			}
-		if((strlen($record['search_filter']) != "" && (!(is_numeric($record['search_filter_id']) || $record['search_filter_id'] < 1))) || !$search_filter_nodes)
-			{
-            // Show old style text filter input - will not appear once a new style filter has been selected
-			?>
-			<div class="Question">
-				<label for="search_filter"><?php echo $lang["property-search_filter"]; ?></label>
-				<textarea name="search_filter" class="stdwidth" rows="3" cols="50" <?php echo ($search_filter_nodes ? "readonly" : "");?>><?php echo $record['search_filter']; ?></textarea>
-				<div class="clearerleft"></div>
-			</div>
-			<?php
-            }
-        
-		if ($search_filter_nodes)
-            {
-            ?>
-            <div class="Question">
-                <label for="edit_filter_id"><?php echo $lang["property-edit_filter"]; ?></label>
-                <select name="edit_filter_id" class="stdwidth">
-                    <?php
-                    echo "<option value='0' >" . ($record['edit_filter_id'] ? $lang["filter_none"] : $lang["select"]) . "</option>";
-                    foreach	($filters as $filter)
-                        {
-                        echo "<option value='" . $filter['ref'] . "' " . ($record['edit_filter_id'] == $filter['ref'] ? " selected " : "") . ">" . i18n_get_translated($filter['name']) . "</option>";
-                        }
-                    ?>
-                </select>
-                <div class="clearerleft"></div>
+        // Show filter selector if already migrated or no filter has been set
+        // Add the option to indicate filter migration failed
+        ?>
+        <div class="Question">
+            <label for="search_filter_id"><?php echo $lang["property-search_filter"]; ?></label>
+            <select name="search_filter_id" class="stdwidth">
+                <?php
+                echo "<option value='0' >" . ($record['search_filter_id'] ? $lang["filter_none"] : $lang["select"]) . "</option>";
+                foreach	($filters as $filter)
+                    {
+                    echo "<option value='" . $filter['ref'] . "' " . ($record['search_filter_id'] == $filter['ref'] ? " selected " : "") . ">" . i18n_get_translated($filter['name']) . "</option>";
+                    }
+                ?>
+            </select>
+            <div class="clearerleft"></div>
+        </div>
+        <div class="Question">
+            <label for="edit_filter_id"><?php echo $lang["property-edit_filter"]; ?></label>
+            <select name="edit_filter_id" class="stdwidth">
+                <?php
+                echo "<option value='0' >" . ($record['edit_filter_id'] ? $lang["filter_none"] : $lang["select"]) . "</option>";
+                foreach	($filters as $filter)
+                    {
+                    echo "<option value='" . $filter['ref'] . "' " . ($record['edit_filter_id'] == $filter['ref'] ? " selected " : "") . ">" . i18n_get_translated($filter['name']) . "</option>";
+                    }
+                ?>
+            </select>
+            <div class="clearerleft"></div>
+        </div>
+        <div class="Question">
+            <label for="derestrict_filter_id"><?php echo $lang["fieldtitle-derestrict_filter"]; ?></label>
+            <select name="derestrict_filter_id" class="stdwidth">
+                <?php
+                echo "<option value='0' >" . ($record['derestrict_filter_id'] ? $lang["filter_none"] : $lang["select"]) . "</option>";
+                foreach	($filters as $filter)
+                    {
+                    echo "<option value='" . $filter['ref'] . "' " . ($record['derestrict_filter_id'] == $filter['ref'] ? " selected " : "") . ">" . i18n_get_translated($filter['name']) . "</option>";
+                    }
+                ?>
+            </select>
+            <div class="clearerleft"></div>
+            <div class="FormHelp">
+                <div class="FormHelpInner"><?php echo htmlspecialchars($lang["information-derestrict_filter"]); ?></div>
             </div>
-            <?php	
-            }
-
-        if((strlen($record['edit_filter']) != "" && (!is_numeric($record['edit_filter_id']) || (int)$record['edit_filter_id'] < 1)) || !$search_filter_nodes)
-            {
-            ?>
-            <div class="Question">
-                <label for="edit_filter"><?php echo $search_filter_nodes ? "" : $lang["property-edit_filter"]; ?></label>
-                <textarea name="edit_filter" class="stdwidth" rows="3" cols="50" <?php echo ($search_filter_nodes ? "readonly" : "");?>><?php echo $record['edit_filter']; ?></textarea>
-                <div class="clearerleft"></div>
-            </div>
-            <?php
-            }
-        
-        if ($search_filter_nodes)
-            {
-            ?>
-            <div class="Question">
-                <label for="derestrict_filter_id"><?php echo $lang["fieldtitle-derestrict_filter"]; ?></label>
-                <select name="derestrict_filter_id" class="stdwidth">
-                    <?php
-                    echo "<option value='0' >" . ($record['derestrict_filter_id'] ? $lang["filter_none"] : $lang["select"]) . "</option>";
-                    foreach	($filters as $filter)
-                        {
-                        echo "<option value='" . $filter['ref'] . "' " . ($record['derestrict_filter_id'] == $filter['ref'] ? " selected " : "") . ">" . i18n_get_translated($filter['name']) . "</option>";
-                        }
-                    ?>
-                </select>
-                <div class="clearerleft"></div>
-            </div>
-            <?php	
-            }
-        if((strlen($record['derestrict_filter']) != "" && (!(is_numeric($record['derestrict_filter_id']) || $record['derestrict_filter_id'] < 1))) || !$search_filter_nodes)
-            {
-            ?>
-            <div class="Question">
-                <label for="derestrict_filter"><?php echo $lang["fieldtitle-derestrict_filter"]; ?></label>
-                <textarea name="derestrict_filter" class="stdwidth" rows="3" cols="50" <?php echo ($search_filter_nodes ? "readonly" : "");?>><?php echo $record['derestrict_filter']; ?></textarea>
-                <div class="clearerleft"></div>
-            </div>
-            <?php
-            }?>
-
+        </div>
         <div class="Question">
             <label for="download_limit"><?php echo $lang["group_download_limit_title"]; ?></label>
-            <input name="download_limit" type="number" class="vshrtwidth" value="<?php echo htmlspecialchars($record['download_limit']); ?>">
+            <input name="download_limit" type="number" class="vshrtwidth" value="<?php echo htmlspecialchars((string)$record['download_limit']); ?>">
             <div class="clearerleft"></div>
         </div>
 
         <div class="Question">
             <label for="download_log_days"><?php echo $lang["group_download_limit_period"]; ?></label>
-            <input name="download_log_days" type="number" class="vshrtwidth" value="<?php echo htmlspecialchars($record['download_log_days']); ?>">
+            <input name="download_log_days" type="number" class="vshrtwidth" value="<?php echo htmlspecialchars((string)$record['download_log_days']); ?>">
             <div class="clearerleft"></div>
         </div>
 
@@ -414,7 +374,7 @@ include "../../include/header.php";
         <?php if (!$execution_lockout) { ?>
         <div class="Question">
             <label for="config_options"><?php echo $lang["property-override_config_options"]; ?></label>
-            
+
             <?php if ($record['parent'])
                 {?>
                 <label><?php echo $lang["property-config_inherit"] ?></label>
@@ -422,10 +382,9 @@ include "../../include/header.php";
                 <div class="clearerleft"></div> 
                 <?php
                 }?>
-            
+
             <div id ="config_area" <?php if(in_array("config_options",$record['inherit'])){echo "style=display:none;";} ?>> 
-                <label></label>
-                <textarea name="config_options" id="configOptionsBox" class="stdwidth" rows="12" cols="50"><?php echo $record['config_options']; ?></textarea>
+                <textarea name="config_options" id="configOptionsBox" class="stdwidth<?php echo $record['parent'] ? ' label-spacer' : ''; ?>" rows="12" cols="50" ><?php echo $record['config_options']; ?></textarea>
                 <div class="clearerleft"></div>
             </div>
           </div>
@@ -441,10 +400,9 @@ include "../../include/header.php";
             <label for="ip_restrict"><?php echo $lang["property-ip_address_restriction"]; ?></label>
             <input name="ip_restrict" type="text" class="stdwidth" value="<?php echo $record['ip_restrict']; ?>">
             <div class="clearerleft"></div>
-        </div>
-
-        <div class="FormHelp">
-            <div class="FormHelpInner"><?php echo $lang["information-ip_address_restriction"]; ?></div>
+            <div class="FormHelp">
+                <div class="FormHelpInner"><?php echo $lang["information-ip_address_restriction"]; ?></div>
+            </div>
         </div>
 
         <div class="Question">
@@ -506,14 +464,12 @@ include "../../include/header.php";
             <label><?php echo $lang["fieldtitle-tick_to_delete_group"]?></label>
             <input id="delete_user_group" name="deleteme" type="checkbox" value="yes" <?php if($has_dependants) { ?> disabled="disabled"<?php } ?>>
             <div class="clearerleft"></div>
+            <div class="FormHelp">
+                <div class="FormHelpInner"><?php echo $lang["fieldhelp-tick_to_delete_group"]; ?></div>
+            </div>
         </div>
-        
-        <div class="FormHelp">
-            <div class="FormHelpInner"><?php echo $lang["fieldhelp-tick_to_delete_group"]; ?></div>
-        </div>
-        
+
         <div class="QuestionSubmit">
-            <label for="buttonsave"></label>
             <input name="buttonsave" type="submit" value="&nbsp;&nbsp;<?php echo $lang["save"]; ?>&nbsp;&nbsp;">
         </div>
 
@@ -526,13 +482,13 @@ include "../../include/header.php";
 
     jQuery('#delete_user_group').click(function () {
         <?php
-        $language_specific_results = sql_value('SELECT count(*) AS `value` FROM site_text WHERE specific_to_group = "' . $ref . '";', 0);
+        $language_specific_results = ps_value('SELECT count(*) AS `value` FROM site_text WHERE specific_to_group = ?', array("i",$ref), 0);
         $alert_message = str_replace('%%RECORDSCOUNT%%', $language_specific_results, $lang["delete_user_group_checkbox_alert_message"]);
         ?>
 
         if(<?php echo $language_specific_results; ?> > 0 && jQuery('#delete_user_group').is(':checked'))
             {
-            alert('<?php echo $alert_message; ?>');
+            alert("<?php echo escape($alert_message); ?>");
             }
     });
 </script>

@@ -39,3 +39,8 @@ $purge_temp_folder_age=90;
 $filestore_evenspread=true;
 
 $comments_resource_enable=true;
+
+$api_upload_urls = array();
+
+$use_native_input_for_date_field = true;
+$resource_view_use_pre = true;

@@ -10,11 +10,13 @@ include '../../../include/header.php';
 ?>
 
 <div class="BasicsBox"> 
+    <h1><?php echo $lang["rse_workflow_manage_workflow"]; ?></h1>
     <?php
     $links_trail = array(
         array(
-        'title' => $lang["teamcentre"],
-        'href'  => $baseurl_short . "pages/team/team_home.php"
+            'title' => $lang["systemsetup"],
+            'href'  => $baseurl_short . "pages/admin/admin_home.php",
+            'menu' =>  true
         ),
         array(
             'title' => $lang["rse_workflow_manage_workflow"]
@@ -27,8 +29,8 @@ include '../../../include/header.php';
 	<div class="VerticalNav">
 	<ul>
 	
-	<li><a href="<?php echo $baseurl ?>/plugins/rse_workflow/pages/edit_workflow_states.php" onclick="return CentralSpaceLoad(this,true);;"><?php echo LINK_CARET . $lang["rse_workflow_manage_states"]?></a></li>
-    <li><a href="<?php echo $baseurl ?>/plugins/rse_workflow/pages/edit_workflow_actions.php" onclick="return CentralSpaceLoad(this,true);"><?php echo LINK_CARET . $lang["rse_workflow_manage_actions"]?></a></li>
+	<li><a href="<?php echo $baseurl ?>/plugins/rse_workflow/pages/edit_workflow_states.php" onclick="return CentralSpaceLoad(this,true);"><?php echo LINK_CARET . htmlspecialchars($lang["rse_workflow_manage_states"])?></a></li>
+    <li><a href="<?php echo $baseurl ?>/plugins/rse_workflow/pages/edit_workflow_actions.php" onclick="return CentralSpaceLoad(this,true);"><?php echo LINK_CARET . htmlspecialchars($lang["rse_workflow_manage_actions"])?></a></li>
 
 	</ul>
 	</div>

@@ -6,13 +6,9 @@
  * @subpackage Pages_Team
  */
 include "../../include/db.php";
-
 include "../../include/authenticate.php";if (!checkperm("t")) {exit ("Permission denied.");}
 
-if ($send_statistics) {send_statistics();}
-
 $overquota=overquota();
-
 
 # Work out free space / usage for display
 if (!file_exists($storagedir)) {mkdir($storagedir,0777);}
@@ -48,7 +44,7 @@ include "../../include/header.php";
 	<?php if (checkperm("c")) { 
 		if ($overquota)
 			{
-			?><li><i aria-hidden="true" class="fa fa-fw fa-files-o"></i><br /><?php echo $lang["manageresources"]?> : <strong><?php echo $lang["manageresources-overquota"]?></strong></li><?php
+			?><li class="overquota"><i aria-hidden="true" class="fa fa-fw fa-files-o"></i><br /><?php echo htmlspecialchars($lang["manageresources"])?> : <strong><?php echo htmlspecialchars($lang["manageresources-overquota"])?></strong></li><?php
 			}
 		else
 			{
@@ -58,7 +54,7 @@ include "../../include/header.php";
 				  # If a modal, open in the same modal
 				  ?>
 				  onClick="return ModalLoad(this,true,true,'right');"
-				  <?php
+<?php
 				  }
 				else
 				  { ?>
@@ -74,9 +70,9 @@ include "../../include/header.php";
 				
 	<?php if (checkperm("R")) { ?><li><a href="<?php echo $baseurl_short ?>pages/team/team_request.php" onClick="return CentralSpaceLoad(this,true);"><i aria-hidden="true" class="fa fa-fw fa-shopping-cart"></i><br /><?php echo $lang["managerequestsorders"]?>
         <?php
-        $condition = "";
-        if (checkperm("Rb")) {$condition = "and assigned_to='" . $userref . "'";} # Only show pending for this user?
-        $pending = sql_value("select count(*) value from request where status = 0 $condition",0);
+        $condition = "";$params=array();
+        if (checkperm("Rb")) {$condition = "and assigned_to=?";$params[]="i";$params[]=$userref;} # Only show pending for this user?
+        $pending = ps_value("select count(*) value from request where status = 0 $condition",$params,0);
         if ($pending>0)
 		  {
 		  ?>
@@ -89,7 +85,7 @@ include "../../include/header.php";
 
     <?php if (checkperm("r") && $research_request) { ?><li><a href="<?php echo $baseurl_short?>pages/team/team_research.php" onClick="return CentralSpaceLoad(this,true);"><i aria-hidden="true" class="fa fa-fw fa-question-circle"></i><br /><?php echo $lang["manageresearchrequests"]?><br>
     <?php
-        $unassigned = sql_value("select count(*) value from research_request where status = 0",0);
+        $unassigned = ps_value("select count(*) value from research_request where status = 0",array(), 0);
         if ($unassigned > 0)
             {
             ?>&nbsp;<span class="Pill"><?php echo $unassigned ?></span><?php
@@ -117,7 +113,7 @@ include "../../include/header.php";
     )
         {
         ?>
-        <li><a href="<?php echo $baseurl_short; ?>pages/team/team_dash_admin.php" onClick="return CentralSpaceLoad(this, true);"><i aria-hidden="true" class="fa fa-fw fa-th"></i><br /><?php echo $lang['manage_dash_tiles']; ?></a></li>
+        <li><a href="<?php echo $baseurl_short; ?>pages/team/team_dash_admin.php" onClick="return CentralSpaceLoad(this, true);"><i aria-hidden="true" class="fa fa-fw fa-grip"></i><br /><?php echo $lang['manage_dash_tiles']; ?></a></li>
         <?php
         }
 
@@ -148,7 +144,7 @@ include "../../include/header.php";
 	  # If a modal, open in the same modal
 	  ?>
 	  onClick="return ModalLoad(this,true,true,'right');"
-	  <?php
+<?php
 	  }
 	else
 	  { ?>

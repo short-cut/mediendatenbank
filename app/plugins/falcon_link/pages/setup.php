@@ -7,7 +7,6 @@ include '../../../include/db.php';
 include '../../../include/authenticate.php'; if (!checkperm('a')) {exit ($lang['error-permissiondenied']);}
 
 global $baseurl;
-$chosen_dropdowns=true;
 // Specify the name of this plugin and the heading to display for the page.
 $plugin_name = 'falcon_link';
 if(!in_array($plugin_name, $plugins))
@@ -26,7 +25,7 @@ $page_def[] = config_add_text_input('falcon_link_share_user',$lang['falcon_link_
 $page_def[] = config_add_multi_group_select('falcon_link_usergroups', $lang['falcon_link_usergroups'],420);
 
 // Do the page generation ritual -- don't change this section.
-$upload_status = config_gen_setup_post($page_def, $plugin_name);
+config_gen_setup_post($page_def, $plugin_name);
 include '../../../include/header.php';
-config_gen_setup_html($page_def, $plugin_name, $upload_status, $plugin_page_heading);
+config_gen_setup_html($page_def, $plugin_name, null, $plugin_page_heading);
 include '../../../include/footer.php';

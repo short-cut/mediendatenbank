@@ -4,7 +4,7 @@ include '../../include/authenticate.php';
 
 // generate JSON data to populate bar
 
-$id = getvalescaped('id', '');
+$id = getval('id', '');
 
 // Use id to work out search string for link and path to data requested e.g. to get field id for node expansion
 $target_search = array();
@@ -70,6 +70,7 @@ switch ($returntype)
             $return_items[$n]["expandable"] = "false";
             $tgtparams = array();
             $tgtparams["type"]  = "resource_type";
+            $tgtparams["noreload"] = "true";
             $tgturl = generateURL($baseurl_short . "pages/ajax/create_new.php", $tgtparams);
             $return_items[$n]["link"] = $tgturl;
             $return_items[$n]["modal"] = true;
@@ -116,16 +117,14 @@ switch ($returntype)
             $tgtparams = array();
             $tgtparams["restypes"]  = "new";
             $tgtparams["type"]  = "resource_type_field";
+            $tgtparams["noreload"] = "true";
             $tgturl = generateURL($baseurl_short . "pages/ajax/create_new.php", $tgtparams);
             $return_items[$n]["link"] = $tgturl;
             $return_items[$n]["modal"] = true;
             $n++;
             }
-        // Resource types can be configured to not have global fields in which case we only present the user fields valid for
-        // this resource type
-        $inherit_global_fields = (bool) sql_value("SELECT inherit_global_fields AS `value` FROM resource_type WHERE ref = '{$returnid}'", true, "schema");
-        $gettypes = ($inherit_global_fields == true) ? array(0) : array(); // determine whether to display global fields
-        $gettypes[] = (int)$returnid; // add selected resource type fields
+        
+        $gettypes = [0,(int)$returnid]; // add selected resource type fields
         $allfields = get_resource_type_fields($gettypes,"order_by",'asc','',$FIXED_LIST_FIELD_TYPES);
         
         foreach($allfields as $field)
@@ -180,6 +179,7 @@ switch ($returntype)
                 $tgtparams["type"]  = "node";
                 $tgtparams["field"]  = $returnid;
                 $tgtparams["parent"]  = $parent;
+                $tgtparams["noreload"] = "true";
                 $tgturl = generateURL($baseurl_short . "pages/ajax/create_new.php", $tgtparams);
                 $return_items[$n]["link"] = $tgturl;
                 $return_items[$n]["modal"] = true;
@@ -239,6 +239,7 @@ switch ($returntype)
                 $tgtparams["type"]  = "node";
                 $tgtparams["field"]  = $browse_field;
                 $tgtparams["parent_nodes"]  = implode(",",$parent_nodes);
+                $tgtparams["noreload"] = "true";
                 $tgturl = generateURL($baseurl_short . "pages/ajax/create_new.php", $tgtparams);
                 $return_items[$n]["link"] = $tgturl;
                 $return_items[$n]["modal"] = true;
@@ -279,7 +280,7 @@ switch ($returntype)
         $fc_parent = validate_collection_parent(array("parent" => $fc_parent));
 
         // Add 'create new' option
-        if($collection_allow_creation && checkperm("h"))
+        if(checkperm("h") && can_create_collections())
             {
             $item = array(
                 "id" => "{$id}-FC:new",
@@ -307,10 +308,10 @@ switch ($returntype)
             {
             $is_featured_collection_category = is_featured_collection_category($fc);
             $id_part = ($is_featured_collection_category ? "FC" : "C");
-            $link = generateURL("{$baseurl_short}pages/search.php", array("search" => "!collection{$fc["ref"]}"));
+            $link = generateURL("{$baseurl_short}pages/search.php", array("search" => "!collection{$fc["ref"]}", "noreload" => "true"));
             if($is_featured_collection_category)
                 {
-                $link = generateURL("{$baseurl_short}pages/collections_featured.php", array("parent" => $fc["ref"]));
+                $link = generateURL("{$baseurl_short}pages/collections_featured.php", array("parent" => $fc["ref"], "noreload" => "true"));
                 }
 
             $item = array(
@@ -332,9 +333,8 @@ switch ($returntype)
         break;
     
     case "C":
-        // My collections
-        
-        if($collection_allow_creation && !checkperm("b"))
+        // My collections        
+        if(can_create_collections())
             {
             // Add 'create new' option
             $return_items[$n] = array();
@@ -344,6 +344,7 @@ switch ($returntype)
             $return_items[$n]["expandable"] = "false";
             $tgtparams = array();
             $tgtparams["type"]  = "collection";
+            $tgtparams["noreload"] = "true";
             $tgturl = generateURL($baseurl_short . "pages/ajax/create_new.php", $tgtparams);
             $return_items[$n]["link"] = $tgturl;
             $return_items[$n]["modal"] = true;
@@ -361,7 +362,8 @@ switch ($returntype)
             $return_items[$n]["expandable"] = "false";
             
             $tgtparams = array();
-            $tgtparams["search"] = "!collection" . $mycol["ref"];                            
+            $tgtparams["search"] = "!collection" . $mycol["ref"];        
+            $tgtparams["noreload"] = "true";                    
             $tgturl = generateURL($baseurl_short . "pages/search.php", $tgtparams);
             $return_items[$n]["link"] = $tgturl;
             $return_items[$n]["modal"] = false;
@@ -406,22 +408,14 @@ switch ($returntype)
             $tgtparams["search"] = "";  
             $tgtparams["restypes"] = "";  
             $tgtparams["archive"] = $showstate;                           
+            $tgtparams["noreload"] = "true";
             $tgturl = generateURL($baseurl_short . "pages/search.php", $tgtparams);
             $return_items[$n]["link"] = $tgturl;
             $return_items[$n]["modal"] = false;
             
-            // Set an icon 
-            switch($showstate)
-                {
-                case -2: $icon="file-import"; break;
-                case -1: $icon="eye"; break;
-                case 0: $icon="check"; break;
-                case 1: $icon="clock"; break;
-                case 2: $icon="archive"; break;
-                case 3: $icon="trash"; break;
-                default: $icon="cogs"; # All additional workflow states show gears icon to indicate workflow
-                }
-            $return_items[$n]["icon"] = "<i class='fa fa-fw fa-" . $icon  . "'></i>";
+            // Set an icon
+            $icon = $workflowicons[$showstate] ?? (WORKFLOW_DEFAULT_ICONS[$showstate] ?? WORKFLOW_DEFAULT_ICON);  
+            $return_items[$n]["icon"] = "<i class='fa-fw " . escape($icon)  . "'></i>";
             $n++;
             }
 

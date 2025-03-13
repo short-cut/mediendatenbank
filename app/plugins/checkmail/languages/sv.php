@@ -35,7 +35,12 @@ $lang['checkmail_mail_skipped']="Överhoppat e-postmeddelande";
 
 $lang['addresourcesviaemail']="Lägg till material i grupp – per e-post";
 $lang['uploadviaemail']="Lägg till material i grupp – per e-post";
-$lang['uploadviaemail-intro']="<br /><br />Om du vill överföra filer per e-post bifogar du dem i ett e-postmeddelande som du skickar till <b><a href='mailto:[toaddress]'>[toaddress]</a></b>.</p> <p>E-postmeddelandet måste skickas från <b>[fromaddress]</b>, i annat fall kommer det att ignoreras.</p><p>Observera att e-postmeddelandets ämnesrad kopieras till fältet [subjectfield] i $applicationname. </p><p> Observera även att meddelandetexten kopieras till fältet [bodyfield] i $applicationname. </p>  <p>Om flera filer bifogas i ett e-postmeddelande grupperas de i en samling. Materialen får den förvalda åtkomstnivån <b>’[access]’</b> och statusen <b>’[archive]’</b>.</p><p> [confirmation]";
+$lang['uploadviaemail-intro']="<br /><br />Om du vill överföra filer per e-post bifogar du dem i ett e-postmeddelande som du skickar till <b><a href='mailto:[toaddress]'>[toaddress]</a></b>.</p> <p>E-postmeddelandet måste skickas från <b>[fromaddress]</b>, i annat fall kommer det att ignoreras.</p><p>Observera att e-postmeddelandets ämnesrad kopieras till fältet [subjectfield] i %applicationname%. </p><p> Observera även att meddelandetexten kopieras till fältet [bodyfield] i %applicationname%. </p>  <p>Om flera filer bifogas i ett e-postmeddelande grupperas de i en samling. Materialen får den förvalda åtkomstnivån <b>’[access]’</b> och statusen <b>’[archive]’</b>.</p><p> [confirmation]";
 $lang['checkmail_confirmation_message']="När ditt e-postmeddelande är färdigbearbetat kommer du att få en bekräftelse per e-post. Om ditt e-postmeddelande har hoppats över av någon anledning (om det t.ex. har skickats från fel adress) kommer administratören att få besked om att det finns ett e-postmeddelande som kräver åtgärd.";
 $lang['yourresourcehasbeenuploaded']="Materialet har överförts";
 $lang['yourresourceshavebeenuploaded']="Materialen har överförts";
+
+$lang["checkmail_blocked_users_label"]='Blockerade användare.';
+$lang["checkmail_allow_users_based_on_permission_label"]='Ska användare tillåtas att ladda upp baserat på behörighet?';
+$lang["checkmail_not_allowed_error_template"]='[user-fullname] ([username]), med ID [user-ref] och e-postadressen [user-email] har inte tillåtelse att ladda upp via e-post (kontrollera behörigheterna "c" eller "d" eller de blockerade användarna på sidan för e-postkontroll). Inspelat den: [datetime].';
+$lang["checkmail_createdfromcheckmail"]='Skapad från Check Mail-tillägg.';

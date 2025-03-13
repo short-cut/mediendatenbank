@@ -50,16 +50,23 @@ function HookAnnotateViewRenderinnerresourcepreview()
         </script>
         <?php
         $use_watermark = check_use_watermark();
-        $imagepath     = get_resource_path($ref, true, 'pre', false, $resource['preview_extension'], -1, 1, $use_watermark);
+        $use_size      = 'pre';
+        $imagepath     = get_resource_path($ref, true, $use_size, false, $resource['preview_extension'], -1, 1, $use_watermark);
 
         if(!file_exists($imagepath))
             {
-            $imagepath=get_resource_path($ref,true,"thm",false,$resource["preview_extension"],-1,1,$use_watermark);    
-            $imageurl=get_resource_path($ref,false,"thm",false,$resource["preview_extension"],-1,1,$use_watermark);
+            $use_size = 'thm';
+            $imagepath=get_resource_path($ref,true, $use_size,false,$resource["preview_extension"],-1,1,$use_watermark);    
+            $imageurl=get_resource_path($ref,false, $use_size,false,$resource["preview_extension"],-1,1,$use_watermark);
             }
         else
             {
-            $imageurl=get_resource_path($ref,false,"pre",false,$resource["preview_extension"],-1,1,$use_watermark);
+            $imageurl=get_resource_path($ref,false, $use_size,false,$resource["preview_extension"],-1,1,$use_watermark);
+            }
+
+        if(resource_has_access_denied_by_RT_size($resource['resource_type'], $use_size))
+            {
+            return false;
             }
 
         if (!file_exists($imagepath))
@@ -86,7 +93,7 @@ function HookAnnotateViewRenderinnerresourcepreview()
             ?>
             <div id="wrapper" class="annotate-view-wrapper">
                 <div>
-                <img id="toAnnotate" onload="annotate(<?php echo $ref?>,'<?php echo $k?>','<?php echo $w?>','<?php echo $h?>',<?php echo getvalescaped("annotate_toggle",true)?>, 1, <?php echo $modal; ?>);" src="<?php echo $imageurl?>" id="previewimage" class="Picture" GALLERYIMG="no" style="display:block;"   />
+                <img id="toAnnotate" onload="annotate(<?php echo (int) $ref?>,'<?php echo escape($k)?>','<?php echo escape($w)?>','<?php echo escape($h)?>',<?php echo escape(getval("annotate_toggle",true))?>, 1, <?php echo escape($modal); ?>);" src="<?php echo escape($imageurl)?>" id="previewimage" class="Picture" GALLERYIMG="no" style="display:block;"   />
                 </div>
 
                 <div class="annotate-view-preview-links" >
@@ -103,34 +110,13 @@ function HookAnnotateViewRenderinnerresourcepreview()
                     "k"         => $k
                     ); ?>
                     
-                    <a class="enterLink" href="<?php echo generateURL($baseurl_short . "pages/preview.php", $urlparams); ?>" title="<?php echo $lang["fullscreenpreview"]?>"><?php echo LINK_CARET . $lang["fullscreenpreview"]?></a>
+                    <a class="enterLink" href="<?php echo generateURL($baseurl_short . "pages/preview.php", $urlparams); ?>" title="<?php echo escape($lang["fullscreenpreview"])?>"><?php echo LINK_CARET . escape($lang["fullscreenpreview"])?></a>
                 <?php
-                // Magictouch plugin compatibility
-                global $magictouch_account_id;
-
-                if('' != $magictouch_account_id)
-                    {
-                    global $plugins, $magictouch_rt_exclude, $magictouch_ext_exclude;
-
-                    if(in_array('magictouch', $plugins)
-                        && !in_array($resource['resource_type'], $magictouch_rt_exclude)
-                        && !in_array($resource['file_extension'], $magictouch_ext_exclude)
-                        && !defined('MTFAIL'))
-                        {
-                            
-                        // Set alternative target based on where user came from
-                        $targetpage = $baseurl_short . "pages/" . ((getval("from","")=="search") ? "search.php" : "view.php");                            
-                        ?>
-                        &nbsp;<a style="display:inline;" href="<?php echo generateURL($targetpage, $urlparams, $mtparams); ?>" onClick="document.cookie='annotate=off';return CentralSpaceLoad(this);">&gt;&nbsp;<?php echo $lang['zoom']?></a>
-                        <?php
-                        }
-                    }
-                    // end of Magictouch plugin compatibility
 
                 if($annotate_pdf_output)
                     {
                     ?>
-                    &nbsp;&nbsp;<a style="display:inline;float:right;" class="nowrap" href="<?php echo $baseurl_short?>plugins/annotate/pages/annotate_pdf_config.php?ref=<?php echo $ref?>&ext=<?php echo $resource["preview_extension"]?>&k=<?php echo $k?>&search=<?php echo urlencode($search)?>&offset=<?php echo $offset?>&order_by=<?php echo $order_by?>&sort=<?php echo $sort?>&archive=<?php echo $archive?>" onClick="return CentralSpaceLoad(this);"><?php echo LINK_CARET . $lang["pdfwithnotes"]?></a>
+                    &nbsp;&nbsp;<a style="display:inline;float:right;" class="nowrap" href="<?php echo generateURL($baseurl_short . 'plugins/annotate/pages/annotate_pdf_config.php', $urlparams)?>" onClick="return CentralSpaceLoad(this);"><?php echo LINK_CARET . $lang["pdfwithnotes"]?></a>
                     <?php
                     }
                     ?>
@@ -147,4 +133,37 @@ function HookAnnotateViewRenderinnerresourcepreview()
         }
 
     return true;    
+    }
+
+function HookAnnotateViewpreviewlinkbar()
+    {
+        global $sizes, $downloadthissize, $data_viewsize, $n, $lang, $use_larger_layout, $userrequestmode, $baseurl, $resource, $urlparams;
+        if ($downloadthissize && $sizes[$n]["allow_preview"]==1)
+        { 
+        $data_viewsize=$sizes[$n]["id"];
+        $data_viewsizeurl=hook('getpreviewurlforsize');
+        $preview_with_sizename=str_replace('%sizename', $sizes[$n]["name"], $lang['previewithsizename']);
+        ?> 
+        <tr class="DownloadDBlend">
+            <td class="DownloadFileName">
+                <h2><?php echo htmlspecialchars($lang["preview"])?></h2>
+                <?php echo $use_larger_layout ? '</td><td class="DownloadFileDimensions">' : '';?>
+                <p><?php echo htmlspecialchars($preview_with_sizename); ?></p>
+            </td>
+            <td class="DownloadFileSize"><?php echo $sizes[$n]["filesize"]?></td>
+            <?php if ($userrequestmode==2 || $userrequestmode==3) { ?><td></td><?php } # Blank spacer column if displaying a price above (basket mode).
+            ?>
+            <td class="DownloadButton">
+                <a class="enterLink previewsize-<?php echo escape($data_viewsize); ?>" 
+                    id="previewlink"
+                    data-viewsize="<?php echo escape($data_viewsize); ?>"
+                    data-viewsizeurl="<?php echo escape($data_viewsizeurl); ?>"  
+                    href="<?php echo generateURL($baseurl . "/pages/preview.php",$urlparams,array("ext"=>$resource["file_extension"])) . "&" . hook("previewextraurl") ?>">
+                    <?php echo $lang["action-view"]?>
+                </a>
+            </td>
+        </tr>
+        <?php
+        return true;
+        }
     }

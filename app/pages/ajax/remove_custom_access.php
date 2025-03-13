@@ -2,43 +2,40 @@
 include dirname(__FILE__) . '/../../include/db.php';
 include dirname(__FILE__) . '/../../include/authenticate.php';
 
-$resource = getvalescaped('resource', '');
-$ref = getvalescaped('ref', '');
-$type = getvalescaped('type','');
+$resource = getval('resource', '');
+$ref = getval('ref', '');
+$type = getval('type','');
 
 $resource_data = get_resource_data($resource);
 
 // User should have edit access to this resource!
-if(!get_edit_access($resource, $resource_data['archive'], false, $resource_data)) {
+if(!get_edit_access($resource, $resource_data['archive'], $resource_data)) {
 	exit ('Permission denied.');
 }
 
 if($type=='user')
 	{
 	// Delete the user record from the database
-	$query = sprintf("
+	ps_query("
 			DELETE FROM resource_custom_access 
-				  WHERE resource = '%s'
-					AND user = '%s';
+				  WHERE resource = ?
+					AND user = ?
 		",
-		$resource,
-		$ref
+		array("i",$resource,"i",$ref)
 	);
 	}
 elseif($type=='usergroup')
 	{
 	// Delete the user record from the database
-	$query = sprintf("
+	ps_query("
 			DELETE FROM resource_custom_access 
-				  WHERE resource = '%s'
-					AND usergroup = '%s';
+				  WHERE resource = ?
+					AND usergroup = ?;
 		",
-		$resource,
-		$ref
+		array("i",$resource,"i",$ref)
 	);
 	}
 else
 	{
 	exit('No type');
 	}
-sql_query($query);

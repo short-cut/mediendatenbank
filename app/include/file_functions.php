@@ -22,7 +22,8 @@ function safe_file_name($name)
             }
         }
 
-    $newname = mb_substr($newname, 0, 50);
+    // Set to 250 to allow for total length to be below 255 limit including filename and extension
+    $newname = mb_substr($newname, 0, 250); 
 
     return $newname;
     }
@@ -87,7 +88,7 @@ function isPathWhitelisted($path, array $whitelisted_paths)
 * @param  string  $path     Path to file
 * @param  bool  $forcefull  Force use of whole file and ignore $file_checksums_50k setting
 * 
-* @return string
+* @return string|false Return the checksum value, false otherwise.
 */
 function get_checksum($path, $forcefull = false)
     {
@@ -102,7 +103,7 @@ function get_checksum($path, $forcefull = false)
     if ($file_checksums_50k && !$forcefull)
         {
         # Fetch the string used to generate the unique ID
-        $use=filesize_unlimited($path) . "_" . file_get_contents($path,null,null,0,50000);
+        $use=filesize_unlimited($path) . "_" . file_get_contents($path,false,null,0,50000);
         $checksum=md5($use);
         }
     else
@@ -117,14 +118,21 @@ function get_checksum($path, $forcefull = false)
  * Download remote file to the temp filestore location.
  * 
  * @param string $url Source URL
+ * @param string $key Optional key to use - to prevent conflicts when simultaneous calls use same file name 
  * 
  * @return string|bool Returns the new temp filestore location or false otherwise.
  */
-function temp_local_download_remote_file(string $url)
+function temp_local_download_remote_file(string $url, string $key = "")
     {
     $userref = $GLOBALS['userref'] ?? 0;
     if($userref === 0)
         {
+        return false;
+        }
+
+    if ($key != "" && preg_match('/\W+/', $key) !== 0)
+        {
+        // Block potential path traversal - allow only word characters.
         return false;
         }
 
@@ -139,9 +147,15 @@ function temp_local_download_remote_file(string $url)
     $extension = $path_parts['extension'] ?? '';
     $filename .= ($extension !== '' ? ".{$extension}" : '');
 
-    if(strpos($filename,".") == false && filter_var($url_original, FILTER_VALIDATE_URL))
+    if(strpos($filename,".") === false && filter_var($url_original, FILTER_VALIDATE_URL))
         {
         // $filename not valid, try and get from HTTP header
+        $urlinfo = parse_url($url);
+        if (!isset($urlinfo["scheme"]) || !in_array($urlinfo["scheme"],["http","https"]))
+            {
+            return false;
+            }
+
         $headers = get_headers($url_original,true);
         foreach($headers as $header=>$headervalue)
             {
@@ -164,13 +178,25 @@ function temp_local_download_remote_file(string $url)
                     }
                 }
             }
+        
+        $extension = pathinfo(basename($filename), PATHINFO_EXTENSION);
+        $filename = safe_file_name(pathinfo(basename($filename), PATHINFO_FILENAME)) . ".{$extension}";
         }
-    // Get temp location
-    $tmp_uniq_path_id = sprintf('remote_files/%s_%s', $userref, generateUserFilenameUID($userref));
-    $tmp_file_path = sprintf('%s/%s',
-        get_temp_dir(false, $tmp_uniq_path_id),
-        $filename);
 
+    if (is_banned_extension($extension))
+        {
+        debug('[temp_local_download_remote_file] WARN: Banned extension for ' . $filename);
+        return false;
+        }
+
+    // Get temp location
+    $tmp_uniq_path_id = $userref . "_" . $key . generateUserFilenameUID($userref);
+    $tmp_dir = get_temp_dir(false) . "/remote_files/" . $tmp_uniq_path_id;
+    if(!is_dir($tmp_dir))
+        {
+        mkdir($tmp_dir,0777,true);
+        }
+    $tmp_file_path = $tmp_dir. "/" . $filename;
     if($tmp_file_path == $url)
         {
         // Already downloaded earlier by API call 
@@ -211,13 +237,79 @@ function check_valid_file_extension($uploadedfile,array $validextensions)
     {
     $pathinfo   = pathinfo($uploadedfile['name']);
     $extension  = $pathinfo['extension'] ?? "";
-    if(in_array(strtolower($extension),array_map("strtolower",$validextensions)))
+    if(in_array(strtolower($extension),array_map("strtolower",$validextensions)) && !is_banned_extension($extension))
         {
         return true;
         }
     return false;
     }
 
+/**
+ * Is the given extension in the list of blocked extensions?
+ * Also ensures extension is no longer than 10 characters due to resource.file_extension database column limit
+ *
+ * @param  string    $extension - file extension to check
+ */
+function is_banned_extension(string $extension): bool
+{
+    return !(
+        preg_match('/^[a-zA-Z0-9_-]{1,10}$/', $extension) === 1
+        && !in_array(mb_strtolower($extension), array_map('mb_strtolower', $GLOBALS['banned_extensions']))
+    );
+}
+
+/**
+ * Remove empty folder from path to file. Helpful to remove a temp directory once the file it was created to hold no longer exists.
+ * This function should be called only once the directory to be removed is empty.
+ *
+ * @param   string   $path_to_file   Full path to file in filestore.
+ * 
+ * @return void
+ */
+function remove_empty_temp_directory(string $path_to_file = "")
+    {
+    if ($path_to_file != "" && !file_exists($path_to_file))
+        {
+        $tmp_path_parts = pathinfo($path_to_file);
+        $path_to_folder = str_replace(DIRECTORY_SEPARATOR . $tmp_path_parts['basename'], '', $path_to_file);
+        rmdir($path_to_folder);
+        }
+    }
 
 
+/**
+ * Confirm upload path is one of valid paths.
+ *
+ * @param   string   $file_path            Upload path.
+ * @param   array    $valid_upload_paths   Array of valid upload paths to test against.
+ * 
+ * @return  bool     true when path is valid else false
+ */
+function is_valid_upload_path(string $file_path, array $valid_upload_paths) : bool
+    {
+    $GLOBALS["use_error_exception"] = true;
+    try
+        {
+        $file_path = realpath($file_path);
+        }
+    catch (Exception $e)
+        {
+        debug("Invalid file path specified" . $e->getMessage());
+        return false;
+        }
+    unset($GLOBALS["use_error_exception"]);
 
+    foreach($valid_upload_paths as $valid_upload_path)
+        {
+        if(is_dir($valid_upload_path))
+            {
+            $checkpath = realpath($valid_upload_path);
+            if(strpos($file_path,$checkpath) === 0)
+                {
+                return true;
+                }
+            }
+        }
+
+    return false;
+    }

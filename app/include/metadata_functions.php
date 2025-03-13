@@ -16,7 +16,7 @@
 * 
 * @param string $file_path Physical path to the file
 * 
-* @return SimpleXMLElement
+* @return bool | SimpleXMLElement   
 */
 function runFitsForFile($file_path)
     {
@@ -28,14 +28,18 @@ function runFitsForFile($file_path)
 
     if(false === $fits)
         {
-        trigger_error('FITS library could not be located!');
+        debug('ERROR: FITS library could not be located!');
+        return false;
         }
 
     putenv("LD_LIBRARY_PATH={$fits_path_escaped}/tools/mediainfo/linux");
 
     $return = run_command("{$fits} -i {$file} -xc");
-
-    return new SimpleXMLElement($return);
+    if(trim($return) != "")
+        {
+        return new SimpleXMLElement($return);
+        }
+    return false;
     }
 
 
@@ -95,8 +99,7 @@ function getFitsMetadataFieldValue(SimpleXMLElement $xml , $fits_field)
 * Extract FITS metadata from a file for a specific resource.
 * 
 * @uses get_resource_data()
-* @uses escape_check()
-* @uses sql_query()
+* @uses ps_query()
 * @uses runFitsForFile()
 * @uses getFitsMetadataFieldValue()
 * @uses update_field()
@@ -128,19 +131,11 @@ function extractFitsMetadata($file_path, $resource)
         $resource = get_resource_data($resource);
         }
 
-    $resource_type = escape_check($resource['resource_type']);
+    $resource_type = $resource['resource_type'];
 
     // Get a list of all the fields that have a FITS field set
-    $rs_fields_to_read_for = ps_query("
-           SELECT rtf.ref,
-                  rtf.`type`,
-                  rtf.`name`,
-                  rtf.fits_field
-             FROM resource_type_field AS rtf
-            WHERE length(rtf.fits_field) > 0
-              AND (rtf.resource_type = ? OR rtf.resource_type = 0)
-         ORDER BY fits_field;
-    ", ['s', $resource_type], "schema");
+    $allfields = get_resource_type_fields($resource_type);
+    $rs_fields_to_read_for = array_filter($allfields,function($field){return trim((string)$field["fits_field"]) != "";});
 
     if(0 === count($rs_fields_to_read_for))
         {
@@ -149,11 +144,15 @@ function extractFitsMetadata($file_path, $resource)
 
     // Run FITS and extract metadata
     $fits_xml            = runFitsForFile($file_path);
+    if(!$fits_xml)
+        {
+        return false;
+        }
     $fits_updated_fields = array();
 
     foreach($rs_fields_to_read_for as $rs_field)
         {
-        $fits_fields = explode(',', $rs_field['fits_field']);
+        $fits_fields = explode(',', (string)$rs_field['fits_field']);
 
         foreach($fits_fields as $fits_field)
             {
@@ -192,6 +191,8 @@ function check_date_format($date)
     {
     global $lang;
 
+    if (is_null($date)){$date="";}
+    
     // Check the format of the date to "yyyy-mm-dd hh:mm:ss"
     if (preg_match("/^([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})$/", $date, $parts))
         {
@@ -307,7 +308,7 @@ function check_view_display_condition($fields,$n,$fields_all)
 					$validvalues = explode("|",$checkvalues);
 					$validvalues = array_map("i18n_get_translated",$validvalues);
 					$validvalues = array_map("strtoupper",$validvalues);
-					$v = trim_array(explode(",",$fields_all[$cf]["value"]));
+					$v = trim_array(explode(",",$fields_all[$cf]["value"] ?? ""));
 					$v = array_map("i18n_get_translated",$v);
 					$v = array_map("strtoupper",$v);
 					foreach ($validvalues as $validvalue)
@@ -316,9 +317,9 @@ function check_view_display_condition($fields,$n,$fields_all)
 						}
 					if (!$displayconditioncheck) {$displaycondition=false;}					
 					}
-					
+
 				} # see if next field needs to be checked
-							
+
 			$condref++;
 			} # check next condition	
 		
@@ -332,49 +333,67 @@ function check_view_display_condition($fields,$n,$fields_all)
 * updates the value of fieldx field further to a metadata field value update
 * 
 * @param integer $metadata_field_ref - metadata field ref
-
-* @return array
+*
 */
-function update_fieldx(int $metadata_field_ref)
+function update_fieldx(int $metadata_field_ref): void
     {
     global $NODE_FIELDS;
 
-    $joins=get_resource_table_joins();  // returns an array of field refs  
-    if($metadata_field_ref > 0 && (in_array($metadata_field_ref,$joins)))
+    if($metadata_field_ref > 0 && in_array($metadata_field_ref, get_resource_table_joins()))
         {
-
-       
-
         $fieldinfo = get_resource_type_field($metadata_field_ref);
         $allresources = ps_array("SELECT ref value FROM resource WHERE ref>0 ORDER BY ref ASC", []);
         if(in_array($fieldinfo['type'],$NODE_FIELDS))
+            {
+            if($fieldinfo['type'] === FIELD_TYPE_CATEGORY_TREE)
+                {
+                $all_tree_nodes_ordered = get_cattree_nodes_ordered($fieldinfo['ref'], null, true);
+                // remove the fake "root" node which get_cattree_nodes_ordered() is adding since we won't be using get_cattree_node_strings()
+                array_shift($all_tree_nodes_ordered);
+                $all_tree_nodes_ordered = array_values($all_tree_nodes_ordered);
+
+                foreach($allresources as $resource)
+                    {
+                    // category trees are using full paths to node names
+                    $resource_nodes = array_keys(get_cattree_nodes_ordered($fieldinfo['ref'], $resource, false));
+                    $node_names_paths = [];
+                    foreach($resource_nodes as $node_ref)
+                        {
+                        $node_names_paths[] = implode(
+                            '/',
+                            array_column(compute_node_branch_path($all_tree_nodes_ordered, $node_ref), 'name')
+                        );
+                        }
+
+                    update_resource_field_column(
+                        $resource,
+                        $metadata_field_ref,
+                        implode($GLOBALS['field_column_string_separator'], $node_names_paths)
+                    );
+                    }
+                }
+            else
                 {
                 foreach($allresources as $resource)
                     {
                     $resnodes = get_resource_nodes($resource, $metadata_field_ref, true);
+                    uasort($resnodes, 'node_orderby_comparator'); 
                     $resvals = array_column($resnodes,"name");
-                    $resdata = implode(",",$resvals);
-                    $value = truncate_join_field_value(strip_leading_comma($resdata));
-                    ps_query("update resource set field" . $metadata_field_ref . "= ? where ref= ?", ['s', $value, 'i', $resource]);
-                    
+                    $resdata = implode($GLOBALS['field_column_string_separator'], $resvals);
+                    update_resource_field_column($resource, $metadata_field_ref, $resdata);
                     }
                 }
+            }
         else
                 {
                 foreach($allresources as $resource)
                     {
-                    $resdata = get_data_by_field($resource,$metadata_field_ref);
-                    $value = truncate_join_field_value(strip_leading_comma($resdata));
-                    ps_query("update resource set field" . $metadata_field_ref . "= ? where ref= ?", ['s', $value, 'i', $resource]);
-                    
+                    update_resource_field_column($resource, $metadata_field_ref, get_data_by_field($resource, $metadata_field_ref));
                     }
-                
                 }
-    
          }
-
     }
-    
+
 /**
  * Set resource dimensions using data from exiftool. 
  *

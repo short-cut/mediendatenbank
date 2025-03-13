@@ -13,47 +13,59 @@
 
 function api_do_search($search,$restypes="",$order_by="relevance",$archive=0,$fetchrows=-1,$sort="desc",$offset=0)
     {
-    $fetchrows = ($fetchrows > 0 ? $fetchrows : -1);
-    $offset = (int)$offset;
+    $offset = (int) $offset;
 
-    if($offset>0 && $fetchrows!=-1)
+    // Parse fetchrows
+    $fetchrows = array_map('intval', explode(',', trim($fetchrows, ' []')));
+    $structured_fetchrows = count($fetchrows) === 2;
+    if (!$structured_fetchrows)
         {
-        $fetchrows = $fetchrows + $offset;
+        $fetch = array_pop($fetchrows);
+        $fetchrows = $fetch > 0 ? $fetch : -1;
+        if($offset > 0 && $fetchrows != -1)
+            {
+            $fetchrows = $fetchrows + $offset;
+            }
         }
-    
-    # Search capability.
-    # Note the subset of the available parameters. We definitely don't want to allow override of permissions or filters.
-        
+
+    $no_results = $structured_fetchrows ? ['total' => 0, 'data' => []] : [];
+
     if(!checkperm('s'))
         {
-        return array();
+        return $no_results;
         }
-        
-    $results = do_search($search,$restypes,$order_by,$archive,$fetchrows,$sort);
 
+    # Note the subset of the available parameters. We definitely don't want to allow override of permissions or filters.
+    $results = do_search($search,$restypes,$order_by,$archive,$fetchrows,$sort);
     if (!is_array($results))
         {
-        return array();
+        return $no_results;
         }
     
-    $resultcount = count($results);
+    $resultcount = count($structured_fetchrows ? $results['data'] : $results);
     if($resultcount < $offset)
         {
-        return array();
+        return $no_results;
         }
 
     $resultset = array();
+    $get_resource_table_joins = get_resource_table_joins();
     $i=0;
     for($n = $offset; $n < $resultcount; $n++)
         {
-        if (is_array($results[$n]))
+        $row = $structured_fetchrows ? $results['data'][$n] : $results[$n];
+        if (is_array($row))
             {
-            $resultset[$i] = array_map("i18n_get_translated",$results[$n]);
+            $resultset[$i] = process_resource_data_joins_values($row, $get_resource_table_joins);
             $i++;
             }
         }
-    
-    $newresultcount = count($resultset);
+
+    if ($structured_fetchrows)
+        {
+        $results['data'] = $resultset;
+        return $results;
+        }
     return $resultset;
     }
    
@@ -65,33 +77,72 @@ function api_search_get_previews($search,$restypes="",$order_by="relevance",$arc
         return array();
         }
     $getsizes=explode(",",$getsizes);
-    $results = search_get_previews($search,$restypes,$order_by,$archive,$fetchrows,$sort,false,0,false,false,$recent_search_daylimit,false,false,false,false,false,$getsizes,$previewext);
-    
-    if (!is_array($results))
+
+    $structured = false;
+    if(strpos((string)$fetchrows,",") !== false)
         {
-        return array();
+        // Convert string into array, removing square brackets if passed as array syntax in string form
+        $fetchrows = explode(",",trim($fetchrows," []"));
         }
-        
-    $resultcount= count ($results);
+    if(is_array($fetchrows))
+        {
+        $structured = true;
+        }
+    $results = search_get_previews($search,$restypes,$order_by,$archive,$fetchrows,$sort,false,false,false,$recent_search_daylimit,false,false,false,false,false,$getsizes,$previewext);    
+           
+    if(is_array($results) && isset($results["total"]))
+        {
+        $totalcount = $results["total"];
+        $results = $results["data"];
+        $resultcount = count($results);
+        }
+    elseif (is_array($results))
+        {
+        $totalcount = $resultcount = count($results);
+        }
+    else
+        {
+        return $structured ? ["total"=> 0, "data" => []] : [];
+        }
+
+    $get_resource_table_joins = get_resource_table_joins();
     for($n=0;$n<$resultcount;$n++)
         {
         if(is_array($results[$n]))
             {
-            $results[$n] = array_map("i18n_get_translated",$results[$n]);
+            $results[$n] = process_resource_data_joins_values($results[$n], $get_resource_table_joins);
+            if($GLOBALS["hide_real_filepath"])
+                {
+                // Add a temporary key so the file can be accessed unauthenticated
+                foreach($getsizes as $getsize)
+                    {
+                    if(isset($results[$n]["url_" . $getsize]))
+                        {
+                        $accesskey = generate_temp_download_key($GLOBALS["userref"], $results[$n]["ref"], $getsize);
+                        if ($accesskey !== '')
+                            {
+                            $results[$n]["url_" . $getsize] .= "&access_key={$accesskey}";
+                            }
+                        }
+                    }
+                }
             }
         }
-    return $results;
+    return $structured ? ["total"=> $totalcount, "data" => $results] : $results;
     }
   
 function api_get_resource_field_data($resource)
     {
     # Get all field data for a resource
     $results = get_resource_field_data($resource);
-    $resultcount= count ($results);
+    if (is_array($results))
         {
-        for($n=0;$n<$resultcount;$n++)
+        $resultcount = count($results);
             {
-            $results[$n] = array_map("i18n_get_translated",$results[$n]);
+            for($n=0;$n<$resultcount;$n++)
+                {
+                $results[$n] = array_map("i18n_get_translated",$results[$n]);
+                }
             }
         }
     return $results;
@@ -99,6 +150,13 @@ function api_get_resource_field_data($resource)
 
 function api_create_resource($resource_type,$archive=999,$url="",$no_exif=false,$revert=false,$autorotate=false,$metadata="")
     {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
+    global $lang;
     if (!(checkperm("c") || checkperm("d")) || checkperm("XU" . $resource_type))
         {
         return false;
@@ -108,8 +166,14 @@ function api_create_resource($resource_type,$archive=999,$url="",$no_exif=false,
     $revert     = filter_var($revert, FILTER_VALIDATE_BOOLEAN);
     $autorotate = filter_var($autorotate, FILTER_VALIDATE_BOOLEAN);
 
+    if ($url != "" && !api_validate_upload_url($url))
+        {
+        // URL failed validation
+        return false;
+        }
+
     # Create a new resource
-    $ref=create_resource($resource_type,$archive);
+    $ref=create_resource($resource_type,$archive,-1,$lang["createdfromapi"]);
     if (!is_int($ref))
         {
         return false;
@@ -118,7 +182,9 @@ function api_create_resource($resource_type,$archive=999,$url="",$no_exif=false,
     # Also allow upload URL in the same pass (API specific, to reduce calls)
     if ($url!="")
         {
-        $tmp_dld_fpath = temp_local_download_remote_file($url);
+        // Generate unique hash to use so that other uploads with the same name won't conflict
+        $upload_key = uniqid($ref . "_");
+        $tmp_dld_fpath = temp_local_download_remote_file($url, $upload_key);
         if($tmp_dld_fpath === false)
             {
             return "FAILED: Resource #{$ref} was created, but the file was not uploaded. Enable debug log and try again to identify why uploading it failed.";
@@ -133,7 +199,7 @@ function api_create_resource($resource_type,$archive=999,$url="",$no_exif=false,
             }   
         else 
             {
-            $return=upload_file_by_url($ref,$no_exif,$revert,$autorotate,$tmp_dld_fpath);
+            $return=upload_file_by_url($ref,$no_exif,$revert,$autorotate,$tmp_dld_fpath,$upload_key);
             if ($return===false) {return false;}
             } 
         }
@@ -171,14 +237,16 @@ function api_create_resource($resource_type,$archive=999,$url="",$no_exif=false,
 
 function api_update_field($resource,$field,$value,$nodevalues=false)
     {
-    global $FIXED_LIST_FIELD_TYPES, $category_tree_add_parents, $resource_field_column_limit;
-    
-    # check that $resource param is a positive integer and valid for int type db field
-    $options_resource = [ 'options' => [ 'min_range' => 1,   'max_range' => 2147483647] ];
-    if (!filter_var($resource, FILTER_VALIDATE_INT, $options_resource))
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
         {
-        return false;
+        return $assert_post;
         }
+
+    global $FIXED_LIST_FIELD_TYPES, $category_tree_add_parents, $resource_field_column_limit, $userref;
+
+    // This user's template or real resources only
+    if ($resource<1 && $resource!=0-$userref) {return false;}
 
     $resourcedata=get_resource_data($resource,true);
     if (!$resourcedata)
@@ -186,244 +254,98 @@ function api_update_field($resource,$field,$value,$nodevalues=false)
         return false;    
         }
     
-    $editaccess = get_edit_access($resource,$resourcedata['archive'],false,$resourcedata);
+    $editaccess = get_edit_access($resource,$resourcedata['archive'],$resourcedata);
     
     if(!is_numeric($field))
         {
         // Name may have been passed    
-        $field = ps_value("select ref value from resource_type_field where name= ?", ['s',$field],"", "schema");
+        $field = ps_value("SELECT ref value FROM resource_type_field WHERE name = ?", ['s',$field],"", "schema");
         }
         
     if(!$editaccess || !metadata_field_edit_access($field))
-        {return false;}        
-    
+        {return false;}   
     $fieldinfo = get_resource_type_field($field);
     
     if(!$fieldinfo)
         {
         return false;
         }
-    
-    if(in_array($fieldinfo['type'], $FIXED_LIST_FIELD_TYPES))
-        {
-        $fieldnodes = get_nodes($field,null,$fieldinfo['type'] == FIELD_TYPE_CATEGORY_TREE);
-        
-        // Set up arrays of node ids to add/remove and all new nodes. 
-        $nodes_to_add    = array();
-        $nodes_to_remove = array();
-        $newnodes        = array();
-        
-        // Get currently selected nodes for this field 
-        $current_field_nodes = get_resource_nodes($resource, $field);
-        
-        if($nodevalues)
-            {
-            // An array of node IDs has been passed, we can use these directly
-            $sent_nodes = explode(",",$value);
-            foreach($fieldnodes as $fieldnode)
-                {
-                // Add to array of nodes, unless it has been added to array already as a parent for a previous node
-                if (in_array($fieldnode["ref"],$sent_nodes) && !in_array($fieldnode["ref"],$nodes_to_add))
-                    {
-                    if(!in_array($fieldnode["ref"],$current_field_nodes))
-                        {
-                        $nodes_to_add[] = $fieldnode["ref"];
-                        if($fieldinfo['type']==FIELD_TYPE_CATEGORY_TREE && $category_tree_add_parents) 
-                            {
-                            // Add all parent nodes for category trees
-                            $parent_nodes=get_parent_nodes($fieldnode["ref"]);
-                            foreach($parent_nodes as $parent_node_ref=>$parent_node_name)
-                                {
-                                $nodes_to_add[]=$parent_node_ref;
-                                }
-                            }
-                        }
-                    $newnodes[] = $fieldnode["ref"];
-                    }
-                else if(in_array($fieldnode["ref"],$current_field_nodes) && !in_array($fieldnode["name"],$sent_nodes))
-                    {
-                    $nodes_to_remove[] = $fieldnode["ref"];
-                    }
-                }
-            }
-        else
-            {
-            // Get all the new values into an array
-            $newvalues    = trim_array(str_getcsv($value));
-               
-            # If this is a dynamic keyword field need to add any new entries to the field nodes
-            if($fieldinfo['type'] == FIELD_TYPE_DYNAMIC_KEYWORDS_LIST && !checkperm('bdk' . $field))
-                {
-                $currentoptions = array();    
-                foreach($fieldnodes as $fieldnode)
-                    {
-                    $fieldoptiontranslations = explode('~', $fieldnode['name']);
-                    if(count($fieldoptiontranslations) < 2)
-                        {
-                        $currentoptions[]=trim($fieldnode['name']); # Not a translatable field
-                        debug("update_field: current field option: '" . trim($fieldnode['name']));
-                        }
-                    else
-                        {
-                        $default="";
-                        for ($n=1;$n<count($fieldoptiontranslations);$n++)
-                            {
-                            # Not a translated string, return as-is
-                            if (substr($fieldoptiontranslations[$n],2,1)!=":" && substr($fieldoptiontranslations[$n],5,1)!=":" && substr($fieldoptiontranslations[$n],0,1)!=":")
-                                {
-                                $currentoptions[]=trim($fieldnode['name']);
-                                debug("update_field: current field option: '" . $fieldnode['name']);
-                                }
-                            else
-                                {
-                                # Support both 2 character and 5 character language codes (for example en, en-US).
-                                $p=strpos($fieldoptiontranslations[$n],':');                         
-                                $currentoptions[]=trim(substr($fieldoptiontranslations[$n],$p+1));
-                                debug("update_field: current field option: '" . trim(substr($fieldoptiontranslations[$n],$p+1)));
-                                }
-                            }
-                        }
-                    }
-    
-                foreach($newvalues as $newvalue)
-                    {
-                    # Check if each new value exists in current options list
-                    if(!in_array($newvalue, $currentoptions) && $newvalue != '')
-                        {
-                        # Append the option and update the field
-                        $newnode          = set_node(null, $field, escape_check(trim($newvalue)), null, null);
-                        $nodes_to_add[]   = $newnode;
-                        $currentoptions[] = trim($newvalue);
-                        $fieldnodes[]  = array("ref" => $newnode,"name" => trim($newvalue)); 
-                        $newnodes[] = $newnode;
-                        debug("update_field: field option added: '" . trim($newvalue));
-                        }
-                    }
-                }
-                        
-            foreach($fieldnodes as $fieldnode)
-                {
-                // Add to array of nodes, unless it has been added to array already as a parent for a previous node
-                if (in_array($fieldnode["name"],$newvalues) && !in_array($fieldnode["ref"],$nodes_to_add))
-                    {
-                    if(!in_array($fieldnode["ref"],$current_field_nodes))
-                        {
-                        $nodes_to_add[] = $fieldnode["ref"];
-                        if($fieldinfo['type']==FIELD_TYPE_CATEGORY_TREE && $category_tree_add_parents) 
-                            {
-                            // Add all parent nodes for category trees
-                            $parent_nodes=get_parent_nodes($fieldnode["ref"]);
-                            foreach($parent_nodes as $parent_node_ref=>$parent_node_name)
-                                {
-                                $nodes_to_add[]=$parent_node_ref;
-                                }
-                            }
-                        }                    
-                    $newnodes[] = $fieldnode["ref"];
-                    }
-                else if(in_array($fieldnode["ref"],$current_field_nodes) && !in_array($fieldnode["name"],$newvalues))
-                    {
-                    $nodes_to_remove[] = $fieldnode["ref"];
-                    }
-                }
-            }
-
-        if(count($nodes_to_add) > 0 || count($nodes_to_remove) > 0)
-            {
-            # Update resource_node table
-            db_begin_transaction("api_update_field");
-            delete_resource_nodes($resource,$nodes_to_remove);
-            if(count($nodes_to_add)>0)
-                {
-                add_resource_nodes($resource,$nodes_to_add, false);
-                }
-            db_end_transaction("api_update_field");
-            
-            // Update log
-            // First use the node array to getnames with node id as key
-            $node_options = array_column($fieldnodes, 'name', 'ref');
-                
-            // Build existing value for log:
-            $curr_nodes = array_intersect_key($node_options,array_flip($current_field_nodes));    
-            $curr_nodes_str  = "," . implode(",",$curr_nodes);
-            
-            # If this is a 'joined' field we need to add it to the resource column
-            $joins = get_resource_table_joins();
-            if(in_array($fieldinfo['ref'],$joins))
-                {
-                // Build new value for resource table:
-                $new_nodes = array_intersect_key($node_options,array_flip($newnodes));  
-                $new_nodes_str = implode(",",$new_nodes);
-                $truncated_value = truncate_join_field_value($new_nodes_str);
-
-                // Remove backslashes from the end of the truncated value
-                if(substr($truncated_value, -1) === '\\')
-                    {
-                    $truncated_value = substr($truncated_value, 0, strlen($truncated_value) - 1);
-                    }	
-
-                ps_query("UPDATE resource SET field".$field."= ? WHERE ref= ?", ['s', $truncated_value, 'i', $resource]);
-                }
-            }
-
-        return true;
-        }
-    else
-        {
-        return update_field($resource,$field,$value);
-        }
+    $errors=[];
+    return update_field($resource,$field,$value,$errors,true,$nodevalues);
     }
 
 function api_delete_resource($resource)
     {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
     return delete_resource($resource);        
     }
 
 function api_copy_resource($from,$resource_type=-1)
     {
-    return copy_resource($from,$resource_type);            
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
+    global $lang;
+    return copy_resource($from,$resource_type,$lang["createdfromapi"]);            
     }
 
 function api_get_resource_log($resource, $fetchrows=-1)
     {
-    return get_resource_log($resource, $fetchrows);
+    return get_resource_log($resource, $fetchrows)["data"]??[];
     }
-    
+
 function api_update_resource_type($resource,$type)
 	{
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
     return update_resource_type($resource,$type);
     }
 
-function api_get_resource_path($ref, $getfilepath, $size="", $generate=true, $extension="jpg", $page=1, $watermarked=false, $alternative=-1)
-    {   
+function api_get_resource_path($ref, $not_used=null, $size="", $generate=true, $extension="jpg", $page=1, $watermarked=false, $alternative=-1)
+    {
     # Set defaults
     if ($alternative=="") {$alternative=-1;}
     if ($page=="") {$page=1;}
 
     $refs = json_decode($ref, true);
-    if(is_array($refs))
+    if(!is_array($refs))
         {
-        $return = array();
-        foreach($refs as $ref)
+        $refs = [$refs];
+        }
+
+    $return = array();
+    foreach($refs as $ref)
+        {
+        $resource = get_resource_data($ref);
+        if($resource == false || !is_numeric($ref) || !resource_download_allowed($ref,$size,$resource["resource_type"],$alternative))
             {
-            $resource = get_resource_data($ref);
-            if(!is_numeric($ref) || !resource_download_allowed($ref,$size,$resource["resource_type"],$alternative))
-                {
-                $return[$ref] = "";
-                continue;
-                }
-            $return[$ref] = get_resource_path($ref, filter_var($getfilepath, FILTER_VALIDATE_BOOLEAN), $size, $generate, $extension, -1, $page, $watermarked, '', $alternative, false);
+            $return[$ref] = "";
+            continue;
             }
-        return $return;
+        $return[$ref] = get_resource_path($ref, false, $size, $generate, $extension, -1, $page, $watermarked, '', $alternative, false);
+        if($GLOBALS["hide_real_filepath"])
+            {
+            // Add a temporary key so the file can be accessed unauthenticated
+            $accesskey = generate_temp_download_key($GLOBALS["userref"], $ref, $size);
+            if($accesskey !== "")
+                {
+                $return[$ref] .= "&access_key={$accesskey}";
+                }
+            }
         }
-        
-    $resource = get_resource_data($ref);
-    if(!is_numeric($ref) || $resource === false || !resource_download_allowed($ref,$size,$resource["resource_type"],$alternative))
-        {
-        return false;
-        }
-            
-    return get_resource_path($ref, filter_var($getfilepath, FILTER_VALIDATE_BOOLEAN), $size, $generate, $extension, -1, $page, $watermarked, "", $alternative, false);
+    return count($return)>1 ? $return : reset($return);
     }
     
 function api_get_resource_data($resource)
@@ -450,24 +372,31 @@ function api_get_resource_data($resource)
             }
         }
         
+    $resdata = process_resource_data_joins_values($resdata, $joins);
     return $resdata;
     }
 
 function api_put_resource_data($resource,array $data)
     {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
     if (is_null($data)) {return false;}
     return put_resource_data($resource,$data);
     }
 
 function api_get_alternative_files($resource,$order_by="",$sort="",$type="")
     {
-    global $disable_alternative_files, $alt_files_visible_when_restricted;
+    global $alt_files_visible_when_restricted;
     $access = get_resource_access($resource);
 
     if($access == RESOURCE_ACCESS_INVALID_REQUEST)
         {return false;}
 
-    if($disable_alternative_files || ($access!=0 && !($access==1 && $alt_files_visible_when_restricted)))
+    if(($access!=0 && !($access==1 && $alt_files_visible_when_restricted)))
         {return false;}
     return get_alternative_files($resource,$order_by,$sort,$type);
     }
@@ -479,9 +408,18 @@ function api_get_resource_types()
 
 function api_add_alternative_file($resource, $name, $description = '', $file_name = '', $file_extension = '', $file_size = 0, $alt_type = '', $file = '')
     {
-    global $disable_alternative_files;
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
 
-    if($disable_alternative_files || (0 < $resource && (!(get_edit_access($resource) || checkperm('A')))))
+    if((0 < $resource && (!(get_edit_access($resource) || checkperm('A')))))
+        {
+        return false;
+        }
+
+    if ($file_extension != '' && is_banned_extension($file_extension))
         {
         return false;
         }
@@ -493,6 +431,35 @@ function api_add_alternative_file($resource, $name, $description = '', $file_nam
         }
 
     // A file has been specified so add it as alternative
+    global $valid_upload_paths;
+    $deletesourcefile = false;
+    if (api_validate_upload_url($file))
+        {
+        // Path is a url
+        $upload_key = uniqid($resource . "_");
+        $file = temp_local_download_remote_file($file, $upload_key);
+        $deletesourcefile = true;
+        }
+    else if (is_valid_upload_path($file, $valid_upload_paths))
+        {
+        // Path is a file
+        if (is_banned_extension(pathinfo($file, PATHINFO_EXTENSION)))
+            {
+            return false;
+            }
+        }
+    else if ($file != "")
+        {
+        // Couldn't validate path supplied
+        return false;
+        }
+
+    if(trim($file_extension)=="")
+        {
+        $path_parts = pathinfo($file);
+        $file_extension = $path_parts['extension'] ?? '';
+        }
+
     $alternative_ref     = add_alternative_file($resource, $name, $description, $file_name, $file_extension, $file_size, $alt_type);
     $rs_alternative_path = get_resource_path($resource, true, '', true, $file_extension, -1, 1, false, '', $alternative_ref);
 
@@ -502,10 +469,11 @@ function api_add_alternative_file($resource, $name, $description = '', $file_nam
         }
 
     chmod($rs_alternative_path, 0777);
-
+    if($deletesourcefile)
+        {
+        unlink($file);
+        }
     $file_size = @filesize_unlimited($rs_alternative_path);
-
-    $resource = escape_check($resource);
 
     ps_query("UPDATE resource_alt_files SET file_size= ?, creation_date = NOW() WHERE resource = ? AND ref = ?", ['s', $file_size, 's', $resource, 's', $alternative_ref]);
 
@@ -520,6 +488,12 @@ function api_add_alternative_file($resource, $name, $description = '', $file_nam
 
 function api_delete_access_keys($access_keys, $resources, $collections)
 	{
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
     // Incoming parameters are csv strings; "-" entries denote a null resource or collection     
     // The number of entries in each parameter is always the same
     $access_key_array=explode(",",$access_keys);
@@ -544,8 +518,13 @@ function api_delete_access_keys($access_keys, $resources, $collections)
 
 function api_delete_alternative_file($resource,$ref)
 	{
-    global $disable_alternative_files;
-    if($disable_alternative_files || (0 < $resource && (!(get_edit_access($resource) || checkperm('A')))))
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
+    if(0 < $resource && (!(get_edit_access($resource) || checkperm('A'))))
         {
         return false;
         }
@@ -554,6 +533,12 @@ function api_delete_alternative_file($resource,$ref)
 
 function api_upload_file($ref,$no_exif=false,$revert=false,$autorotate=false,$file_path="")
     {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
     $no_exif    = filter_var($no_exif, FILTER_VALIDATE_BOOLEAN);
     $revert     = filter_var($revert, FILTER_VALIDATE_BOOLEAN);
     $autorotate = filter_var($autorotate, FILTER_VALIDATE_BOOLEAN);
@@ -575,11 +560,26 @@ function api_upload_file($ref,$no_exif=false,$revert=false,$autorotate=false,$fi
     
 function api_upload_file_by_url($ref,$no_exif=false,$revert=false,$autorotate=false,$url="")
     {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
     $no_exif    = filter_var($no_exif, FILTER_VALIDATE_BOOLEAN);
     $revert     = filter_var($revert, FILTER_VALIDATE_BOOLEAN);
     $autorotate = filter_var($autorotate, FILTER_VALIDATE_BOOLEAN);
 
-    $tmp_dld_fpath = temp_local_download_remote_file($url);
+    if (!api_validate_upload_url($url))
+        {
+        // URL failed validation
+        return false;
+        }
+
+    // Generate unique hash to use so that other uploads with the same name won't conflict
+    $upload_key = uniqid((int)$ref . "_");
+    $tmp_dld_fpath = temp_local_download_remote_file($url, $upload_key);
+
     if($tmp_dld_fpath === false)
         {
         return "FAILED: The file for resource #{$ref} was not uploaded. Enable debug log and try again to identify why uploading it failed.";
@@ -593,7 +593,7 @@ function api_upload_file_by_url($ref,$no_exif=false,$revert=false,$autorotate=fa
         }   
     else 
         {
-        $return=upload_file_by_url($ref,$no_exif,$revert,$autorotate,$tmp_dld_fpath);
+        $return=upload_file_by_url($ref,$no_exif,$revert,$autorotate,$tmp_dld_fpath,$upload_key);
         if ($return===false) {return false;}
         } 
 
@@ -619,7 +619,7 @@ function api_get_field_options($ref, $nodeinfo = false)
     if(!is_numeric($ref))
         {
         // Name may have been passed    
-        $ref = ps_value("select ref value from resource_type_field where name= ?", ['i',$ref], "", "schema");
+        $ref = ps_value("select ref value from resource_type_field where name= ?", ['s',$ref], "", "schema");
         }
         
     if(!metadata_field_view_access($ref))
@@ -647,18 +647,30 @@ function api_get_user_collections()
     return get_user_collections($userref);
     }
     
-function api_add_resource_to_collection($resource,$collection='')
+function api_add_resource_to_collection($resource,$collection='',$search='')
     {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
     global $usercollection;
     if($collection=='')
         {
         $collection = $usercollection;
         }
-    return add_resource_to_collection($resource,$collection);
+    return add_resource_to_collection($resource,$collection,false,'','',null,null,$search);
     }
     
 function api_collection_add_resources($collection='',$resources = '',$search = '',$selected=false)
     {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
     global $usercollection;
     if($collection=='')
         {
@@ -669,6 +681,12 @@ function api_collection_add_resources($collection='',$resources = '',$search = '
 
 function api_remove_resource_from_collection($resource,$collection='')
     {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
     global $usercollection;
     if($collection=='')
         {
@@ -679,6 +697,12 @@ function api_remove_resource_from_collection($resource,$collection='')
 
 function api_collection_remove_resources($collection='',$resources='',$removeall = false,$selected=false)
     {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
     global $usercollection;
     if($collection=='')
         {
@@ -689,15 +713,21 @@ function api_collection_remove_resources($collection='',$resources='',$removeall
     
 function api_create_collection($name,$forupload=false)
 	{
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
     global $userref, $collection_allow_creation;
-    if (checkperm("b") || !$collection_allow_creation)
+    if (!can_create_collections())
         {
         return false;
         }
     if($forupload && trim($name) == "")
         {
         # Do not translate this string, the collection name is translated when displayed!
-        $name = "Upload " . date("YmdHis"); 
+        $name = "Upload " . offset_user_local_timezone(date('YmdHis'), 'YmdHis');
         }
     
     return create_collection($userref,$name);
@@ -705,6 +735,12 @@ function api_create_collection($name,$forupload=false)
     
 function api_delete_collection($ref)
     {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
     if (checkperm("b") || !collection_writeable($ref))
         {return false;}
     return delete_collection($ref);
@@ -729,6 +765,12 @@ function api_search_public_collections($search="", $order_by="name", $sort="ASC"
     
 function api_set_node($ref, $resource_type_field, $name, $parent = '', $order_by = 0,$returnexisting = false)
     {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
     global $FIXED_LIST_FIELD_TYPES;
         
     $fieldinfo = get_resource_type_field($resource_type_field);
@@ -748,6 +790,18 @@ function api_set_node($ref, $resource_type_field, $name, $parent = '', $order_by
 
 function api_add_resource_nodes($resource,$nodestring)
     {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
     // This is only for super admins
     if(!checkperm('a'))
         {
@@ -774,11 +828,12 @@ function api_add_resource_nodes($resource,$nodestring)
             $joined_fields_to_update[] = $returned_node['resource_type_field'];
             }
         }
-    //$joined_fields_to_update = array_unique($joined_fields_to_update);
     foreach ($joined_fields_to_update as $field_update)
         {
-        $resource_node_data = get_data_by_field($resource, $field_update);
-        ps_query("UPDATE resource SET field".$field_update."= ? WHERE ref= ?", ['s', $resource_node_data, 'i', $resource]);
+        // get_data_by_field() always returns the value separated by ", " when flattening so we have to ensure it's stored
+        // using the field_column_string_separator in the data_joins (ie fieldX) columns
+        $resource_node_data = str_replace(', ', $GLOBALS['field_column_string_separator'], get_data_by_field($resource, $field_update));
+        update_resource_field_column($resource, $field_update, $resource_node_data);
         }
     
     return true;
@@ -786,22 +841,54 @@ function api_add_resource_nodes($resource,$nodestring)
     
  function api_add_resource_nodes_multi($resources,$nodestring)
     {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
     // This is only for super admins
     if(!checkperm('a'))
         {return false;}        
     $resourcearr = explode(",",$resources);
     $nodes = explode(",",$nodestring);
-    return add_resource_nodes_multi($resourcearr,$nodes);
+    return add_resource_nodes_multi($resourcearr,$nodes,false,true);
     }
     
-function api_resource_log_last_rows($minref = 0, $days = 7, $maxrecords = 0)
+function api_resource_log_last_rows($minref = 0, $days = 7, $maxrecords = 0, string $field = '', string $log_code = '')
     {
-    return resource_log_last_rows($minref, $days, $maxrecords);
+    $fields = explode(',', $field);
+    $log_codes = explode(',', $log_code);
+    return resource_log_last_rows($minref, $days, $maxrecords, $fields, $log_codes);
     }
-
+    
 function api_get_resource_all_image_sizes($resource)
     {
-    return get_resource_all_image_sizes($resource);
+    $sizes = get_resource_all_image_sizes($resource);
+    if($GLOBALS["hide_real_filepath"])
+        {
+        // Add a temporary key so the file can be accessed unauthenticated
+        for ($n = 0; $n < count($sizes); $n++)
+            {
+            if ($sizes[$n]['size_code'] == 'original')
+                {
+                $size_id = '';
+                }
+            else
+                {
+                $size_id = $sizes[$n]['size_code'];
+                }
+
+            $accesskey = generate_temp_download_key($GLOBALS["userref"],$resource, $size_id);
+            if($accesskey !== "")
+                {
+                $sizes[$n]["url"] .= "&access_key={$accesskey}";
+                }
+            }
+        }
+    // Remove the path elements
+    array_walk($sizes, function(&$size) {unset($size["path"]);});
+    return $sizes;
     }
 
 function api_get_node_id($value, $resource_type_field)
@@ -812,15 +899,41 @@ function api_get_node_id($value, $resource_type_field)
     }
 function api_replace_resource_file($ref, $file_location, $no_exif=false, $autorotate=false, $keep_original=true)
     {
-    global $rse_version_block, $plugins, $usergroup,$rse_version_override_groups, $replace_resource_preserve_option;
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
+    global $rse_version_block, $plugins, $usergroup,$rse_version_override_groups, $replace_resource_preserve_option,
+            $valid_upload_paths;
     $no_exif    = filter_var($no_exif, FILTER_VALIDATE_BOOLEAN);
     $autorotate = filter_var($autorotate, FILTER_VALIDATE_BOOLEAN);
     $keep_original = filter_var($keep_original, FILTER_VALIDATE_BOOLEAN);
+    $generic_err_msg = [
+        "Status" => "FAILED",
+        "Message" => "Resource not replaced. Refer to ResourceSpace system administrator",
+    ];
+
+    $file_location_parts=pathinfo($file_location);
+
+    if (is_valid_upload_path($file_location_parts["dirname"], $valid_upload_paths))
+        {
+        if (is_banned_extension(pathinfo($file_location_parts["basename"], PATHINFO_EXTENSION)))
+            {
+            return array("Status" => "FAILED","Message" => "The file for resource {$ref} was not replaced. File {$file_location} is invalid.");
+            }
+        }
+    else
+        {
+        return array("Status" => "FAILED","Message" => "The file for resource {$ref} was not replaced. File location {$file_location} is invalid.");
+        }
+
     $duplicates=check_duplicate_checksum($file_location,false);
     if (count($duplicates)>0)
         {
         $duplicates_string=implode(",",$duplicates);
-        return "FAILED: The file for resource {$ref} was not replaced. Resources {$duplicates_string} already have a matching file.";
+        return array("Status" => "FAILED","Message" => "The file for resource {$ref} was not replaced. Resources {$duplicates_string} already have a matching file.");
         }
     else 
         {
@@ -838,10 +951,30 @@ function api_replace_resource_file($ref, $file_location, $no_exif=false, $autoro
             // Set global otion so that this is not dependent on config
             $replace_resource_preserve_option = true;
             }
-        $success = replace_resource_file($ref, $file_location, $no_exif, $autorotate, $keep_original);
+
+        $GLOBALS["use_error_exception"] = true;
+        try
+            {
+            $success = replace_resource_file($ref, $file_location, $no_exif, $autorotate, $keep_original);
+            }
+        catch (Throwable $t)
+            {
+            debug(
+                sprintf(
+                    '[api_replace_resource_file] Failed to replace resource %s file with %s. Reason: %s',
+                    $ref,
+                    $file_location,
+                    $t->getMessage()
+                )
+            );
+            unset($GLOBALS["use_error_exception"]);
+            return $generic_err_msg;
+            }
+        unset($GLOBALS["use_error_exception"]);
+
         if (!$success)
             {
-            return array("Status" => "FAILED","Message" => "Resource not replaced. Refer to ResourceSpace system administrator");
+            return $generic_err_msg;
             }
         }
 
@@ -927,15 +1060,42 @@ function api_get_resource_collections($ref)
     return $ref_collections;
     }
 
-function api_update_related_resource($ref,$related,$add=true)
+function api_update_related_resource($ref, $related, $add = 1)
     {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
     global $enable_related_resources;
     if(!$enable_related_resources)
         {
         return false;
         }
-    $related = explode(",",$related);
-    return update_related_resource($ref,$related,$add);
+
+    $related = explode(",", $related);
+
+    if (!is_numeric($add))
+        {
+        return false;
+        }
+
+    $addboolean = null;
+    if ((int) $add === 1)
+        {
+        $addboolean = true;
+        }
+    elseif ((int) $add === 0)
+        {
+        $addboolean = false;
+        }
+    else
+        {
+        return false;
+        }
+
+    return update_related_resource($ref, $related, $addboolean);
     }
 
 function api_get_collections_resource_count(string $refs)
@@ -960,6 +1120,12 @@ function api_get_users($find="", $exact_username_match=false)
 
 function api_save_collection(int $ref, array $coldata)
     {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
     if(checkperm("b"))
         {
         return false;
@@ -1016,6 +1182,12 @@ function api_get_collection(int $ref)
 
 function api_send_user_message($users,$text)
     {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
     $success = send_user_message($users,$text);
     return $success;
     }
@@ -1032,6 +1204,12 @@ function api_get_system_status()
 
 function api_relate_all_resources($related)
     {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
     global $enable_related_resources;
     if(!$enable_related_resources)
         {
@@ -1046,19 +1224,38 @@ function api_relate_all_resources($related)
 
 function api_show_hide_collection($collection, $show, $user)
     {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
     return show_hide_collection($collection, $show, $user);
     }
 
 function api_send_collection_to_admin($collection)
     {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
     return send_collection_to_admin($collection);
     }
 
 function api_reorder_featured_collections($refs)
     {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
     if(can_reorder_featured_collections())
         {
-        reorder_collections($refs);
+        sql_reorder_records('collection', $refs);
+        log_activity('via API - reorder_featured_collections', LOG_CODE_REORDERED, implode(', ', $refs), 'collection');
         return true;
         }
 
@@ -1069,4 +1266,254 @@ function api_reorder_featured_collections($refs)
 function api_get_dash_search_data($link,$promimg)
     {
     return get_dash_search_data($link,$promimg);    
+    }
+
+function api_reorder_tabs($refs)
+    {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
+    if(acl_can_manage_tabs())
+        {
+        sql_reorder_records('tab', $refs);
+        return true;
+        }
+
+    http_response_code(403);
+    return false;
+    }
+
+function api_delete_tabs($refs)
+    {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
+    if(acl_can_manage_tabs())
+        {
+        return delete_tabs($refs);
+        }
+
+    http_response_code(403);
+    return false;
+    }
+
+function api_save_tab($tab)
+    {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
+    if(acl_can_manage_tabs())
+        {
+        if(save_tab($tab))
+            {
+            $tab = get_tabs_by_refs([$tab['ref']])[0];
+            $tab['name_translated'] = i18n_get_translated($tab['name']);
+            return ajax_response_ok($tab);
+            }
+
+        return ajax_response_fail(ajax_build_message($GLOBALS['lang']['error_fail_save']));
+        }
+
+    http_response_code(403);
+    return false;
+    }
+
+function api_mark_email_as_invalid($email)
+    {
+    $assert_post = assert_post_request(defined('API_AUTHMODE_NATIVE'));
+    if (!empty($assert_post))
+        {
+        return $assert_post;
+        }
+
+    if(!checkperm('a'))
+        {
+        return false;
+        }
+        
+    return mark_email_as_invalid($email);
+    }
+
+function api_get_user_message($ref)
+    {
+    return get_user_message($ref);
+    }
+
+function api_get_users_by_permission($permissions)
+    {
+    if(!is_array($permissions))
+        {
+        $permissions = explode(",",$permissions);
+        }
+    return get_users_by_permission($permissions); 
+    }
+
+/**
+ * Upload files using HTTP multipart.
+ *
+ * @param int $ref Resource ID
+ * @param bool $no_exif Do not extract embedded metadata
+ * @param bool $revert Delete all data and re-extract embedded data
+ *
+ * @return array Returns JSend data back {@see ajax_functions.php} if upload failed, otherwise 204 HTTP status
+ */
+function api_upload_multipart(int $ref, bool $no_exif, bool $revert): array
+    {
+    $request_checks = [
+        fn(): array => assert_post_request(true),
+        fn(): array => assert_content_type('multipart/form-data', $_SERVER['CONTENT_TYPE'] ?? ''),
+        // Ensure a "file" has been POSTd
+        function(): array
+            {
+            http_response_code(400);
+            return isset($_FILES['file'])
+                ? []
+                : ajax_response_fail(ajax_build_message(
+                    str_replace('%key', 'file', $GLOBALS['lang']['error-request-missing-key'])
+                ));
+            },
+        // Check file has been received
+        function(): array
+            {
+            if ($_FILES['file']['error'] === UPLOAD_ERR_INI_SIZE)
+                {
+                http_response_code(413);
+                return ajax_response_fail(ajax_build_message(
+                    sprintf($GLOBALS['lang']['plupload-maxfilesize'], ini_get('upload_max_filesize'))
+                ));
+                }
+            else if ($_FILES['file']['error'] !== UPLOAD_ERR_OK)
+                {
+                http_response_code(500);
+                return ajax_response_fail(ajax_build_message(
+                    sprintf(
+                        '(%s #%s) %s',
+                        $GLOBALS['lang']['error'],
+                        $_FILES['file']['error'],
+                        $GLOBALS['lang']['upload_error_unknown'])
+                ));
+                }
+            else
+                {
+                return [];
+                }
+        },
+    ];
+    foreach ($request_checks as $check)
+        {
+        $check_result = $check();
+        if (!empty($check_result))
+            {
+            return $check_result;
+            }
+        }
+
+    $duplicates = check_duplicate_checksum($_FILES['file']['tmp_name'], false);
+    if (count($duplicates) > 0)
+        {
+        return ajax_response_fail(ajax_build_message(
+            str_replace('%%RESOURCES%%', implode(', ', $duplicates), $GLOBALS['lang']['error_upload_duplicate_file'])
+        ));
+        }   
+
+    // Set the userfile so upload_file can carry out the rest of the work as usual
+    $_FILES['userfile'] = $_FILES['file'];
+    if (upload_file($ref, $no_exif, $revert))
+        {
+        http_response_code(204);
+        return ajax_response_ok_no_data();
+        }
+
+    http_response_code(500);
+    return ajax_response_fail(ajax_build_message($GLOBALS['lang']['error_upload_failed']));
+    }
+
+/**
+ * Get metadata field information for all (matching) fields.
+ *
+ * @param string $by_resource_types Filter result by resource type. If multiple, use a CSV of resource types.
+ * @param string $find Filter result by fuzzy searching in different properties (e.g name, title, ref, help text etc)
+ * @param string $by_types Filter result by field type ({@see FIELD_TYPE_* constants}). If multiple, use a CSV of field types.
+ *
+ * @return array Returns the matching fields' information or 403 HTTP status if not authorised
+ */
+function api_get_resource_type_fields(string $by_resource_types = '', string $find = '', string $by_types = ''): array
+    {
+    if (!checkperm('a'))
+        {
+        http_response_code(403);
+        return [];
+        }
+
+    return array_map(
+        'execution_lockout_remove_resource_type_field_props',
+        get_resource_type_fields(
+            parse_csv_to_list_of_type($by_resource_types, 'is_int_loose'),
+            'ref',
+            'asc',
+            trim($find),
+            parse_csv_to_list_of_type($by_types, 'is_int_loose'),
+            true
+        )
+    );
+    }
+ 
+/**
+ * Create metadata field
+ *
+ * @param string $name Field name
+ * @param string $resource_types CSV of applicable resource types for this field. Use 0 (zero) for global, for others
+ *                               {@see API get_resource_types()}
+ * @param int $type Metadata field type. For values, {@see FIELD_TYPE_* constants}
+ * @return array Returns JSend data back {@see ajax_functions.php} and 200 HTTP status or 403 HTTP status if not authorised
+ */
+function api_create_resource_type_field(string $name, string $resource_types, int $type): array
+    {
+    if (!checkperm('a'))
+        {
+        http_response_code(403);
+        return [];
+        }
+
+    /** @var int|array $parse_rt_csv */
+    $parse_rt_csv = function(string $RT)
+        {
+        // Parse CSV to ordered list of integers
+        $parse_input = parse_csv_to_list_of_type($RT, 'is_int_loose');
+        $parse_input = array_map('intval', $parse_input);
+        asort($parse_input, SORT_NUMERIC);
+        $parse_input = array_values($parse_input);
+
+        // Global field? (ie resource type = 0)
+        $rev = array_reverse($parse_input);
+        return array_pop($rev) === 0 ? 0 : $parse_input;
+        };
+
+    $ref = create_resource_type_field($name, $parse_rt_csv($resource_types), $type, '', true);
+    return $ref !== false
+        ? ajax_response_ok(['ref' => $ref])
+        : ajax_response_fail(ajax_build_message($GLOBALS['lang']['error_fail_save']));
+    }
+
+/**
+ * Expose {@see get_featured_collections} to the API
+ * @param int $parent The feature collection parent's ref. Use 0 for obtaining the root ones.
+ */
+function api_get_featured_collections($parent): array
+    {
+    return is_int_loose($parent) ? get_featured_collections($parent, []) : [];
+    }
+
+function api_get_edit_access(int $resource): bool
+    {
+    return get_edit_access($resource);
     }

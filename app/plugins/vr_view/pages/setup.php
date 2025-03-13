@@ -8,8 +8,6 @@ $plugin_name = 'vr_view';
 $plugin_page_heading = $lang['vr_view_configuration'];
 if(!in_array($plugin_name, $plugins))
 	{plugin_activate_for_setup($plugin_name);}
- 
-$chosen_dropdowns=true;
 
 $page_def[] = config_add_boolean_select('vr_view_google_hosted',$lang['vr_view_google_hosted']);
 $page_def[] = config_add_text_input('vr_view_js_url', $lang['vr_view_js_url']);
@@ -33,8 +31,8 @@ $page_def[] = config_add_single_ftype_select('vr_view_yaw_only_field', $lang['vr
 $page_def[] = config_add_text_input('vr_view_yaw_only_value', $lang['vr_view_yaw_only_value']);
 
 // Do the page generation ritual -- don't change this section.
-$upload_status = config_gen_setup_post($page_def, $plugin_name);
+config_gen_setup_post($page_def, $plugin_name);
 include '../../../include/header.php';
-config_gen_setup_html($page_def, $plugin_name, $upload_status, $plugin_page_heading);
+config_gen_setup_html($page_def, $plugin_name, null, $plugin_page_heading);
 include '../../../include/footer.php';
 

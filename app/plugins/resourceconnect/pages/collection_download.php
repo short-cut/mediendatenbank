@@ -7,15 +7,15 @@ $inside_plugin=true;
 include "../../../include/db.php";
 
 # External access support (authenticate only if no key provided, or if invalid access key provided)
-$k=getvalescaped("k","");if (($k=="") || (!check_access_key_collection(getvalescaped("collection","",true),$k))) {include "../../../include/authenticate.php";}
+$k=getval("k","");if (($k=="") || (!check_access_key_collection(getval("collection","",true),$k))) {include "../../../include/authenticate.php";}
 
-$collection=getvalescaped("collection","",true);
-$size=getvalescaped("size","");
-$submitted=getvalescaped("submitted","");
-$includetext=getvalescaped("text","false");
-$useoriginal=getvalescaped("use_original","no");
+$collection=getval("collection","",true);
+$size=getval("size","");
+$submitted=getval("submitted","");
+$includetext=getval("text","false");
+$useoriginal=getval("use_original","no");
 $collectiondata=get_collection($collection);
-$settings_id=getvalescaped("settings","");
+$settings_id=getval("settings","");
 
 $archiver_fullpath = get_utility_path("archiver");
 
@@ -72,7 +72,7 @@ if ($submitted != "")
 			{
 			$usesize=$size;
 			$pextension = ($size == 'original') ? $result[$n]["file_extension"] : 'jpg';
-			($size == 'original') ? $usesize="" : $usesize=$usesize;
+            if($size == 'original') {$usesize="";}
 			$p=get_resource_path($ref,true,$usesize,false,$pextension,-1,1,$use_watermark);
 
 			if ((!file_exists($p)) && $useoriginal == 'yes' && resource_download_allowed($ref,'',$result[$n]['resource_type'])){
@@ -89,17 +89,17 @@ if ($submitted != "")
 			if (((file_exists($p) && $access==0) || 
 				(file_exists($p) && $access==1 && 
 					(image_size_restricted_access($size) || ($usesize='' && $restricted_full_download))) 
-					
+
 					) && resource_download_allowed($ref,$usesize,$result[$n]['resource_type']))
 				{
-				
+
 				$used_resources[]=$ref;
 				# when writing metadata, we take an extra security measure by copying the files to tmp
 				$tmpfile=write_metadata($p,$ref);
 				if($tmpfile!==false && file_exists($tmpfile)){$p=$tmpfile;}		
-	
+
 				# if the tmpfile is made, from here on we are working with that. 
-				
+
 				# If using original filenames when downloading, copy the file to new location so the name is included.
 				if ($original_filenames_when_downloading)	
 					{
@@ -114,7 +114,7 @@ if ($submitted != "")
 						# The system needs to replace the extension to change it to jpg if necessary, but if the original file
 						# is being downloaded, and it originally used a different case, then it should not come from the file_extension, 
 						# but rather from the original filename itself.
-						
+
 						# do an extra check to see if the original filename might have uppercase extension that can be preserved.	
 						# also, set extension to "" if the original filename didn't have an extension (exiftool identification of filetypes)
 						$pathparts=pathinfo($filename);
@@ -126,7 +126,7 @@ if ($submitted != "")
 						$filename=$basename_minus_extension.$append.".".$pextension;
 
 						if ($prefix_resource_id_to_filename) {$filename=$prefix_filename_string . $ref . "_" . $filename;}
-						
+
 						$fs=explode("/",$filename);$filename=$fs[count($fs)-1];
 
                         # Convert $filename to the charset used on the server.
@@ -144,12 +144,12 @@ if ($submitted != "")
 
 						# Add the temporary file to the post-archiving deletion list.
 						$deletion_array[]=$newpath;
-						
+
 						# Set p so now we are working with this new file
 						$p=$newpath;
 						}
 					}
-				
+
 				#Add resource data/collection_resource data to text file
 				if (($zipped_collection_textfile==true)&&($includetext=="true")){ 
 					if ($size==""){$sizetext="";}else{$sizetext="-".$size;}
@@ -168,37 +168,37 @@ if ($submitted != "")
 					$text.= "-----------------------------------------------------------------\r\n\r\n";	
 					}
 				}
-				
+
 				$path.=$p . "\r\n";	
-				
+
 				# build an array of paths so we can clean up any exiftool-modified files.
-				
+
 				if($tmpfile!==false && file_exists($tmpfile)){$deletion_array[]=$tmpfile;}
 				daily_stat("Resource download",$ref);
 				resource_log($ref,'d',0);
-				
+
 				# update hit count if tracking downloads only
 				if ($resource_hit_count_on_downloads) { 
 				# greatest() is used so the value is taken from the hit_count column in the event that new_hit_count is zero to support installations that did not previously have a new_hit_count column (i.e. upgrade compatability).
-				sql_query("update resource set new_hit_count=greatest(hit_count,new_hit_count)+1 where ref='$ref'");
+				ps_query("update resource set new_hit_count=greatest(hit_count,new_hit_count)+1 where ref=?",array("i",$ref));
 				} 
-				
+
 				}
 			}
 		}
 
 	# Download and add external resources
-	$xt_resources=sql_query("select * from resourceconnect_collection_resources where collection='" . $collection . "'");
+	$xt_resources=ps_query("select ref,collection,date_added,title,thumb,large_thumb,xl_thumb,url,source_ref from resourceconnect_collection_resources where collection=?",array("i",$collection));
 	foreach ($xt_resources as $xt_resource)
 		{
 		# Work out download URL
 		$url=$xt_resource["url"];		
 		$url=str_replace("view.php","download.php",$url);
 		$url.="&size=" . $size;
-		
+
 		$tmp_file=get_temp_dir() . "/XT_" . $collection . "_" . $xt_resource["ref"] . ".jpg";
 		file_put_contents($tmp_file,file_get_contents($url));
-		
+
 		$deletion_array[]=$tmp_file; # Add to deletion array for post-download cleanup
 		$path.=$tmp_file . "\r\n";	# Add to download path
 		}
@@ -365,5 +365,3 @@ if ($archiver)
 </div>
 <?php 
 include_once "../../../include/footer.php";
-?>
-

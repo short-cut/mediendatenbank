@@ -1,7 +1,7 @@
 <?php
 /* -------- Category Tree ------------------- */ 
-global $lang, $baseurl, $css_reload_key, $category_tree_show_status_window;
-global$category_tree_open, $is_search, $cat_tree_singlebranch, $category_tree_add_parents,
+global $lang, $baseurl, $css_reload_key;
+global$category_tree_open, $is_search, $category_tree_add_parents,
 $category_tree_remove_children, $k;
 
 $is_search      = (isset($is_search) ? $is_search : false);
@@ -18,23 +18,34 @@ $tree_container_styling            = ($category_tree_open ? 'display: block;' : 
 
 $current_val_fieldname = "field_{$field['ref']}_currentval";
 
-if(!isset($selected_nodes))
-    {
-    $selected_nodes = array();
 
-    if(isset($searched_nodes) && is_array($searched_nodes))
-        {
-        $selected_nodes = $searched_nodes;
-        }
-    }
-
-// User set values are options selected by user - used to render what users selected before submitting the form and
-// receiving an error (e.g required field missing)
 if(isset($user_set_values[$field['ref']]) && is_array($user_set_values[$field['ref']]) && !empty($user_set_values[$field['ref']]))
     {
+    // User set values are options selected by user - used to render what users selected before submitting the form and
+    // receiving an error (e.g required field missing
     $selected_nodes = $user_set_values[$field['ref']];
     }
+elseif(isset($field_nodes))
+    {
+    $selected_nodes = $field_nodes;    
+    }
+elseif(isset($searched_nodes) && is_array($searched_nodes))
+    {
+    $selected_nodes = $searched_nodes;
+    }
+else
+    {
+    $selected_nodes = [];
+    }
 
+// When editing multiple resources, we don't want to preselect any options; the user must make the necessary selection
+if($multiple && $copyfrom == '')
+    {
+    $selected_nodes = [];
+    }
+
+// Strip out invalid nodes
+$valid_nodes = [];
 foreach($selected_nodes as $node)
     {
     $node_data = array();
@@ -47,14 +58,17 @@ foreach($selected_nodes as $node)
         {
         continue;
         }
+    $valid_nodes [] = $node_data;
+    }
 
-    $hidden_input_elements .= "<input id=\"{$hidden_input_elements_id_prefix}{$node_data["ref"]}\" class =\"{$tree_id}_nodes\" type=\"hidden\" name=\"{$name}\" value=\"{$node_data["ref"]}\">";
+foreach($valid_nodes as $node)
+    {
+    $hidden_input_elements .= "<input id=\"{$hidden_input_elements_id_prefix}{$node["ref"]}\" class =\"{$tree_id}_nodes\" type=\"hidden\" name=\"" . escape($name) . "\" value=\"{$node["ref"]}\">";
 
     // Show previously selected options on the status box
     if(!(isset($treeonly) && true == $treeonly))
         {
-        $status_box_elements .= "<div id=\"".$tree_id."_selected_".$node_data['ref']."\" class=\"" . $tree_id . "_option_status\"  ><span id=\"{$status_box_id}_option_{$node_data['ref']}\">" 
-                             . htmlspecialchars($node_data['name']) . "</span><br /></div>";
+        $status_box_elements .= "<div id=\"".$tree_id."_selected_".$node['ref']."\" class=\"" . $tree_id . "_option_status\"  ><span id=\"{$status_box_id}_option_{$node['ref']}\">" . htmlspecialchars(i18n_get_translated($node['name'])) . "</span><br /></div>";
         }
     }
 
@@ -73,7 +87,7 @@ if(!$is_search)
 if(!(isset($treeonly) && true == $treeonly))
 	{
 	?>
-    <div id="<?php echo $status_box_id; ?>" class="CategoryBox" <?php if(!$category_tree_show_status_window) { ?>style="display:none;"<?php } ?>>
+    <div id="<?php echo $status_box_id; ?>" class="CategoryBox">
         <div id="<?php echo $tree_id; ?>_statusbox_begin" style="display:none;"></div>
         <div id="<?php echo $tree_id; ?>_statusbox_platform" style="display:none;"></div>
         <?php echo $status_box_elements; ?>
@@ -193,19 +207,20 @@ echo $hidden_input_elements;
                             ajax           : true,
                             node_ref       : node.id,
                             field          : <?php echo $field['ref']; ?>,
-                            selected_nodes : <?php echo json_encode($selected_nodes); ?>,
-                            k : '<?php echo htmlspecialchars($k); ?>',
+                            selected_nodes : <?php echo json_encode(array_column($valid_nodes,"ref")); ?>,
+                            k : '<?php echo htmlspecialchars((string)$k); ?>'
                             };
                     }
             },
-            'multiple' : <?php echo ($cat_tree_singlebranch && !$is_search ? 'false' : 'true'); ?>,
             'themes' : {
-                'icons' : false
-            }
+                    'name' : 'default-dark',
+                    'icons': false
+            },
+            'multiple' : true,
         },
         'plugins' : [
             'wholerow',
-            'checkbox'
+            'checkbox',
         ],
         'checkbox' : {
             // jsTree Documentation: three_state is a boolean indicating if checkboxes should cascade down and have an 
@@ -229,9 +244,7 @@ echo $hidden_input_elements;
     2. Deselecting a parent node will automatically deselect all child nodes, unless the option $category_tree_remove_children
        is set to false
     3. Deselecting a sub node will not affect any parent nodes
-    4. If $cat_tree_singlebranch is set to true, selection of any node will automatically remove any previously selected
-       nodes and follow the behaviour described in (1)
-    5. Selection of a parent node will have no effect on any sub nodes
+    4. Selection of a parent node will have no effect on any sub nodes
     */
     var jquery_tree_by_id             = jQuery('#<?php echo $tree_id; ?>');
     var category_tree_add_parents     = <?php echo ($category_tree_add_parents ? 'true' : 'false'); ?>;
@@ -345,19 +358,25 @@ if(!$is_search)
         for(var i = 0; i < selected_rs_node_ids.length; i++)
             {
             // Trigger an event so we can chain actions once we've changed a category tree option
-            jQuery('#CentralSpace').trigger('categoryTreeChanged', [{node: selected_rs_node_ids[i]}]);
+            jQuery('#<?php echo $forsearchbar ? "SearchBox" : "CentralSpace" ?>').trigger('categoryTreeChanged', [{node: selected_rs_node_ids[i]}]);
             }
 
         if(selected_rs_node_ids.length == 0)
             {
             // Category tree cleared
-            jQuery('#CentralSpace').trigger('categoryTreeChanged', 0);
+            jQuery('#<?php echo $forsearchbar ? "SearchBox" : "CentralSpace" ?>').trigger('categoryTreeChanged', 0);
             }
 
         <?php
-        if($edit_autosave)
+        if(!$is_search && $edit_autosave)
             {
-            echo "AutoSave('{$field['ref']}');";
+            ?>// Give time for all actions e.g. check parents to complete before autosaving
+            if(typeof(edit_tree_block_autosave) == 'undefined' || !edit_tree_block_autosave)
+                {
+                edit_tree_block_autosave = true;
+                loadingtimers.push(window.setTimeout("AutoSave('<?php echo htmlspecialchars($field['ref']); ?>');edit_tree_block_autosave = false;",500));
+                }
+            <?php
             }
 
         echo $update_result_count_function_call;

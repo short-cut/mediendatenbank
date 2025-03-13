@@ -14,55 +14,53 @@ function HookPosixldapauthAllExternalauth($uname, $pword)
 	include_once dirname(__FILE__) . "/ldap_class.php";
 	global $username;
 	global $password;
-	global $password_hash,$use_plugins_manager,$ldapauth;
+	global $password_hash,$ldapauth;
 	$debugMode = false;
         
     if ($ldap_debug) { error_log( __FILE__ . " " . __METHOD__ . " " . __LINE__ . "  Starting Debug") ; }    
         
         
-	if ($use_plugins_manager==true)
-	{
-		$ldapauth = get_plugin_config("posixldapauth");
-		
 
-		if ($ldapauth==null || $ldapauth['enable']==false) 
-		{
-			return false;
-		}
-		if (!isset($ldapauth['ldapgroupcontainer']))
-		{
-			$ldapauth['ldapgroupcontainer'] = "";
-		}
-		if (!isset($ldapauth['port']))
-		{
-			$ldapauth['port'] = 389;
-		}
-		if (!isset($ldapauth['ldapmemberfield']))
-		{
-			$ldapauth['ldapmemberfield'] = "";	
-		}
-			if (!isset($ldapauth['ldapmemberfieldtype']))
-		{
-			$ldapauth['ldapmemberfieldtype'] = 0;	
-		}
-		
-		if ($ldap_debug) { error_log( __FILE__ . " " . __METHOD__ . " " . __LINE__ . "  Configuration") ; }
-		
-		if ($ldap_debug) {
-			foreach ( $ldapauth as $key => $value ) {
-				if ($key == "groupmap") {
-					foreach ($ldapauth['groupmap'] as $ldapGrpName => $arrLdapGrp) {	
-						if ($arrLdapGrp['enabled'])	{
-							error_log( $ldapGrpName . " is enabled and mapped to " . $arrLdapGrp['rsGroup']);
-							
-						}
-					} 	
-				} else {
-					error_log( $key . " = " . $value);	
-				}  
- 	
-			} 		
-		}
+	$ldapauth = get_plugin_config("posixldapauth");
+	
+
+	if ($ldapauth==null || $ldapauth['enable']==false) 
+	{
+		return false;
+	}
+	if (!isset($ldapauth['ldapgroupcontainer']))
+	{
+		$ldapauth['ldapgroupcontainer'] = "";
+	}
+	if (!isset($ldapauth['port']))
+	{
+		$ldapauth['port'] = 389;
+	}
+	if (!isset($ldapauth['ldapmemberfield']))
+	{
+		$ldapauth['ldapmemberfield'] = "";	
+	}
+		if (!isset($ldapauth['ldapmemberfieldtype']))
+	{
+		$ldapauth['ldapmemberfieldtype'] = 0;	
+	}
+	
+	if ($ldap_debug) { error_log( __FILE__ . " " . __METHOD__ . " " . __LINE__ . "  Configuration") ; }
+	
+	if ($ldap_debug) {
+		foreach ( $ldapauth as $key => $value ) {
+			if ($key == "groupmap") {
+				foreach ($ldapauth['groupmap'] as $ldapGrpName => $arrLdapGrp) {	
+					if ($arrLdapGrp['enabled'])	{
+						error_log( $ldapGrpName . " is enabled and mapped to " . $arrLdapGrp['rsGroup']);
+						
+					}
+				} 	
+			} else {
+				error_log( $key . " = " . $value);	
+			}  
+
+		} 		
 	}
 	
 	if ($uname != "" && $pword != "") 
@@ -80,7 +78,7 @@ function HookPosixldapauthAllExternalauth($uname, $pword)
 		}
 		
 		$objLdapAuth = new ldapAuth($ldapConf);	
-		if ($ldap_debug) { $objLdapAuth->ldap_debug = true; };
+		if ($ldap_debug) { $objLdapAuth->ldap_debug = true; }
 		
 		// connect to the ldap
 		if ($objLdapAuth->connect())
@@ -94,7 +92,6 @@ function HookPosixldapauthAllExternalauth($uname, $pword)
 				$auth = true;
 				// get the user info etc	
 				$userDetails = $objLdapAuth->getUserDetails($uname);
-				//print_r($userDetails);
 				if ($ldap_debug) { error_log( __FILE__ . " " . __METHOD__ . " " . __LINE__ . "  cn=" . $userDetails["cn"]) ; }
 				if ($ldap_debug) { error_log( __FILE__ . " " . __METHOD__ . " " . __LINE__ . "  dn=" . $userDetails["dn"]) ; }
 				
@@ -117,7 +114,6 @@ function HookPosixldapauthAllExternalauth($uname, $pword)
 					$username=$uname.$ldapauth['usersuffix'];
 					$password_hash = hash('sha256', md5('RS' . $username . $password));
 					ps_query('UPDATE user SET password = ? WHERE username = ?', ['s', $password_hash, 's', $username]);
-					//          $password=sql_value('select password value from user where username="'.$uname.$ldapauth['usersuffix'].'"',"");
 					return true;
 				}
 				elseif ($ldapauth['createusers']) 

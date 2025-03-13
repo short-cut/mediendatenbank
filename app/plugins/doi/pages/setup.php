@@ -56,10 +56,6 @@ HTML;
 		<li><?php echo $lang['doi_info_link']; ?></li>
 		<li><?php echo $lang['doi_info_metadata_schema']; ?></li>
 		<li><?php echo $lang['doi_info_mds_api']; ?></li>
-		<!--		<li>--><?php //echo $lang['doi_info_prefix']; ?><!--</li>-->
-		<!--		<li>--><?php //echo $lang['doi_info_testmode']; ?><!--</li>-->
-		<!--		<li>--><?php //echo $lang['doi_info_testprefix']; ?><!--</li>-->
-		<!--		<li>--><?php //echo $lang['doi_info_publisher']; ?><!--</li>-->
 	</ul>
 <?php
 
@@ -118,12 +114,12 @@ HTML;
 	$page_def[] = config_add_text_input('doi_password', $lang['doi_setup_password'], TRUE);
 
 	// Do the page generation ritual -- don't change this section.
-	$upload_status = config_gen_setup_post($page_def, $plugin_name);
+	config_gen_setup_post($page_def, $plugin_name);
 	include '../../../include/header.php';
-	config_gen_setup_html($page_def, $plugin_name, $upload_status, $page_heading, $page_intro);
+	config_gen_setup_html($page_def, $plugin_name, null, $page_heading, $page_intro);
 
 	# "onclick" of test button
-	$doi_state = getvalescaped('doi_state', '');
+	$doi_state = getval('doi_state', '');
 	if ($doi_state == 'test') {
 
 		# perform Test

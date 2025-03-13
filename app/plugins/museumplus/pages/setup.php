@@ -3,7 +3,8 @@ include '../../../include/db.php';
 include '../../../include/authenticate.php';
 if(!checkperm('a'))
     {
-    exit(error_alert($lang["error-permissiondenied"], true, 403));
+    error_alert($lang["error-permissiondenied"], true, 403);
+    exit();
     }
 
 $plugin_name = 'museumplus';
@@ -60,7 +61,18 @@ $page_def[] = config_add_single_ftype_select(
 $page_def[] = config_add_section_header($lang['museumplus_script_header']);
 $museumplus_script_last_ran = '';
 check_script_last_ran(MPLUS_LAST_IMPORT, $museumplus_script_failure_notify_days, $museumplus_script_last_ran);
-$script_last_ran_content = str_replace('%script_last_ran', $museumplus_script_last_ran, $lang['museumplus_last_run_date']);
+$script_last_ran_content = sprintf(
+    "<div class=\"Question\">
+    <label>
+        <strong>%s</strong>
+    </label>
+    <input name=\"script_last_ran\" type=\"text\" value=\"%s\" disabled style=\"width: 420px;\">
+</div>
+<div class=\"clearerleft\"></div>",
+htmlspecialchars($lang['museumplus_last_run_date']),
+escape($museumplus_script_last_ran)
+);
+
 $page_def[] = config_add_html($script_last_ran_content);
 $page_def[] = config_add_boolean_select('museumplus_enable_script', $lang['museumplus_enable_script']);
 $page_def[] = config_add_text_input('museumplus_interval_run', $lang['museumplus_interval_run']);
@@ -124,13 +136,13 @@ if(get_utility_path("php") === false)
     $error = $lang['museumplus_php_utility_not_found'];
     }
 
-$upload_status = config_gen_setup_post($page_def, $plugin_name);
+config_gen_setup_post($page_def, $plugin_name);
 include '../../../include/header.php';
 if(isset($error))
     {
     render_top_page_error_style($error);
     }
-config_gen_setup_html($page_def, $plugin_name, $upload_status, $lang['museumplus_configuration']);
+config_gen_setup_html($page_def, $plugin_name, null, $lang['museumplus_configuration']);
 ?>
 <script>
 function museumplus_edit_module_conf(id)

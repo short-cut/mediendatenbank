@@ -48,16 +48,17 @@ $lang["rse_workflow_err_missing_wfstate"] = "Missing workflow state";
 $lang["rse_workflow_affected_resources"] = "Affected resources: %count";
 $lang["rse_workflow_confirm_resources_moved_to_state"] = "Successfully moved all affected resources to '%wf_name' workflow state.";
 
-$lang["rse_workflow_state_notify_group"]="When resources enter this state, notify user group:";
+$lang["rse_workflow_state_notify_group"]="When resources enter this state, create actions for this user group:";
+$lang["rse_workflow_state_notify_help"]="Users will see resources in this state appearing as actions, rather than receiving simple notifications";
 
 $lang["rse_workflow_state_notify_message"]="There are new resources in the workflow state: ";
 
 // For more notes functionality:
-$lang['rse_workflow_more_notes_label'] = 'More notes when changing workflow?';
+$lang['rse_workflow_more_notes_label'] = 'Allow addition of extra notes when changing workflow?';
 $lang['rse_workflow_notify_user_label'] = 'Should contributor be notified?';
 $lang['rse_workflow_simple_search_label'] = "Include workflow state in default searches (certain special searches may ignore this)";
 $lang['rse_workflow_link_open'] = 'More';
 $lang['rse_workflow_link_close'] = 'Close';
 $lang['rse_workflow_more_notes_title'] = 'Notes:';
 $lang['rse_workflow_email_from'] = 'Email address to send notification from (will use %EMAILFROM% if blank):';
-$lang['rse_workflow_bcc_admin'] = 'Check to BCC the system admin email address (%ADMINEMAIL%) if the contributor is notified';
+$lang['rse_workflow_bcc_admin'] = 'Notify system administrators when the contributor is notified';

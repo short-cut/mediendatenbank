@@ -28,8 +28,8 @@ include_once dirname(__FILE__) . '/config_functions.php';
 include_once dirname(__FILE__) . '/plugin_functions.php';
 include_once dirname(__FILE__) . '/migration_functions.php';
 include_once dirname(__FILE__) . '/metadata_functions.php';
-include_once dirname(__FILE__) . '/map_functions.php';
 include_once dirname(__FILE__) . '/job_functions.php';
+include_once dirname(__FILE__) . '/tab_functions.php';
 
 # Switch on output buffering.
 ob_start(null,4096);
@@ -56,18 +56,15 @@ if (PHP_VERSION_ID<PHP_VERSION_SUPPORTED) {exit("PHP version not supported. Your
 if (file_exists(dirname(__FILE__)."/config.default.php"))
     {
     include dirname(__FILE__) . "/config.default.php";
-    $track_vars_after_config_default = get_defined_vars();
     }
 if (file_exists(dirname(__FILE__)."/config.deprecated.php"))
     {
     include dirname(__FILE__) . "/config.deprecated.php";
-    $track_vars_after_config_deprecated = get_defined_vars();
     }
 
 # Load the real config
 if (!file_exists(dirname(__FILE__)."/config.php")) {header ("Location: pages/setup.php" );die(0);}
 include (dirname(__FILE__)."/config.php");
-$track_vars_after_config = get_defined_vars();
 
 // Set exception_ignore_args so that if $log_error_messages_url is set it receives all the necessary 
 // information to perform troubleshooting
@@ -114,7 +111,15 @@ if (isset($remote_config_url, $remote_config_key) && (isset($_SERVER["HTTP_HOST"
 		# Cache not present or has expired.
 		# Fetch new config and store. Set a very low timeout of 2 seconds so the config server going down does not take down the site.
 		# Attempt to fetch the remote contents but suppress errors.
-        $rc_url = $remote_config_url . "?host=" . urlencode($host) . "&sign=" . md5($remote_config_key . $host);
+        if(isset($remote_config_function) && is_callable($remote_config_function))
+            {
+            $rc_url = $remote_config_function($remote_config_url,$host);
+            }
+        else
+            {
+            $rc_url = $remote_config_url . "?host=" . urlencode($host) . "&sign=" . md5($remote_config_key . $host);
+            }
+
         $ch=curl_init();
         $checktimeout=2;
         curl_setopt($ch, CURLOPT_URL, $rc_url);
@@ -128,10 +133,15 @@ if (isset($remote_config_url, $remote_config_key) && (isset($_SERVER["HTTP_HOST"
             # Fetch remote config was a success.
             # Validate the return to make sure it's an expected config file
             # The last 33 characters must be a hash and the sign of the previous characters.
+            if(isset($remote_config_decode) && is_callable($remote_config_decode))
+                {
+                $r = $remote_config_decode($r);
+                }
             $sign=substr($r,-32); # Last 32 characters is a signature
+
             $r=substr($r,0,strlen($r)-33);
 
-            if ($sign == md5($remote_config_key . $r))
+            if ($sign === md5($remote_config_key . $r))
                 {
                 $remote_config = $r;
                 set_sysvar($remote_config_sysvar, $remote_config);
@@ -157,8 +167,15 @@ if (isset($remote_config_url, $remote_config_key) && (isset($_SERVER["HTTP_HOST"
 
 	# Load and use the config
 	eval($remote_config);
-    debug_track_vars('after@remote_config', get_defined_vars());
+    // Cleanup
+    unset($remote_config_function,$remote_config_url,$remote_config_key);
 	}
+
+if($system_download_config_force_obfuscation && !defined("SYSTEM_DOWNLOAD_CONFIG_FORCE_OBFUSCATION"))
+    {
+    // If this has been set in config.php it cannot be overridden by re.g group overrides
+    define("SYSTEM_DOWNLOAD_CONFIG_FORCE_OBFUSCATION",true);
+    }
 #
 # End of remote config support
 # ---------------------------------------------------------------------------------------------
@@ -168,16 +185,37 @@ if(isset($system_read_only) && $system_read_only)
     {
     $global_permissions_mask="a,t,c,d,e0,e1,e2,e-1,e-2,i,n,h,q,u,dtu,hdta";
     $global_permissions="p";
-    $remove_resources_link_on_collection_bar = false;
-    $allow_save_search = false;
     $mysql_log_transactions=false;
     $enable_collection_copy = false;
     }
-if((!isset($suppress_headers) || !$suppress_headers) && $xframe_options!="")
-    {
-    // Add X-Frame-Options to HTTP header, so that page cannot be shown in an iframe unless specifically set in config.
-    header('X-Frame-Options: ' . $xframe_options);
+
+if (!isset($suppress_headers) || !$suppress_headers) {
+    $default_csp_fa = "'self'";
+    if ($csp_frame_ancestors === [] && isset($xframe_options) && $xframe_options !== '') {
+        // Set CSP frame-ancestors based on legacy $xframe_options config
+        switch ($xframe_options) {
+            case "DENY":
+                $frame_ancestors = ["'none'"];
+                break;
+            case (bool) strpos($xframe_options,"ALLOW-FROM"):
+                $frame_ancestors = explode(" ",substr($xframe_options,11));
+                break;
+            default:
+                $frame_ancestors = [$default_csp_fa];
+                break;
+        }
+    } else {
+        $frame_ancestors = $csp_frame_ancestors;
     }
+
+    if(in_array("'none'", $frame_ancestors)) {
+        $frame_ancestors = ["'none'"];
+    } else {
+        array_unshift($frame_ancestors, $default_csp_fa);
+    }
+
+    header('Content-Security-Policy: frame-ancestors ' . implode(" " , array_unique(trim_array($frame_ancestors))));
+}
 
 if($system_down_redirect && getval('show', '') === '') {
 	redirect($baseurl . '/pages/system_down.php?show=true');
@@ -190,13 +228,9 @@ set_time_limit($php_time_limit);
 if (!isset($storagedir)) {$storagedir=dirname(__FILE__)."/../filestore";}
 if (!isset($storageurl)) {$storageurl=$baseurl."/filestore";}
 
+// Reset prepared statement cache before reconnecting
+unset($prepared_statement_cache);
 sql_connect();
-
-// Track variables for any process that matters but is before we connect to the database (it needs access to sysvars table)
-debug_track_vars('after@include/config.default.php', $track_vars_after_config_default);
-debug_track_vars('after@include/config.deprecated.php', $track_vars_after_config_deprecated);
-debug_track_vars('after@include/config.php', $track_vars_after_config);
-unset($track_vars_after_config_default, $track_vars_after_config_deprecated, $track_vars_after_config);
 
 # Automatically set a HTTPS URL if running on the SSL port.
 if(isset($_SERVER["SERVER_PORT"]) && $_SERVER["SERVER_PORT"]==443)
@@ -217,83 +251,72 @@ $querytime=0;
 $querylog=array();
 
 # -----------LANGUAGES AND PLUGINS-------------------------------
-
-if ($use_plugins_manager)
+$legacy_plugins = $plugins; # Make a copy of plugins activated via config.php
+# Check that manually (via config.php) activated plugins are included in the plugins table.
+foreach($plugins as $plugin_name)
     {
-    $legacy_plugins = $plugins; # Make a copy of plugins activated via config.php
-    # Check that manually (via config.php) activated plugins are included in the plugins table.
-    foreach($plugins as $plugin_name)
+    if ($plugin_name!='')
         {
-        if ($plugin_name!='')
+        if (ps_value("SELECT inst_version AS value FROM plugins WHERE name=?",array("s",$plugin_name),'',"plugins")=='')
             {
-            if (ps_value("SELECT inst_version AS value FROM plugins WHERE name=?",array("s",$plugin_name),'',"plugins")=='')
-                {
-                # Installed plugin isn't marked as installed in the DB.  Update it now.
-                # Check if there's a plugin.yaml file to get version and author info.
-                $plugin_yaml_path = get_plugin_path($plugin_name) . "/{$plugin_name}.yaml";
-                $p_y = get_plugin_yaml($plugin_yaml_path, false);
-                # Write what information we have to the plugin DB.
-                ps_query("REPLACE plugins(inst_version, author, descrip, name, info_url, update_url, config_url, priority, disable_group_select, title, icon) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
-                    ,array
-                        (
-                        "s",$p_y['version'],
-                        "s",$p_y['author'],
-                        "s",$p_y['desc'],
-                        "s",$plugin_name,
-                        "s",$p_y['info_url'],
-                        "s",$p_y['update_url'],
-                        "s",$p_y['config_url'],
-                        "s",$p_y['default_priority'],
-                        "s",$p_y['disable_group_select'],
-                        "s",$p_y['title'],
-                        "s",$p_y['icon']
-                        )
-                    );
-                clear_query_cache("plugins");
-                }
+            # Installed plugin isn't marked as installed in the DB.  Update it now.
+            # Check if there's a plugin.yaml file to get version and author info.
+            $plugin_yaml_path = get_plugin_path($plugin_name) . "/{$plugin_name}.yaml";
+            $p_y = get_plugin_yaml($plugin_yaml_path, false);
+            # Write what information we have to the plugin DB.
+            ps_query("REPLACE plugins(inst_version, author, descrip, name, info_url, update_url, config_url, priority, disable_group_select, title, icon) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+                ,array
+                    (
+                    "s",$p_y['version'],
+                    "s",$p_y['author'],
+                    "s",$p_y['desc'],
+                    "s",$plugin_name,
+                    "s",$p_y['info_url'],
+                    "s",$p_y['update_url'],
+                    "s",$p_y['config_url'],
+                    "s",$p_y['default_priority'],
+                    "s",$p_y['disable_group_select'],
+                    "s",$p_y['title'],
+                    "s",$p_y['icon']
+                    )
+                );
+            clear_query_cache("plugins");
             }
         }
-    # Need verbatim queries for this query
-    $mysql_vq = $mysql_verbatim_queries;
-    $mysql_verbatim_queries = true;
-    $active_plugins = get_active_plugins();
-    $mysql_verbatim_queries = $mysql_vq;
+    }
+# Need verbatim queries for this query
+$mysql_vq = $mysql_verbatim_queries;
+$mysql_verbatim_queries = true;
+$active_plugins = get_active_plugins();
+$mysql_verbatim_queries = $mysql_vq;
 
-    $active_yaml = array();
-    $plugins = array();
-    foreach($active_plugins as $plugin)
-	    {
-	    # Check group access && YAML, only enable for global access at this point
-	    $plugin_yaml_path = get_plugin_path($plugin["name"])."/".$plugin["name"].".yaml";
-	    $py = get_plugin_yaml($plugin_yaml_path, false);
-	    array_push($active_yaml,$py);
-	    if ($py['disable_group_select'] || $plugin['enabled_groups'] == '')
-		    {
-		    # Add to the plugins array if not already present which is what we are working with
-		    $plugins[]=$plugin['name'];
-		    }
-	    }
+$active_yaml = array();
+$plugins = array();
+foreach($active_plugins as $plugin)
+    {
+    # Check group access && YAML, only enable for global access at this point
+    $plugin_yaml_path = get_plugin_path($plugin["name"])."/".$plugin["name"].".yaml";
+    $py = get_plugin_yaml($plugin_yaml_path, false);
+    array_push($active_yaml,$py);
+    if ($py['disable_group_select'] || $plugin['enabled_groups'] == '')
+        {
+        # Add to the plugins array if not already present which is what we are working with
+        $plugins[]=$plugin['name'];
+        }
+    }
 
-	for ($n=count($active_plugins)-1;$n>=0;$n--)
-		{
-		$plugin=$active_plugins[$n];
-        # Check group access && YAML, only enable for global access at this point
-	    $plugin_yaml_path = get_plugin_path($plugin["name"])."/".$plugin["name"].".yaml";
-	    $py = get_plugin_yaml($plugin_yaml_path, false);
-		if ($py['disable_group_select'] || $plugin['enabled_groups'] == '')
-			{
-			include_plugin_config($plugin['name'], $plugin['config'], $plugin['config_json']);
-			}
-		}
-	}
-else
-	{
-	for ($n=count($plugins)-1;$n>=0;$n--)
-		{
-        if (!isset($plugins[$n])) { continue; }
-		include_plugin_config($plugins[$n]);
-		}
-	}
+for ($n=count($active_plugins)-1;$n>=0;$n--)
+    {
+    $plugin=$active_plugins[$n];
+    # Check group access && YAML, only enable for global access at this point
+    $plugin_yaml_path = get_plugin_path($plugin["name"])."/".$plugin["name"].".yaml";
+    $py = get_plugin_yaml($plugin_yaml_path, false);
+    if ($py['disable_group_select'] || $plugin['enabled_groups'] == '')
+        {
+        include_plugin_config($plugin['name'], $plugin['config'], $plugin['config_json']);
+        }
+    }
+
 
 // Load system wide config options from database and then store them to distinguish between the system wide and user preference
 process_config_options();
@@ -315,9 +338,22 @@ if (isset($language) && $language=="us") {$language="en-US";}
 include dirname(__FILE__)."/../languages/en.php";
 if ($language!="en")
 	{
-	if (substr($language, 2, 1)=='-' && substr($language, 0, 2)!='en')
-	@include dirname(__FILE__)."/../languages/" . safe_file_name(substr($language, 0, 2)) . ".php";
-	@include dirname(__FILE__)."/../languages/" . safe_file_name($language) . ".php";
+    if (substr($language, 2, 1)!='-')
+        {
+        $language = substr($language, 0, 2);
+        }
+    
+    $use_error_exception_cache = $GLOBALS["use_error_exception"]??false;
+    $GLOBALS["use_error_exception"] = true;
+    try
+        {
+        include dirname(__FILE__)."/../languages/" . safe_file_name($language) . ".php";
+        }
+    catch (Throwable $e)
+        {
+        debug("Unable to include language file $language.php");
+        }
+    $GLOBALS["use_error_exception"] = $use_error_exception_cache;
 	}
 
 # Register all plugins
@@ -392,8 +428,8 @@ if($CSRF_enabled && PHP_SAPI != 'cli' && !$suppress_headers && !in_array($pagena
 
     // Verifying the Two Origins Match
     if(
-        $CSRF_source_origin !== $CSRF_target_origin && !in_array($CSRF_source_origin, $CORS_whitelist)
-        && !hook('modified_cors_process')
+        !hook('modified_cors_process')
+        && $CSRF_source_origin !== $CSRF_target_origin && !in_array($CSRF_source_origin, $CORS_whitelist)
     )
         {
         debug("CSRF: Cross-origin request detected and not white listed!");
@@ -418,6 +454,7 @@ if($CSRF_enabled && PHP_SAPI != 'cli' && !$suppress_headers && !in_array($pagena
 # End of basic CORS and automated CSRF protection
 # ----------------------------------------------------------------------------------------------------------------------
 
+set_watermark_image();
 
 // Facial recognition setup
 if($facial_recognition)
@@ -425,59 +462,14 @@ if($facial_recognition)
     include_once __DIR__ . '/facial_recognition_functions.php';
     $facial_recognition = initFacialRecognition();
     }
-
-# Pre-load all text for this page.
-$site_text=array();
-$results=ps_query("select language,name,text from site_text where (page=? or page='all' or page='') and (specific_to_group is null or specific_to_group=0)",array("s",$pagename),"sitetext");
-for ($n=0;$n<count($results);$n++) {$site_text[$results[$n]["language"] . "-" . $results[$n]["name"]]=$results[$n]["text"];}
-
-$query = " SELECT `name`,
-		       `text`,
-		       `page`,
-		       `language`, specific_to_group 
-		  FROM site_text
-		 WHERE (`language` = ? OR `language` = ?)
-		   AND (specific_to_group IS NULL OR specific_to_group = 0)
-	";
-$parameters=array("s",$language,"s",$defaultlanguage);
-
-if ($pagename!="admin_content") // Load all content on the admin_content page to allow management.
+if(!$disable_geocoding) 
     {
-    $query.="AND (page = ? OR page = 'all' OR page = '' " .  (($pagename=="dash_tile")?" OR page = 'home'":"") . ")";
-    $parameters[]="s";$parameters[]=$pagename;
+    include_once __DIR__ . '/map_functions.php';
     }
 
-$results=ps_query($query,$parameters,"sitetext");
-
-// Create a new array to hold customised text at any stage, may be overwritten in authenticate.php. Needed so plugin lang file can be overidden if plugin only enabled for specific groups
-$customsitetext=array();
-// Go through the results twice, setting the default language first, then repeat for the user language so we can override the default with any language specific entries
-for ($n=0;$n<count($results);$n++) 
-	{
-	if($results[$n]["language"]!=$defaultlanguage){continue;}
-	if ($results[$n]["page"]=="") 
-		{
-		$lang[$results[$n]["name"]]=$results[$n]["text"];
-		$customsitetext[$results[$n]['name']] = $results[$n]['text'];
-		} 
-	else 
-		{
-		$lang[$results[$n]["page"] . "__" . $results[$n]["name"]]=$results[$n]["text"];
-		}
-	}
-for ($n=0;$n<count($results);$n++) 
-	{
-	if($results[$n]["language"]!=$language){continue;}
-	if ($results[$n]["page"]=="") 
-		{
-		$lang[$results[$n]["name"]]=$results[$n]["text"];
-		$customsitetext[$results[$n]['name']] = $results[$n]['text'];
-		} 
-	else 
-		{
-		$lang[$results[$n]["page"] . "__" . $results[$n]["name"]]=$results[$n]["text"];
-		}
-	}
+# Pre-load all text for this page.
+global $site_text;
+lang_load_site_text($lang,$pagename,$language);
 	
 # Blank the header insert
 $headerinsert="";
@@ -505,7 +497,12 @@ if(file_exists($stemming_file))
 $hook_cache = array();
 $hook_cache_hits = 0;
 
-
+# Build array of valid upload paths
+$valid_upload_paths = $valid_upload_paths ?? [];
+$valid_upload_paths[] = $storagedir;
+if (!empty($syncdir)) { $valid_upload_paths[] = $syncdir; }
+if (!empty($batch_replace_local_folder)) { $valid_upload_paths[] = $batch_replace_local_folder; }
+if (isset($tempdir)) { $valid_upload_paths[] = $tempdir; }
 
 // IMPORTANT: make sure the upgrade.php is the last line in this file
 include_once __DIR__ . '/../upgrade/upgrade.php';

@@ -20,7 +20,7 @@ function HookRse_workflowViewPageevaluation()
       
     foreach ($workflowactions as $workflowaction)
         {
-        if(getvalescaped("rse_workflow_action_" . $workflowaction["ref"],"")!="" && enforcePostRequest(false))
+        if(getval("rse_workflow_action_" . $workflowaction["ref"],"")!="" && enforcePostRequest(false))
             {
             // Check if resource status has already been changed between form being loaded and submitted
             $resource_status_check_name = "resource_status_check_" . $workflowaction["ref"];
@@ -33,7 +33,7 @@ function HookRse_workflowViewPageevaluation()
 			else
 				{
                 $validstates = explode(',', $workflowaction['statusfrom']);
-                $edit_access = get_edit_access($ref,$resource['archive'], '', $resource);
+                $edit_access = get_edit_access($ref,$resource['archive'], $resource);
     
                 if('' != $k || ($resource["lock_user"] > 0 && $resource["lock_user"] != $userref))
                     {
@@ -51,7 +51,9 @@ function HookRse_workflowViewPageevaluation()
                        )
                     )
                     {
-                    update_archive_status($ref, $workflowaction["statusto"],$resource["archive"]);
+                    // Check whether More notes are present
+                    $more_notes_text = getval("more_workflow_action_" . $workflowaction["ref"],"");
+                    update_archive_status($ref, $workflowaction["statusto"], $resource["archive"], 0, $more_notes_text);
                     hook("rse_wf_archivechange","",array($ref,$resource["archive"],$workflowaction["statusto"]));
                                                 
                     if (checkperm("z" . $workflowaction["statusto"]))
@@ -59,7 +61,16 @@ function HookRse_workflowViewPageevaluation()
                         ?>
                         <script type="text/javascript">
                         styledalert('<?php echo $lang["success"] ?>','<?php echo $lang["rse_workflow_saved"] . "&nbsp;" . $lang["status" . $workflowaction["statusto"]];?>');
-                        </script><?php
+                        if(jQuery("#modal").is(":visible"))
+                            {
+                            ModalClose();
+                            }
+                        else
+                            {
+                            window.setTimeout(function(){CentralSpaceLoad(baseurl_short);},1000);
+                            }
+                        </script>
+                        <?php
                         exit();
                         }
                     else
@@ -73,7 +84,7 @@ function HookRse_workflowViewPageevaluation()
         }
     }
 
-function HookRse_workflowViewRenderbeforeresourcedetails()
+function HookRse_workflowViewAdditionaldownloadtabs()
     {
     include_once (dirname(__file__) . "/../include/rse_workflow_functions.php");
 
@@ -94,9 +105,7 @@ function HookRse_workflowViewRenderbeforeresourcedetails()
 
     if(count($validactions)>0)
         {?>
-        <div class="RecordDownload" id="ResourceWorkflowActions">
-        <div class="RecordDownloadSpace" >
-        <h2><?php echo $lang["rse_workflow_actions_heading"]?></h2>
+        <div class="RecordDownloadSpace" id="ResourceWorkflowActions" style="display:none;">
         <p><?php echo $lang['rse_workflow_user_info']; ?></p>
         <script type="text/javascript">
         function open_notes(action_ref) {
@@ -153,6 +162,14 @@ function HookRse_workflowViewRenderbeforeresourcedetails()
 					<form action="<?php echo $baseurl_short?>pages/view.php?ref=<?php echo urlencode($ref)?>&search=<?php echo urlencode($search)?>&offset=<?php echo urlencode($offset)?>&order_by=<?php echo urlencode($order_by)?>&sort=<?php echo urlencode($sort)?>&archive=<?php echo urlencode($archive)?>&curpos=<?php echo urlencode($curpos)?>&workflowaction=<?php echo urlencode($validaction["ref"])?>" 
                           id="resource_<?php echo $ref; ?>_workflowaction<?php echo $validaction['ref']; ?>">
 					<input id='resource_status_checksum_<?php echo $validaction["ref"] ?>' name='resource_status_check_<?php echo $validaction["ref"] ?>' type='hidden' value='<?php echo $resource["archive"]; ?>'>
+                    <?php
+                if(isset($modal) && $modal=="true")
+                    {
+                    ?>
+                    <input type="hidden" name="modal" id="rse_workflow_modal_<?php echo $validaction["ref"] ?>" value="true" >
+                    <?php
+                    }
+                    ?>
 					<input type="hidden" name="rse_workflow_action_<?php echo $validaction["ref"] ?>" id="rse_workflow_action_<?php echo $validaction["ref"] ?>" value="true" >
 					<input type="hidden" name="more_workflow_action_<?php echo $validaction["ref"] ?>" id="more_workflow_action_<?php echo $validaction["ref"] ?>" value="" >       
 					<input type="submit" name="rse_workflow_action_submit_<?php echo $validaction["ref"] ?>" id="rse_workflow_action_submit_<?php echo $validaction["ref"]?>" value="&nbsp;<?php echo i18n_get_translated($validaction["buttontext"]) ?>&nbsp;" onClick="return <?php echo $modal ? "Modal" : "CentralSpace"; ?>Post(document.getElementById('resource_<?php echo $ref; ?>_workflowaction<?php echo $validaction['ref']; ?>'), true);" >
@@ -170,18 +187,35 @@ function HookRse_workflowViewRenderbeforeresourcedetails()
             }?>
         </tbody></table>
         </div><!-- End of RecordDownloadSpace-->
-        </div> <!-- End of RecordDownload-->
         <?php
         }
     }
     
+function HookRse_workflowViewAdditionaldownloadtabbuttons()
+    {
+    global $lang, $modal;
+
+    $validactions = rse_workflow_get_valid_actions(rse_workflow_get_actions(), false);
+
+    if (count($validactions) > 0)
+        {
+        ?>
+        <div class="Tab" id="ResourceWorkflowActionsButton">
+            <a href="#" onclick="selectDownloadTab('ResourceWorkflowActions',<?php echo $modal ? 'true' : 'false'; ?>);">
+                <?php echo htmlspecialchars($lang["rse_workflow_actions_heading"]) ?>
+            </a>
+        </div>
+        <?php
+        }
+    }
+
 function HookRse_workflowViewReplacetitleprefix($state)
     {
     global $lang,$additional_archive_states;
 
     if ($state<=3) {return false;} # For custom states only.
 
-    $name=sql_value("select name value from archive_states where code='$state'","");
+    $name=ps_value("SELECT name value FROM archive_states WHERE code = ?",["i",$state],"");
     
     ?><span class="ResourceTitleWorkflow<?php echo $state ?>"><?php echo i18n_get_translated($name) ?>:</span>&nbsp;<?php
     return true;

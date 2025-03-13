@@ -3,9 +3,9 @@ include "../include/db.php";
 
 
 # External access support (authenticate only if no key provided, or if invalid access key provided)
-$k=getvalescaped("k","");if (($k=="") || (!check_access_key_collection(getvalescaped("collection","",true),$k))) {include "../include/authenticate.php";}
+$k=getval("k","");if (($k=="") || (!check_access_key_collection(getval("collection","",true),$k))) {include "../include/authenticate.php";}
 
-$collection=getvalescaped("collection","",true);
+$collection=getval("collection","",true);
 $errors="";
 $done=false;
 
@@ -25,7 +25,7 @@ $comment="";
 if (getval("save","")!="" && enforcePostRequest(false))
 	{
 	# Save comment
-	$comment=trim(getvalescaped("comment",""));
+	$comment=trim(getval("comment",""));
 	$saveerrors=send_collection_feedback($collection,$comment);	
 	if(is_array($saveerrors))
 		{
@@ -61,18 +61,18 @@ if ($errors!="")
 
 
 <div class="BasicsBox">
-<h1><?php echo $lang["sendfeedback"]?></h1>
-<?php if ($done) { ?><p><?php echo $lang["feedbacksent"]?></p><?php } else { ?>
+<h1><?php echo htmlspecialchars($lang["sendfeedback"])?></h1>
+<?php if ($done) { ?><p><?php echo htmlspecialchars($lang["feedbacksent"])?></p><?php } else { ?>
 
 <form method="post" action="<?php echo $baseurl_short?>pages/collection_feedback.php">
     <?php generateFormToken("collection_feedback"); ?>
-    <input type="hidden" name="k" value="<?php echo htmlspecialchars($k) ?>">
-    <input type="hidden" name="collection" value="<?php echo htmlspecialchars($collection) ?>">
+    <input type="hidden" name="k" value="<?php echo escape($k) ?>">
+    <input type="hidden" name="collection" value="<?php echo escape($collection) ?>">
 
-<p><a class="downloadcollection" href="<?php echo $baseurl_short?>pages/collection_download.php?collection=<?php echo urlencode($collection)?>&k=<?php echo urlencode($k)?>" onClick="return CentralSpaceLoad(this,true);"><?php echo LINK_CARET ?><?php echo $lang["download_collection"]?></a></p>
+<p><a class="downloadcollection" href="<?php echo $baseurl_short?>pages/collection_download.php?collection=<?php echo urlencode($collection)?>&k=<?php echo urlencode($k)?>" onClick="return CentralSpaceLoad(this,true);"><?php echo LINK_CARET ?><?php echo htmlspecialchars($lang["download_collection"])?></a></p>
 <?php if ($feedback_resource_select)
 	{
-	?><h2><?php echo $lang["selectedresources"]?>:</h2><?php
+	?><h2><?php echo htmlspecialchars($lang["selectedresources"])?>:</h2><?php
 	# Show thumbnails and allow the user to select resources.
 	$result=do_search("!collection" . $collection,"","resourceid",0,-1,"desc");
 	for ($n=0;$n<count($result);$n++)
@@ -106,7 +106,7 @@ if ($errors!="")
 				$path=get_resource_path ($ref, false,"",false,$result[$n]["preview_extension"],-1,1,$use_watermark,$result[$n]["file_modified"]);
 				}
 		
-		?><a class="lightbox-feedback" href="<?php echo $path?>" title="<?php echo htmlspecialchars($displaytitle) ?>"><img width="<?php echo $result[$n]["thumb_width"]?>" height="<?php echo $result[$n]["thumb_height"]?>" src="<?php echo get_resource_path($ref,false,"thm",false,$result[$n]["preview_extension"],-1,1,(checkperm("w") || ($k!="" && isset($watermark))) && $access==1,$result[$n]["file_modified"])?>" class="ImageBorder"></a>
+		?><a class="lightbox-feedback" href="<?php echo escape($path)?>" title="<?php echo escape($displaytitle) ?>"><img width="<?php echo (int) $result[$n]["thumb_width"]?>" height="<?php echo (int) $result[$n]["thumb_height"]?>" src="<?php echo escape(get_resource_path($ref,false,"thm",false,$result[$n]["preview_extension"],-1,1,(checkperm("w") || ($k!="" && $watermark !== "")) && $access==1,$result[$n]["file_modified"]))?>" class="ImageBorder"></a>
 		<?php } else { ?>		<img border=0 src="../gfx/<?php echo get_nopreview_icon($result[$n]["resource_type"],$result[$n]["file_extension"],false) ?>"/><?php } ?>
 
 		
@@ -129,7 +129,7 @@ if ($errors!="")
 
 <div class="Question">
 <?php if ($errors!="") { ?><div class="FormError"><?php echo $errors?></div><?php } ?>
-<label for="comment"><?php echo $lang["message"]?></label><textarea class="stdwidth" style="width:450px;" rows=20 cols=80 name="comment" id="comment"><?php echo htmlspecialchars($comment) ?></textarea>
+<label for="comment"><?php echo htmlspecialchars($lang["message"])?></label><textarea class="stdwidth" style="width:450px;" rows=20 cols=80 name="comment" id="comment"><?php echo htmlspecialchars($comment) ?></textarea>
 <div class="clearerleft"> </div>
 </div>
 
@@ -138,20 +138,19 @@ if ($errors!="")
 	# For external users, ask for their name/e-mail in case this has been passed to several users.
 	?>
 	<div class="Question">
-	<label for="name"><?php echo $lang["yourname"]?></label><input type="text" class="stdwidth" name="name" id="name" value="<?php echo htmlspecialchars(getvalescaped("name","")) ?>">
+	<label for="name"><?php echo htmlspecialchars($lang["yourname"])?></label><input type="text" class="stdwidth" name="name" id="name" value="<?php echo escape(getval("name","")) ?>">
 	<div class="clearerleft"> </div>
 	</div>
 	<div class="Question">
-	<label for="email"><?php echo $lang["youremailaddress"]; if ($feedback_email_required){echo " *";}?></label><input type="text" class="stdwidth" name="email" id="email" value="<?php echo htmlspecialchars(getvalescaped("email","")) ?>">
+	<label for="email"><?php echo htmlspecialchars($lang["youremailaddress"]); ?> *</label><input type="text" class="stdwidth" name="email" id="email" value="<?php echo escape(getval("email","")) ?>">
 	<div class="clearerleft"> </div>
 	</div>
-	<?php
+<?php
 	}
 ?>
 
-<div class="QuestionSubmit">
-<label for="buttons"> </label>			
-<input name="save" type="submit" value="&nbsp;&nbsp;<?php echo $lang["send"]?>&nbsp;&nbsp;" />
+<div class="QuestionSubmit">		
+<input name="save" type="submit" value="&nbsp;&nbsp;<?php echo escape($lang["send"])?>&nbsp;&nbsp;" />
 </div>
 </form>
 <?php } ?>

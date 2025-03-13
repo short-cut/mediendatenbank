@@ -28,12 +28,13 @@ if(!hook('customchkboxes', '', array($field)))
     $l = average_length($node_options);
     switch($l)
         {
-        case($l > 25): $cols = 1; break;
-        case($l > 15): $cols = 2; break;
-        case($l > 10): $cols = 3; break;
-        case($l > 5):  $cols = 4; break;
-        case($l > 3):  $cols = 6; break;
-        default:       $cols = 8;
+        case($l > 25): $cols = 1; break;   
+        case($l > 15): $cols = 2; break;   # 50
+        case($l > 9):  $cols = 3; break;   # 45
+        case($l > 6):  $cols = 4; break;   # 36
+        case($l > 4):  $cols = 5; break;   # 30
+        case($l > 2):  $cols = 7; break;   # 28
+        default:       $cols = 8;           
         }
 
     if((bool) $field['automatic_nodes_ordering'])
@@ -89,7 +90,12 @@ if(!hook('customchkboxes', '', array($field)))
                                    name="<?php echo $name; ?>"
                                    value="<?php echo $node['ref']; ?>"
                                 <?php
-								if(in_array($node['ref'], $selected_nodes) || (isset($user_set_values[$field['ref']]) && in_array($node['ref'],$user_set_values[$field['ref']])))
+                                // When editing multiple resources, we don't want to check any options; 
+                                // Unless copying from another resource the user must make the necessary selections
+                                
+                                if((!$multiple || getval("copyfrom","")!="")
+                                    && in_array($node['ref'], $selected_nodes) || (isset($user_set_values[$field['ref']]) 
+                                    && in_array($node['ref'],$user_set_values[$field['ref']])))
                                     {
                                     ?>
                                     checked
@@ -114,7 +120,7 @@ if(!hook('customchkboxes', '', array($field)))
                     ?>
                 </table>
             </fieldset>
-            <?php
+<?php
             }
         }
     else
@@ -145,7 +151,10 @@ if(!hook('customchkboxes', '', array($field)))
                        value="<?php echo $node['ref']; ?>"
 					   id="nodes_<?php echo $node['ref']; ?>"
                     <?php
-                    if(in_array($node['ref'], $selected_nodes) || (isset($user_set_values[$field['ref']]) && in_array($node['ref'],$user_set_values[$field['ref']])))
+                    // When editing multiple resources, we don't want to check any options; the user must make the necessary selections
+                    if(!$multiple
+                        && in_array($node['ref'], $selected_nodes) || (isset($user_set_values[$field['ref']]) 
+                        && in_array($node['ref'],$user_set_values[$field['ref']])))
                         {
                         ?>
                         checked
@@ -165,7 +174,7 @@ if(!hook('customchkboxes', '', array($field)))
             </tr>
         </table>
 		</fieldset>
-        <?php
+<?php
         }
 
         if($field['field_constraint'])

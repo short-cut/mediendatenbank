@@ -17,13 +17,13 @@
  * $lang['cfg-<fieldname>'] to use for the element label.
  * 
  * <code>
- * $options = sql_select("SELECT name as label, ref as value FROM resource_types");
+ * $options = sql_select("SELECT name AS label, ref AS value FROM resource_type");
  * 
  * render_select_option('myfield', $options, 18);
  * </code>
  * 
  * @param string $fieldname Name to use for the field.
- * @param string $opt_array Array of options to fill the select with
+ * @param array $opt_array Array of options to fill the select with
  * @param mixed $selected If matches value the option is marked as selected
  * @param string $groupby Column to group by
  * @return string HTML output.
@@ -120,24 +120,9 @@ function set_config_option($user_id, $param_name, $param_value)
 
     // Prepare the value before inserting it
     $param_value = config_clean($param_value);
-    $param_value = escape_check($param_value);
 
-    $query = sprintf('
-            INSERT INTO user_preferences (
-                                             user,
-                                             parameter,
-                                             `value`
-                                         )
-                 VALUES (
-                            %s,     # user
-                            \'%s\', # parameter
-                            \'%s\'  # value
-                        );
-        ',
-        is_null($user_id) ? 'NULL' : '\'' . escape_check($user_id) . '\'',
-        escape_check($param_name),
-        $param_value
-    );
+    $query = "INSERT INTO user_preferences (user,parameter,`value`) VALUES (?,?,?)";
+   
     $current_param_value = null;
     if(get_config_option($user_id, $param_name, $current_param_value))
         {
@@ -145,45 +130,128 @@ function set_config_option($user_id, $param_name, $param_value)
             {
             return true;
             }
+        $params[] = 's'; $params[] = $param_value;
+        if(is_null($user_id))
+            {
+            $user_query = 'user IS NULL';
+            }
+        else    
+            {
+            $user_query = 'user = ?';
+            $params[] = 'i'; $params[] = $user_id;
+            }
 
-        $query = sprintf('
-                UPDATE user_preferences
-                   SET `value` = \'%s\'
-                 WHERE user %s
-                   AND parameter = \'%s\';
-            ',
-            $param_value,
-            is_null($user_id) ? 'IS NULL' : '= \'' . escape_check($user_id) . '\'',
-            escape_check($param_name)
-        );
+        $query = "UPDATE user_preferences SET `value` = ? WHERE ". $user_query ." AND parameter = ?";
+        $params[] = "s"; $params[] = $param_name;
 
-		if (is_null($user_id))		// only log activity for system changes, i.e. when user not specified
-			{
-			log_activity(null, LOG_CODE_EDITED, $param_value, 'user_preferences', 'value', "parameter='" . escape_check($param_name) . "'", null, $current_param_value);
-			}
-
-		}
-
-    sql_query($query);
+        if (is_null($user_id))		// only log activity for system changes, i.e. when user not specified
+            {
+            log_activity(null, LOG_CODE_EDITED, $param_value, 'user_preferences', 'value', "parameter='" . $param_name . "'", null, $current_param_value);
+            }
+        }
+    else
+        {
+        $params  = ["i",$user_id,"s",$param_name,"s",$param_value,];
+        }
+    ps_query($query,$params);
 
     // Clear disk cache
     clear_query_cache("preferences");
 
     return true;
     }
+    
+
+/**
+ * Delete entry from the user_preferences table completely (instead of setting to blank via set_config_option).
+ * Used by system preferences page when deleting a file to allow fallback to value (if set) in config.php instead
+ * of replacing it with blank from user_preference value.
+ *
+ * @param  int|null   $user_id      User ID. Use NULL for system wide config options.
+ * @param  string     $param_name   Parameter name
+ * 
+ * @return bool       True if preference was deleted else false.
+ */
+function delete_config_option(?int $user_id, string $param_name) : bool
+    {
+    if(empty($param_name))
+        {
+        return false;
+        }
+
+    $current_param_value = null;
+    if(get_config_option($user_id, $param_name, $current_param_value))
+        {
+        if(is_null($user_id))
+            {
+            $user_query = 'user IS NULL';
+            }
+        else
+            {
+            $user_query = 'user = ?';
+            $params[] = 'i'; $params[] = $user_id;
+            }
+
+        $query = "DELETE FROM user_preferences WHERE ". $user_query ." AND parameter = ?";
+        $params[] = "s"; $params[] = $param_name;
+
+        if (is_null($user_id))		// only log activity for system changes, i.e. when user not specified
+            {
+            log_activity(null, LOG_CODE_DELETED, null, 'user_preferences', 'value', "parameter='" . $param_name . "'", null, $current_param_value);
+            }
+
+        ps_query($query,$params);
+
+        // Clear disk cache
+        clear_query_cache("preferences");
+
+        return true;
+        }
+
+    return false;
+    }
 
 
 /**
-* Get config option from database
+ * Remove system/user preferences
+ * 
+ * @param ?int $user_id Database user ID
+ * @param string $name  Configuration option (variable) name
+ */
+function remove_config_option(?int $user_id, string $name): bool
+    {
+    if(trim($name) === '')
+        {
+        return false;
+        }
+
+    $user = is_null($user_id)
+        ? new PreparedStatementQuery('user IS NULL')
+        : new PreparedStatementQuery('user = ?', ['i', $user_id]);
+    
+    $psq = new PreparedStatementQuery(
+        "DELETE FROM user_preferences WHERE {$user->sql} AND parameter = ?",
+        array_merge($user->parameters, ['s', $name])
+    );
+
+    ps_query($psq->sql, $psq->parameters);
+    clear_query_cache('preferences');
+    return true;
+    }
+
+
+/**
+* Get config option value from the database (system wide -or- a user preference).
 * 
-* @param  integer  $user_id         Current user ID
+* @param  ?integer $user_id         Current user ID. Use NULL to get the system wide setting.
 * @param  string   $name            Parameter name
-* @param  string   $returned_value  If a value does exist it will be returned through
-*                                   this parameter which is passed by reference
+* @param  string   $returned_value  The config value will be returned through this parameter which is passed by reference.
+*                                   IMPORTANT: it falls back (defaults) to the globally scoped config option value if 
+*                                   there's nothing in the database.
 * @param  mixed    $default         Optionally used to set a default that may not be the current
 *                                   global setting e.g. for checking admin resource preferences
 *
-* @return boolean
+* @return boolean Indicates if the config option was found in the database or not.
 */
 function get_config_option($user_id, $name, &$returned_value, $default = null)
     {
@@ -192,25 +260,28 @@ function get_config_option($user_id, $name, &$returned_value, $default = null)
         return false;
         }
 
-    $query = sprintf('
-            SELECT `value`
-              FROM user_preferences
-             WHERE user %s
-               AND parameter = "%s";
-        ',
-        is_null($user_id) ? 'IS NULL' : '= \'' . escape_check($user_id) . '\'',
-        $name
-    );
-    $config_option = sql_value($query, null);
-
-    if(is_null($default) && isset($GLOBALS['system_wide_config_options'][$name]))
+    if(is_null($user_id))
         {
-        $default = $GLOBALS['system_wide_config_options'][$name];
+        $user_query = 'user IS NULL';
+        }
+    else    
+        {
+        $user_query = 'user = ?';
+        $params[] = 'i'; $params[] = $user_id;
+        }
+
+    $query = "SELECT `value` FROM user_preferences WHERE ". $user_query ." AND parameter = ?";
+    $params[] = "s"; $params[] = $name;
+    $config_option = ps_value($query,$params, null);
+
+    if(is_null($default) && isset($GLOBALS[$name]))
+        {
+        $default = $GLOBALS[$name];
         }
 
      if(is_null($config_option))
         {
-        $returned_value = isset($default) ? $default : null;
+        $returned_value = $default;
         return false;
         }
 
@@ -229,7 +300,7 @@ function get_config_option($user_id, $name, &$returned_value, $default = null)
 */
 function get_config_option_users($option,$value)
     {
-    $users = sql_array("SELECT user value FROM user_preferences WHERE parameter = '" . escape_check($option). "' AND value='" . escape_check($value) . "'","preferences");
+    $users = ps_array("SELECT user value FROM user_preferences WHERE parameter = ? AND value=?",array("s",$option,"s",$value), "preferences");
     return $users;   
     }
 
@@ -243,15 +314,19 @@ function get_config_option_users($option,$value)
 */
 function get_config_options($user_id, array &$returned_options)
     {
-    $query = sprintf('
-            SELECT parameter,
-                   `value`
-              FROM user_preferences
-             WHERE %s;
-        ',
-        is_null($user_id) ? 'user IS NULL' : 'user = \'' . escape_check($user_id) . '\''
-    );
-    $config_options = sql_query($query,"preferences");
+    $params = [];
+    if(is_null($user_id))
+        {
+        $sql = 'user IS NULL';
+        }
+    else
+        {
+        $sql = 'user = ?';
+        $params = ['i', $user_id];
+        }
+
+    $query = 'SELECT parameter, `value` FROM user_preferences WHERE ' . $sql;
+    $config_options = ps_query($query, $params,"preferences");
 
     if(empty($config_options))
         {
@@ -311,7 +386,6 @@ function process_config_options($user_id = null)
 
             $GLOBALS[$config_option['parameter']] = $param_value;
             }
-        debug_track_vars('end@process_config_options', $GLOBALS, ['user_id' => $user_id ?? 0]);
         }
 
     return;
@@ -410,7 +484,7 @@ function config_text_input($name, $label, $current, $password = false, $width = 
         <input id="<?php echo $name; ?>"
                name="<?php echo $name; ?>"
                type="<?php echo $password ? 'password' : 'text'; ?>"
-               value="<?php echo htmlspecialchars($current, ENT_QUOTES); ?>"
+               value="<?php echo escape((string) $current); ?>"
                <?php if($autosave) { ?>onFocusOut="AutoSaveConfigOption('<?php echo $name; ?>');"<?php } ?>
                style="width:<?php echo $width; ?>px" />
         <?php
@@ -466,48 +540,85 @@ function config_add_hidden_input(string $cf_var_name, string $cf_var_value = '')
 * @param string $form_action URL where the form should post to
 * @param int    $width       Wdidth of the input file HTML tag. Default - 420
 */
-function config_file_input($name, $label, $current, $form_action, $width = 420)
+function config_file_input($name, $label, $current, $form_action, $width = 420, $valid_extensions = array(), $file_preview = false)
     {
     global $lang,$storagedir;
-    
+
     if($current !=='')
-		{ 
-		$missing_file = str_replace('[storage_url]', $storagedir, $current);
-		$pathparts=explode("/",$current);
-		}
-		
+        {
+        $origin_in_config = (substr($current, 0, 13) != '[storage_url]');
+        if ($origin_in_config)
+            {
+            # Current value may have originated in config.php - file uploader to consider this unset
+            # to enable override of config.php by uploading a file.
+            $current = '';
+            }
+        else
+            {
+            $missing_file = str_replace('[storage_url]', $storagedir, $current);
+            $pathparts=explode("/",$current);
+            }
+        }
+
     ?>
-    <div class="Question" id="question_<?php echo $name; ?>">
-        <form method="POST" action="<?php echo $form_action; ?>" enctype="multipart/form-data">
-            <label for="<?php echo $name; ?>"><?php echo $label; ?></label>
-            <div class="AutoSaveStatus">
-                <span id="AutoSaveStatus-<?php echo $name; ?>" style="display:none;"></span>
-            </div>
+    <div class="Question" id="question_<?php echo escape($name); ?>">
+        <form method="POST" action="<?php echo escape($form_action); ?>" enctype="multipart/form-data">
+        <label <?php if ($file_preview && $current !== "") echo 'id="config-image-preview-label"'; ?> for="<?php echo escape($name); ?>"><?php echo htmlspecialchars($label); ?></label>
+        <div class="AutoSaveStatus">
+        <span id="AutoSaveStatus-<?php echo escape($name); ?>" style="display:none;"></span>
+        </div>
         <?php
         if($current !== '' && $pathparts[1]=="system" && !file_exists($missing_file))
-			{
-			?>
-            <span><?php echo $lang['applogo_does_not_exists']; ?></span>
-            <input type="submit" name="clear_<?php echo $name; ?>" value="<?php echo $lang["clearbutton"]; ?>">
+            {
+            ?>
+            <span><?php echo htmlspecialchars($lang['applogo_does_not_exists']); ?></span>
+            <input type="submit" name="clear_<?php echo escape($name); ?>" value="<?php echo escape($lang["clearbutton"]); ?>">
             <?php
-			}
+            }
         elseif('' === $current || !get_config_option(null, $name, $current_option) || $current_option === '')
             {
             ?>
-            <input type="file" name="<?php echo $name; ?>" style="width:<?php echo $width; ?>px">
-            <input type="submit" name="upload_<?php echo $name; ?>" value="<?php echo $lang['upload']; ?>">
+            <input type="file" name="<?php echo escape($name); ?>" style="width:<?php echo (int) $width; ?>px">
+            <input type="submit" name="upload_<?php echo escape($name); ?>" <?php if (count($valid_extensions) > 0) {echo 'onclick="return checkValidExtension_' . htmlspecialchars($name) . '()"';} ?> value="<?php echo escape($lang['upload']); ?>">
             <?php
+            if (count($valid_extensions) > 0)
+                {
+                ?>
+                <script>
+                function checkValidExtension_<?php echo htmlspecialchars($name) ?>()
+                    {
+                    let file_path = document.getElementsByName("<?php echo escape($name); ?>")[0].value;
+                    let ext = file_path.toLowerCase().substr(file_path.lastIndexOf(".")+1);
+                    let valid_extensions = [<?php
+                        foreach ($valid_extensions as $extension) {
+                            echo '"' . escape($extension) . '",';
+                        } ?>];
+                    if (file_path != "" && valid_extensions.includes(ext)) return true;
+                    alert(<?php echo '"' . escape(str_replace('%%EXTENSIONS%%', implode(', ', $valid_extensions), $lang['systemconfig_invalid_extension'])) .'"'?>);
+                    return false;
+                    }
+                </script>
+                <?php
+                }
             }
         else
             {
             ?>
             <span><?php echo htmlspecialchars(str_replace('[storage_url]/', '', $current), ENT_QUOTES); ?></span>
-            <input type="submit" name="delete_<?php echo $name; ?>" value="<?php echo $lang['action-delete']; ?>">
+            <input type="submit" name="delete_<?php echo escape($name); ?>" value="<?php echo escape($lang['action-delete']); ?>">
             <?php
             }
             generateFormToken($name);
             ?>
         </form>
+        <?php
+        if ($file_preview && $current !== "")
+            {
+            global $baseurl; ?>
+            <div id="preview_<?php echo escape($name); ?>">
+            <img class="config-image-preview" src="<?php echo escape($baseurl . '/filestore/' . str_replace('[storage_url]/', '', $current)) . '?v=' . date("s") ?>" alt="<?php echo escape($lang["preview"] . ' - ' . $label) ?>">
+            </div>
+            <?php } ?>
         <div class="clearerleft"></div>
     </div>
     <?php
@@ -557,7 +668,7 @@ function config_colouroverride_input($name, $label, $current, $default, $title=n
             }
             " style="float: left;" />
         <div id="container_<?php echo $name; ?>"<?php if (!$checked) { ?>style="display: none;" <?php } ?>>
-            <input id="<?php echo $name; ?>" name="<?php echo $name; ?>" type="text" value="<?php echo htmlspecialchars($current, ENT_QUOTES); ?>" onchange="<?php
+            <input id="<?php echo $name; ?>" name="<?php echo $name; ?>" type="text" value="<?php echo escape($current); ?>" onchange="<?php
             if ($autosave)
                 {
                 ?>AutoSaveConfigOption('<?php echo $name; ?>');<?php
@@ -586,14 +697,15 @@ function config_colouroverride_input($name, $label, $current, $default, $title=n
 * Return a data structure that will be used to generate the HTML for
 * uploading a file
 *
-* @param string $name        HTML input file name attribute
-* @param string $label
-* @param string $form_action URL where the form should post to
-* @param int    $width       Width of the input file HTML tag. Default - 420
+* @param string  $name               HTML input file name attribute
+* @param string  $label              Label for field
+* @param string  $form_action        URL where the form should post to
+* @param int     $width              Width of the input file HTML tag. Default - 420
+* @param array   $valid_extensions   Optional array of file extensions that will be validated during upload, see config_process_file_input()
 */
-function config_add_file_input($config_var, $label, $form_action, $width = 420)
+function config_add_file_input($config_var, $label, $form_action, $width = 420, $valid_extensions = array(), $file_preview = false)
     {   
-    return array('file_input', $config_var, $label, $form_action, $width);
+    return array('file_input', $config_var, $label, $form_action, $width, $valid_extensions, $file_preview);
     }
 
 
@@ -686,10 +798,26 @@ function config_add_single_select($config_var, $label, $choices = '', $usekeys =
  * @param string        $title     Title to be used for the label title. Default: null
  * @param boolean       $autosave  Flag to say whether the there should be an auto save message feedback through JS. Default: false
  *                                 Note: onChange event will call AutoSaveConfigOption([option name])
+ * @param string        $help      Help text to display for this question
+ * @param boolean       $reload_page Reload the page after saving, useful for large CSS changes.
  */
-function config_boolean_select($name, $label, $current, $choices = '', $width = 420, $title = null, $autosave = false, $on_change_js=null, $hidden=false)
+function config_boolean_select(
+    $name,
+    $label,
+    $current,
+    $choices = '',
+    $width = 420,
+    $title = null,
+    $autosave = false,
+    $on_change_js = null,
+    $hidden = false,
+    string $help = '',
+    bool $reload_page = false
+)
     {
     global $lang;
+
+    $help = trim($help);
 
     if($choices == '')
         {
@@ -701,8 +829,10 @@ function config_boolean_select($name, $label, $current, $choices = '', $width = 
         // This is how it was used on plugins setup page. Makes sense for developers when trying to debug and not much for non-technical users
         $title = str_replace('%cvn', $name, $lang['plugins-configvar']);
         }
+    
+    $html_question_id = "question_{$name}";
     ?>
-    <div class="Question" id="question_<?php echo $name; ?>" <?php if ($hidden){echo "style=\"display:none;\"";} ?> >
+    <div class="Question" id="<?php echo escape($html_question_id); ?>" <?php if ($hidden){echo "style=\"display:none;\"";} ?> >
         <label for="<?php echo $name; ?>" title="<?php echo $title; ?>"><?php echo $label; ?></label>
 
         <?php
@@ -717,11 +847,19 @@ function config_boolean_select($name, $label, $current, $choices = '', $width = 
             ?>
         <select id="<?php echo $name; ?>"
                 name="<?php echo $name; ?>"
-                <?php if($autosave) { ?> onChange="<?php echo $on_change_js; ?>AutoSaveConfigOption('<?php echo $name; ?>');"<?php } ?>
+                <?php if($autosave) { ?>
+                    onChange="<?php echo $on_change_js; ?>AutoSaveConfigOption('<?php echo escape($name); ?>'<?php echo $reload_page ? ", true" : ""?>);"
+                <?php } ?>
                 style="width:<?php echo $width; ?>px">
             <option value="1"<?php if($current == '1') { ?> selected<?php } ?>><?php echo $choices[1]; ?></option>
             <option value="0"<?php if($current == '0') { ?> selected<?php } ?>><?php echo $choices[0]; ?></option>
         </select>
+        <?php
+        if ($help !== '')
+            {
+            render_question_form_helper($help, $html_question_id, []);
+            }
+        ?>
         <div class="clearerleft"></div>
     </div>
     <?php
@@ -737,10 +875,12 @@ function config_boolean_select($name, $label, $current, $choices = '', $width = 
  * @param string array $choices array of the text to display for the two choices: False and True. Defaults
  *          to array('False', 'True') in the local language.
  * @param integer $width the width of the input field in pixels. Default: 420.
+ * @param string $help Help text to display for this question
+ * @param boolean $reload_page Reload the page after saving.
  */
-function config_add_boolean_select($config_var, $label, $choices = '', $width = 420, $title = null, $autosave = false,$on_change_js=null, $hidden=false)
+function config_add_boolean_select($config_var, $label, $choices = '', $width = 420, $title = null, $autosave = false,$on_change_js=null, $hidden=false, string $help = '', bool $reload_page = false)
     {
-    return array('boolean_select', $config_var, $label, $choices, $width, $title, $autosave,$on_change_js,$hidden);
+    return array('boolean_select', $config_var, $label, $choices, $width, $title, $autosave,$on_change_js,$hidden, $help, $reload_page);
     }
 	
 /**
@@ -772,7 +912,7 @@ function config_checkbox_select($name, $label, $current, $choices, $usekeys=true
 	$wrap = 0;
 	?>
 	<div class="Question" id="question_<?php echo $name; ?>" <?php if ($hidden){echo "style=\"display:none;\"";} ?> >
-	<label for="<?php echo htmlspecialchars($name)?>" ><?php echo htmlspecialchars($label)?></label>
+	<label for="<?php echo escape($name)?>" ><?php echo htmlspecialchars($label)?></label>
 		<?php
         if($autosave)
             {
@@ -880,16 +1020,18 @@ function config_single_ftype_select($name, $label, $current, $width=300, $rtype=
     {
     global $lang;
 	$fieldtypefilter="";
+    $params = [];
 	if(count($ftypes)>0)
 		{
-		$fieldtypefilter = " type in ('" . implode("','", $ftypes) . "')";
+		$fieldtypefilter = " type in (". ps_param_insert(count($ftypes)) .")";
+        $params = ps_param_fill($ftypes, 'i');
 		}
 		
     if($rtype===false){
-    	$fields=sql_query('select * from resource_type_field ' .  (($fieldtypefilter=="")?'':' where ' . $fieldtypefilter) . ' order by title, name', "schema");
+    	$fields= ps_query('select ' . columns_in("resource_type_field") . ' from resource_type_field ' .  (($fieldtypefilter=="")?'':' where ' . $fieldtypefilter) . ' order by title, name', $params, "schema");
     }
     else{
-    	$fields=sql_query("select * from resource_type_field where resource_type='$rtype' " .  (($fieldtypefilter=="")?"":" and " . $fieldtypefilter) . "order by title, name", "schema");
+    	$fields= ps_query("select " . columns_in("resource_type_field") . " from resource_type_field where resource_type= ? " .  (($fieldtypefilter=="")?"":" and " . $fieldtypefilter) . "order by title, name", array_merge(['i', $rtype], $params),"schema");
     }
 ?>
   <div class="Question">
@@ -931,7 +1073,7 @@ function config_generate_AutoSaveConfigOption_function($post_url)
     ?>
     
     <script>
-    function AutoSaveConfigOption(option_name)
+    function AutoSaveConfigOption(option_name, reload_page = false)
         {
         jQuery('#AutoSaveStatus-' + option_name).html('<?php echo $lang["saving"]; ?>');
         jQuery('#AutoSaveStatus-' + option_name).show();
@@ -962,14 +1104,18 @@ function config_generate_AutoSaveConfigOption_function($post_url)
                 {
                 jQuery('#AutoSaveStatus-' + option_name).html('<?php echo $lang["saved"]; ?>');
                 jQuery('#AutoSaveStatus-' + option_name).fadeOut('slow');
+                if (reload_page)
+                    {
+                    location.reload();
+                    }
                 }
             else if(response.success === false && response.message && response.message.length > 0)
                 {
-                jQuery('#AutoSaveStatus-' + option_name).html('<?php echo $lang["save-error"]; ?> ' + response.message);
+                jQuery('#AutoSaveStatus-' + option_name).html("<?php echo escape($lang['save-error']); ?> " + response.message);
                 }
             else
                 {
-                jQuery('#AutoSaveStatus-' + option_name).html('<?php echo $lang["save-error"]; ?>');
+                jQuery('#AutoSaveStatus-' + option_name).html("<?php echo escape($lang['save-error']); ?>");
                 }
 
         }, 'json');
@@ -1004,6 +1150,7 @@ function config_process_file_input(array $page_def, $file_location, $redirect_lo
             }
 
         $config_name = $page_element[1];
+        $valid_extensions = $page_element[5];
 
         // DELETE
         if(getval('delete_' . $config_name, '') !== '' && enforcePostRequest(false))
@@ -1017,7 +1164,7 @@ function config_process_file_input(array $page_def, $file_location, $redirect_lo
                     unlink($delete_filename);
                     hook("configdeletefilesuccess",'',array($delete_filename));
                     }
-                set_config_option(null, $config_name, '');
+                delete_config_option(null, $config_name);
                 $redirect = true;
                 }
             }
@@ -1048,9 +1195,14 @@ function config_process_file_input(array $page_def, $file_location, $redirect_lo
                 // without storing the full path in the database
                 $saved_filename          = sprintf('[storage_url]/%s/%s.%s', $file_location, $config_name, $uploaded_file_extension);
 
-                if(in_array($uploaded_file_extension, $banned_extensions))
+                if(is_banned_extension($uploaded_file_extension))
                     {
                     trigger_error('You are not allowed to upload "' . $uploaded_file_extension . '" files to the system!');
+                    }
+                
+                if (count($valid_extensions) > 0 && !check_valid_file_extension($_FILES[$config_name], $valid_extensions))
+                    {
+                    trigger_error('File type not valid for this selection. Please choose from ' . implode(', ', $valid_extensions) . '.');
                     }
 
                 if(!move_uploaded_file($_FILES[$config_name]['tmp_name'], $uploaded_filename))
@@ -1098,11 +1250,11 @@ function config_generate_html(array $page_def)
                 break;
 
             case 'file_input':
-                config_file_input($def[1], $def[2], $GLOBALS[$def[1]], $def[3], $def[4]);
+                config_file_input($def[1], $def[2], $GLOBALS[$def[1]], $def[3], $def[4], $def[5], $def[6]);
                 break;
 
             case 'boolean_select':
-                config_boolean_select($def[1], $def[2], $GLOBALS[$def[1]], $def[3], $def[4], $def[5], $def[6], $def[7], $def[8]);
+                config_boolean_select($def[1], $def[2], $GLOBALS[$def[1]], $def[3], $def[4], $def[5], $def[6], $def[7], $def[8], $def[9], $def[10]);
                 break;
 
             case 'single_select':
@@ -1124,7 +1276,7 @@ function config_generate_html(array $page_def)
                 config_colouroverride_input($def[1], $def[2], $GLOBALS[$def[1]], $def[3], $def[4], $def[5],$def[6],$def[7]);
                 break;
             case 'multi_rtype_select':
-                config_multi_rtype_select($def[1], $def[2], $GLOBALS[$def[1]], $def[3], $def[4]);
+                config_multi_rtype_select($def[1], $def[2], $GLOBALS[$def[1]], $def[3]);
                 break;
             case 'single_ftype_select':
                 config_single_ftype_select($def[1], $def[2], $GLOBALS[$def[1]], $def[3], $def[4], $def[5],$def[6]);
@@ -1190,7 +1342,7 @@ function get_header_image($full = false)
         }
     else 
         {
-        $header_img_src = $baseurl.'/gfx/titles/title.svg';
+        $header_img_src = $baseurl.'/gfx/titles/title-black.svg';
         }
         
     return $header_img_src;
@@ -1250,3 +1402,428 @@ function config_register_core_field_refs(string $source, array $refs)
 
     return;
     }
+
+/**
+ * Run PHP code on array of variables. Used for modifying $GLOBALS.
+ *
+ * @param  array   $variables   Array of variables to apply override on.
+ * @param  string  $code        Signed string containing the PHP code to run.
+ * 
+ * @return void
+ */
+function override_rs_variables_by_eval(array $variables, string $code)
+    {
+    global $configs_overwritten;
+    // Remove all previous overwrides that have been set
+    if(is_array($configs_overwritten) && count($configs_overwritten) != 0)
+        {
+        foreach($configs_overwritten as $option => $value)
+            {
+            $variables[$option] = $value;
+            }
+        }
+
+    $temp_variables = $variables;
+    extract($temp_variables, EXTR_REFS | EXTR_SKIP);
+    eval(eval_check_signed($code));
+    $temp_array = [];
+    foreach($temp_variables as $temp_variable_name => $temp_variable_val)
+        {
+        if($variables[$temp_variable_name] !== $temp_variable_val)
+            {
+            $temp_array[$temp_variable_name] = $GLOBALS[$temp_variable_name];
+            }
+        $GLOBALS[$temp_variable_name] = $temp_variable_val;
+        }
+    $configs_overwritten = $temp_array;
+    return;
+    }
+
+
+/**
+ * Update the resource_type_field - resource_type mappings
+ *
+ * @param int $ref                  Resource type field ref
+ * @param array $resource_types     Array of resource type refs
+ * 
+ * @return void
+ * 
+ */
+function update_resource_type_field_resource_types(int $ref,array $resource_types)
+    {
+    ps_query("DELETE FROM resource_type_field_resource_type WHERE resource_type_field = ?",["i",$ref]);
+    if(in_array(0,$resource_types))
+        {
+        // Global field, cannot have specific fields assigned
+        ps_query("UPDATE resource_type_field SET global=1 WHERE ref = ?",["i",$ref]);
+        }
+    elseif(count($resource_types)>0)
+        {
+        $query = "INSERT INTO resource_type_field_resource_type (resource_type_field, resource_type) VALUES ";
+        $valuestring = "(" . (int)$ref . (str_repeat(",?),(" . $ref,count($resource_types)-1)) . ",?)";
+        ps_query($query .$valuestring,ps_param_fill($resource_types,"i"));
+        ps_query("UPDATE resource_type_field SET global=0 WHERE ref = ?",["i",$ref]);
+        }
+    clear_query_cache("schema");
+    }
+
+
+/**
+ * Get all resource_type->resource-type_field associations
+ * 
+ * @param array $fields Optional array of resource_type_field data returned by get_resource_type_fields()
+ * 
+ * @return array    Array with resource_type_field ID as keys and arrays of resource_type IDs as values
+ * 
+ */
+function get_resource_type_field_resource_types(array $fields = [])
+    {
+    $field_restypes = [];
+    $allrestypes = array_column(get_resource_types("",false,true,true),"ref");
+    if(count($fields)==0)
+        {
+        $fields = get_resource_type_fields();
+        }
+
+    foreach($fields as $field)
+        {
+        if($field["global"]==1)
+            {
+            $field_restypes[$field["ref"]] = $allrestypes;
+            }
+        else
+            {
+            $field_restypes[$field["ref"]] = explode(",",(string) $field["resource_types"]);
+            }
+        }
+    return $field_restypes;
+    }
+
+/**
+ * Create a new resource type with the specified name
+ *
+ * @param $name         Name of new resouce type
+ * 
+ * @return int| bool    ref of new resource type or false if invalid data passed
+ * 
+ */
+function create_resource_type($name)
+    {
+    if(!checkperm('a') || trim($name) == "")
+        {
+        return false;
+        }
+
+    ps_query("INSERT INTO resource_type (name) VALUES (?) ",array("s",$name));
+    $newid = sql_insert_id();
+    clear_query_cache("schema");
+    return $newid;
+    }
+
+/**
+ * Save updated resource_type data
+ *
+ * @param int   $ref        Ref of resource type
+ * @param array $savedata   Array of column values
+ * 
+ * @return bool
+ * 
+ */
+
+function save_resource_type(int $ref, array $savedata)
+    {
+    global $execution_lockout;
+
+    $restypes = get_resource_types("",true,false,true);
+    $restype_refs = array_column($restypes,"ref");
+    if(!checkperm('a') || !in_array($ref,$restype_refs))
+        {
+        return false;
+        }
+
+    $setcolumns = [];
+    $setparams = [];
+    $restypes = array_combine($restype_refs,$restypes);
+    foreach($savedata as $savecol=>$saveval)
+        {
+        debug("checking for column " . $savecol . " in " . json_encode(($restype_refs),true));
+        if($saveval == $restypes[$ref][$savecol])
+            {
+            // Unchanged value, skip
+            continue;
+            }
+        switch($savecol)
+            {
+            case "name":               
+                $setcolumns[] = "name";
+                $setparams[] = "s";
+                $setparams[] = mb_strcut($saveval, 0, 100);
+                break;
+
+            case "order_by":
+            case "push_metadata":
+            case "tab":
+            case "colour":
+                $setcolumns[] = $savecol;
+                $setparams[] = "i";
+                $setparams[] = $saveval;
+                break;
+
+            case "config_options":
+                if (!$execution_lockout) 
+                    {
+                    // Not allowed to save PHP if execution_lockout set.
+                    $setcolumns[] = $savecol;
+                    $setparams[] = "s";
+                    $setparams[] = $saveval;
+                    }
+                break;
+
+            case "allowed_extensions":
+                $setcolumns[] = $savecol;
+                $setparams[] = "s";
+                $setparams[] = $saveval;
+                break;
+                
+            case "icon":            
+                $setcolumns[] = $savecol;
+                $setparams[] = "s";
+                $setparams[] = mb_strcut($saveval, 0, 120);
+                break;
+
+            default:
+                // Invalid option, ignore
+                break;
+            }
+        }
+    if(count($setcolumns) === 0)
+        {
+        return false;
+        }
+    
+    $setparams[] = "i";
+    $setparams[] = $ref;
+    
+    ps_query(
+        "UPDATE resource_type
+            SET " . implode("=?,",$setcolumns) . "=?
+            WHERE ref = ?", $setparams
+        );
+
+    for($n=0;$n<count($setcolumns);$n++)
+        {
+        log_activity(null,LOG_CODE_EDITED,$setparams[(2*$n)+1],'resource_type',$setcolumns[$n],$ref,null,$restypes[$ref][$setcolumns[$n]]);
+        }
+
+    clear_query_cache("schema");
+    return true;
+    }
+
+
+/**
+ * Get resource_type data
+ *
+ * @param int $ref
+ * 
+ * @return array
+ * 
+ */
+function rs_get_resource_type(int $ref)
+    {
+    return ps_query("SELECT " . columns_in('resource_type') . "
+                    FROM resource_type
+                WHERE ref = ?
+                ORDER BY `name`",
+            array("i",$ref),
+            "schema"
+            );
+    }
+
+/**
+ * Save resource type field - used on pages/admin/admin_resource_type_field_edit.php
+ *
+ * @param int   $ref        Field ID
+ * @param array $columns    Array of column data
+ * @param mixed $postdata   POST'd data
+ * 
+ * @return bool 
+ * 
+ */
+function save_resource_type_field(int $ref, array $columns, $postdata): bool
+    {
+    global $regexp_slash_replace, $migrate_data, $onload_message, $lang, $baseurl;
+
+    $existingfield = get_resource_type_field($ref);
+    $params= $syncparams = [];
+
+    $resource_types=get_resource_types("",true,false,true);
+
+    // Array of resource types to remove data from if no longer associated with field
+    $remove_data_restypes = [];
+    foreach($resource_types as $resource_type)
+        {
+        $resource_type_array[$resource_type["ref"]]=$resource_type["name"];
+        }
+    $valid_columns = columns_in("resource_type_field",null,null,true);
+    foreach ($columns as $column=>$column_detail)		
+        {
+        if(!in_array($column,$valid_columns))
+            {
+            continue;
+            }
+        if ($column_detail[2]==1)
+            {
+            $val= (int)(bool)($postdata[$column] ?? 0);
+            }		
+        else
+            {
+            $val=trim($postdata[$column] ?? "");
+            if($column == 'regexp_filter')
+                {
+                $val = str_replace('\\', $regexp_slash_replace, $val);   
+                }
+        
+            if($column == "type" && $val != $existingfield["type"] && (bool)($postdata["migrate_data"] ?? false))
+                {
+                // Need to migrate field data
+                $migrate_data = true;				
+                }
+            
+            // Set shortname if not already set or invalid
+            if($column=="name" && ($val=="" || in_array($val,array("basicday","basicmonth","basicyear"))))
+                {
+                $val="field" . $ref;
+                }
+
+            if($column === 'tab' && $val == 0)
+                {
+                $val = ''; # set to blank so the code will convert to SQL NULL later
+                }
+            }
+        if (isset($sql))
+            {
+            $sql.=",";
+            }
+        else
+            {
+            $sql="UPDATE resource_type_field SET ";
+            }		
+        
+        $sql.="{$column}=";
+        if ($val=="")
+            {
+            $sql.="NULL";
+            }
+        else    
+            {
+            $sql.="?";
+            $params[]=($column_detail[2]==1?"i":"s"); // Set the type, boolean="i", other two are strings
+            $params[]=$val;
+            }
+        if($column == "global")
+            {
+            // Also need to update all resource_type_field -> resource_type associations
+            $setresypes = [];
+            if($val == 0)
+                {
+                $currentrestypes = get_resource_type_field_resource_types([$existingfield]);
+                // Only need to check them if field is not global
+                foreach($resource_type_array as $resource_type=>$resource_type_name)
+                    {
+                    if(trim($postdata["field_restype_select_" . $resource_type] ?? "") != "")
+                        {
+                        $setresypes[] = $resource_type;
+                        }
+                    }
+                 // Set to remove existing data from the resource types that had data stored
+                 $remove_data_restypes = $existingfield["type"] == 1 ? array_column($resource_type_array,"ref") : array_diff($currentrestypes[$ref],$setresypes);
+                }
+            update_resource_type_field_resource_types($ref,$setresypes);
+            }
+
+        log_activity(null,LOG_CODE_EDITED,$val,'resource_type_field',$column,$ref);
+        }
+    // add field_constraint sql
+    if (isset($postdata["field_constraint"]) && trim($postdata["field_constraint"]) != "")
+        {
+        $sql.=",field_constraint=?";
+        $params[]="i";$params[]= (int)$postdata["field_constraint"];
+        }
+
+    // Add automatic nodes ordering if set (available only for fixed list fields - except category trees)
+    $sql .= ", automatic_nodes_ordering = ?";
+    $params[]="i";$params[]= (1 == ($postdata['automatic_nodes_ordering'] ?? 0) ? 1 : 0);
+
+    $sql .= " WHERE ref = ?";
+    $params[]="i";$params[]=$ref;
+
+    ps_query($sql,$params);
+    clear_query_cache("schema");
+    clear_query_cache("featured_collections");
+
+    if(count($remove_data_restypes)>0)
+        {
+        // Don't delete invalid nodes immediately in case of accidental/inadvertent change - just show a link to the cleanup page
+        $cleanup_url = generateURL($baseurl . "/pages/tools/cleanup_invalid_nodes.php",["cleanupfield"=>$ref, "cleanuprestype"=>implode(",",$remove_data_restypes)]);
+        $onload_message= ["title" => $lang["cleanup_invalid_nodes"],"text" => str_replace("%%CLEANUP_LINK%%","<br/><a href='" . $cleanup_url . "' target='_blank'>" . $lang["cleanup_invalid_nodes"] . "</a>",$lang["information_field_restype_deselect_cleanup"])];
+        }
+    
+    hook('afterresourcetypefieldeditsave');
+    
+    return true;
+    }
+
+function get_resource_type_field_columns()
+    {
+    global $lang;
+
+    $resource_type_field_column_definitions = execution_lockout_remove_resource_type_field_props([
+        'active'                   => [$lang['property-field_active'],'',1,1],
+        'global'                   => [$lang['property-resource_type'],'',1,0],
+        'title'                    => [$lang['property-title'],'',0,1],
+        'type'                     => [$lang['property-field_type'],'',0,1],
+        'linked_data_field'        => [$lang['property-field_raw_edtf'],'',0,1],
+        'name'                     => [$lang['property-shorthand_name'],$lang['information-shorthand_name'],0,1],
+        'required'                 => [$lang['property-required'],'',1,1],
+        'order_by'                 => [$lang['property-order_by'],'',0,0],
+        'keywords_index'           => [$lang['property-index_this_field'],$lang["information_index_warning"] . " " . $lang['information-if_you_enable_indexing_below_and_the_field_already_contains_data-you_will_need_to_reindex_this_field'],1,1],
+        'display_field'            => [$lang['property-display_field'],'',1,1],
+        'full_width'               => [$lang['property-field_full_width'],'',1,1],
+        'advanced_search'          => [$lang['property-enable_advanced_search'],'',1,1],
+        'simple_search'            => [$lang['property-enable_simple_search'],'',1,1],        
+        'browse_bar'               => [$lang['field_show_in_browse_bar'],'',1,1],
+        'read_only'                => [$lang['property-read_only_field'], '', 1, 1],
+        'exiftool_field'           => [$lang['property-exiftool_field'],'',0,1],
+        'fits_field'               => [$lang['property-fits_field'], $lang['information-fits_field'], 0, 1],
+        'personal_data'            => [$lang['property-personal_data'],'',1,1],
+        'use_for_similar'          => [$lang['property-use_for_find_similar_searching'],'',1,1],
+        'hide_when_uploading'      => [$lang['property-hide_when_uploading'],'',1,1],
+        'hide_when_restricted'     => [$lang['property-hide_when_restricted'],'',1,1],
+        'help_text'                => [$lang['property-help_text'],'',2,1],
+        'tooltip_text'             => [$lang['property-tooltip_text'],$lang['information-tooltip_text'],2,1],
+        'tab'                      => [$lang['property-tab_name'], '', 0, 0],
+        'partial_index'            => [$lang['property-enable_partial_indexing'],$lang['information-enable_partial_indexing'],1,1],
+        'iptc_equiv'               => [$lang['property-iptc_equiv'],'',0,1],                                  
+        'display_template'         => [$lang['property-display_template'],'',2,1],
+        'display_condition'        => [$lang['property-display_condition'],$lang['information-display_condition'],2,1],
+        'regexp_filter'            => [$lang['property-regexp_filter'],$lang['information-regexp_filter'],2,1],
+        'smart_theme_name'         => [$lang['property-smart_theme_name'],'',0,1],
+        'display_as_dropdown'      => [$lang['property-display_as_dropdown'],$lang['information-display_as_dropdown'],1,1],
+        'external_user_access'     => [$lang['property-external_user_access'],'',1,1],
+        'omit_when_copying'        => [$lang['property-omit_when_copying'],'',1,1],
+        'include_in_csv_export'    => [$lang['property-include_in_csv_export'],'',1,1],
+        'autocomplete_macro'       => [$lang['property-autocomplete_macro'],'',2,1],
+        'exiftool_filter'          => [$lang['property-exiftool_filter'],'',2,1],
+        'value_filter'             => [$lang['property-value_filter'],'',2,1],
+        'onchange_macro'           => [$lang['property-onchange_macro'],$lang['information-onchange_macro'],2,1],
+    ]);
+
+    $modify_resource_type_field_definitions=hook("modifyresourcetypefieldcolumns","",array($resource_type_field_column_definitions));
+    if($modify_resource_type_field_definitions!='')
+        {
+        $resource_type_field_column_definitions=$modify_resource_type_field_definitions;
+        }
+
+    return $resource_type_field_column_definitions;
+    }
+

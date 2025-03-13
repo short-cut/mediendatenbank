@@ -1,6 +1,6 @@
 ﻿/**
- * @license Copyright (c) 2003-2021, CKSource - Frederico Knabben. All rights reserved.
- * For licensing, see LICENSE.md or https://ckeditor.com/license
+ * @license Copyright (c) 2003-2024, CKSource Holding sp. z o.o. All rights reserved.
+ * For licensing, see LICENSE.md or https://ckeditor.com/legal/ckeditor-oss-license/
  */
 
 /**
@@ -13,10 +13,10 @@
  * (1) https://ckeditor.com/cke4/builder
  *     Visit online builder to build CKEditor from scratch.
  *
- * (2) https://ckeditor.com/cke4/builder/a88565181f8ed9173ccab8670bdc0eeb
+ * (2) https://ckeditor.com/cke4/builder/a0fe5dc7b76b9117aa29762bb2d552d0
  *     Visit online builder to build CKEditor, starting with the same setup as before.
  *
- * (3) https://ckeditor.com/cke4/builder/download/a88565181f8ed9173ccab8670bdc0eeb
+ * (3) https://ckeditor.com/cke4/builder/download/a0fe5dc7b76b9117aa29762bb2d552d0
  *     Straight download link to the latest version of CKEditor (Optimized) with the same setup as before.
  *
  * NOTE:
@@ -43,6 +43,7 @@ var CKBUILDER_CONFIG = {
 		'.travis.yml',
 		'bender-err.log',
 		'bender-out.log',
+		'bender-runner.config.json',
 		'bender.ci.js',
 		'bender.js',
 		'dev',
@@ -66,12 +67,13 @@ var CKBUILDER_CONFIG = {
 		'copyformatting' : 1,
 		'dialogadvtab' : 1,
 		'div' : 1,
+		'editorplaceholder' : 1,
 		'elementspath' : 1,
 		'enterkey' : 1,
 		'entities' : 1,
+		'exportpdf' : 1,
 		'filebrowser' : 1,
 		'find' : 1,
-		'flash' : 1,
 		'floatingspace' : 1,
 		'font' : 1,
 		'format' : 1,
@@ -91,6 +93,8 @@ var CKBUILDER_CONFIG = {
 		'maximize' : 1,
 		'newpage' : 1,
 		'pagebreak' : 1,
+		'pastefromgdocs' : 1,
+		'pastefromlibreoffice' : 1,
 		'pastefromword' : 1,
 		'pastetext' : 1,
 		'preview' : 1,
@@ -114,7 +118,6 @@ var CKBUILDER_CONFIG = {
 		'toolbar' : 1,
 		'undo' : 1,
 		'uploadimage' : 1,
-		'wsc' : 1,
 		'wysiwygarea' : 1
 	},
 	languages : {

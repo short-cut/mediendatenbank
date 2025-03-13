@@ -74,7 +74,7 @@ if (!hook("replaceslideshow"))
             ?>
             var big_slideshow_timer = 0;
             RegisterSlideshowImage('<?php echo "{$baseurl_short}pages/download.php?slideshow={$slideshow_files[$randomimage]["ref"]}"; ?>','<?php echo (isset($slideshow_files[$randomimage]["link"])) ? $slideshow_files[$randomimage]["link"] : "" ?>',1);
-            <?php
+<?php
             }
         else
             {
@@ -118,20 +118,20 @@ if (!hook("replaceslideshow"))
             echo "images.push(" .  $slideshow_file_info["ref"] . ");\n";
             }
         ?>
-    
+
         var cur_photo=1;
         var last_photo=0;
         var next_photo=1;
-    
+
         flip=1;
-    
+
         var image1=0;
         var image2=0;
-    
+
         function nextPhoto()
             {
             if (!document.getElementById('image1')) {return false;} /* Photo slideshow no longer available (AJAX page move) */
-            
+
               if (cur_photo==num_photos-1) {next_photo=0;} else {next_photo=cur_photo+1;}
               image1 = document.getElementById("image1");
               image2 = document.getElementById("photoholder");
@@ -151,12 +151,12 @@ if (!hook("replaceslideshow"))
                 window.setTimeout("image2.style.backgroundImage='url(' + baseurl_short + 'pages/download.php?slideshow=' + images[next_photo] +')';if(linktarget!=''){jQuery('#slideshowlink').attr('href',linktarget);}else{jQuery('#slideshowlink').removeAttr('href');}",1000);
                 flip=0;
                 }	  	
-             
+
               last_photo=cur_photo;
               cur_photo=next_photo;
               timers.push(window.setTimeout("nextPhoto()", 1000 * photo_delay));
             }
-    
+
         jQuery(document).ready( function ()
             { 
             /* Clear all old timers */
@@ -164,7 +164,7 @@ if (!hook("replaceslideshow"))
             timers.push(window.setTimeout("nextPhoto()", 1000 * photo_delay));
             }
             );
-            
+
         </script><?php 
         }
     if($slideshow_big) 
@@ -178,6 +178,10 @@ if (!hook("replaceslideshow"))
 	if ($small_slideshow && !$slideshow_big) 
 		{ ?>
 		<div id="SlideshowContainer">
+        <?php
+        if($homeimages > 0)
+            {
+            ?>
 			<div class="HomePicturePanel"
 			<?php if(!hook("replaceeditslideshowwidth"))
 				{
@@ -227,6 +231,7 @@ if (!hook("replaceslideshow"))
 			?>
 			</div>
 			<?php
+            }
 			global $welcome_text_picturepanel,$home_dash,$slideshow_big;
 			if ($welcome_text_picturepanel || ($home_dash && !$slideshow_big))
 				{
@@ -254,7 +259,7 @@ if (!hook("replaceslideshow"))
 	if($home_themeheaders && $enable_themes)
 		{
 		if($home_dash)
-			{
+        	{
 			$title="themeselector";
 			$all_users=1;
 			$url="pages/ajax/dash_tile.php?tltype=conf&tlstyle=thmsl";
@@ -335,7 +340,7 @@ if (!hook("replaceslideshow"))
 					<h2> <?php echo i18n_get_translated($custom_home_panels[$n]["title"]) ?></h2>
 					<span><?php echo i18n_get_translated($custom_home_panels[$n]["text"]) ?></span>
 					</div> 
-					
+
 					</a>
 					<?php
 					} // end hook 'panelperm'
@@ -378,7 +383,7 @@ if (!hook("replaceslideshow"))
 					{
 					create_dash_tile($url,$link,$title,$reload_interval,$all_users,$default_order_by,$resource_count,$text,$delete);
 					//Turn off the promoted collection
-					sql_query("UPDATE collection SET home_page_publish=0 WHERE ref=".$home_collection["ref"]);
+					ps_query("UPDATE collection SET home_page_publish = 0 WHERE ref = ?", array("i", $home_collection["ref"]));
 					}
 				}
 			else
@@ -477,19 +482,6 @@ if (!hook("replaceslideshow"))
 
 } // End of ReplaceHome hook
 
-
-// Launch KB modal if just logged in?
-if (in_array($usergroup,$launch_kb_on_login_for_groups) && getval("login","")!="")
-	{
-	?>
-	<script>
-	window.setTimeout("ModalLoad('<?php echo $baseurl ?>/pages/help.php?initial=true',true);",2000);
-	</script>
-	<?php
-	}
-
 hook("homeafterpanels");
 
-
 include "../include/footer.php";
-?>

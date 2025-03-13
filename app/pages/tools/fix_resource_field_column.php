@@ -1,7 +1,5 @@
 <?php
 include "../../include/db.php";
-
-
 include_once "../../include/authenticate.php";
 if(!checkperm("a")){exit("Access denied");}
 
@@ -10,16 +8,16 @@ $field = getval("field",0,true);
 if($field > 0)
     {
     $fieldinfo = get_resource_type_field($field);
-    $allresources = sql_array("SELECT ref value from resource where ref>0 order by ref ASC",0);
+    $allresources = ps_array("SELECT ref value from resource where ref>0 order by ref ASC",[], 0);
     if(in_array($fieldinfo['type'],$NODE_FIELDS))
             {
             foreach($allresources as $resource)
                 {
                 $resnodes = get_resource_nodes($resource, $field, true);
                 $resvals = array_column($resnodes,"name");
-                $resdata = implode(",",$resvals);
+                $resdata = implode($field_column_string_separator, $resvals);
                 $value = truncate_join_field_value(strip_leading_comma($resdata));
-                sql_query("update resource set field" . $field . "='".escape_check($value)."' where ref='$resource'");
+                ps_query("update resource set field" . $field . "= ? where ref= ?", ['s', $value, 'i', $resource]);
                 echo "Updated resource " . $resource . ". Value: " . $value . "<br />";
                 }
             }
@@ -29,7 +27,7 @@ if($field > 0)
                 {
                 $resdata = get_data_by_field($resource,$field);
                 $value = truncate_join_field_value(strip_leading_comma($resdata));
-                sql_query("update resource set field" . $field . "='".escape_check($value)."' where ref='$resource'");
+                ps_query("update resource set field" . $field . "= ? where ref= ?", ['s', $value, 'i', $resource]);
                 echo "Updated resource " . $resource . ". Value: " . $value . "<br />";
                 }
             

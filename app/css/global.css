@@ -48,20 +48,32 @@ input.defaultbutton {position: absolute; left: -100%; width: 0; height: 0;}
 /* Form elements */
 input, textarea, button, select, .RecordPanel .RecordDownloadSpace .DownloadDBlend a, .sp-replacer, .toolbox{
     font-size: 0.875rem;
-    border-radius: 4px;
+    border-radius: 5px;
 }
 
-input[type="text"], input[type=submit], input[type=button], input[type="password"], input[type="url"],input[type="email"], input[type="number"], textarea, button, select {
-    padding: 4px 6px 4px 6px;
+input[type="text"], input[type="password"], input[type="url"],input[type="email"], input[type="number"], input[type="date"], textarea, select {
+    padding: 4px 6px 4px 8px;
     vertical-align: middle;
-    min-height: 28px;
+    min-height: 32px;
     margin: 3px 0;
 }
 
-input[type="text"], input[type="password"], input[type="number"], textarea, select, .sp-replacer {
+input[type="text"], input[type="password"], input[type="number"], input[type="email"], textarea, select, .sp-replacer {
     border: 1px solid rgba(0,0,0,0.25);
     box-shadow: inset 0 1px 2px 0 rgba(0,0,0,0.1);
  }
+
+input[type="submit"], input[type="button"], button {
+    padding: 6px 14px;
+    vertical-align: middle;
+    min-height: 28px;
+    min-width: 100px;
+    margin: 3px 0;
+}
+
+input[type="file"] {
+    border-radius: 0;
+}
 
 .TopInpageNavLeft select, .TopInpageNavLeft select:focus {
     border: none;
@@ -74,12 +86,12 @@ input[type="text"], input[type="password"], input[type="number"], textarea, sele
 
 button, input[type=submit], input[type=button], .RecordPanel .RecordDownloadSpace .DownloadDBlend a, .UploadButton a {
     border: 1px solid transparent;
-    background-color: #1988d7;
+    background-color: #1679c0;
     background-image: none;
     color: #fff;
     text-decoration: none;
     cursor: pointer;
-    font-weight: normal;
+    font-weight: 600;
     box-shadow: 0 1px 3px rgba(0,0,0,0.25);
 }
 
@@ -92,14 +104,20 @@ button, input[type=submit], input[type=button], .RecordPanel .RecordDownloadSpac
 
 button, input[type=submit], input[type=button], .RecordPanel .RecordDownloadSpace .DownloadDBlend a {
     text-align: center;
+    max-width: 500px;
 }
 
-#ResourceDownloadOptions td.DownloadFileName.AlternativeFile a 
-{
+#ResourceDownloadOptions td.DownloadFileName.AlternativeFile a {
     background-color: transparent;
     border-top: none;
     box-shadow: none;
+    padding: 0px;
 }
+
+.AlternativeFileImage, .AlternativeFileText {
+    float: left;
+    word-break: break-word; 
+    }
 
 .RecordPanel:not(.RecordPanelLarge) .DownloadFileSizePicker > #size {
     max-width: 230px;
@@ -115,6 +133,10 @@ button:active, input[type=submit]:active, input[type=button]:active, .RecordPane
     filter: brightness(0.92);
     -moz-filter: brightness(0.92);
     -webkit-filter: brightness(0.92);    
+}
+
+.emailinvalid {
+    background-color: red;
 }
 
 /* Prevent iOS overriding button styling */
@@ -144,7 +166,7 @@ select:before {
     content: "\f078";
     color: #2e99e6;
     display: inline-block;
-    font: normal normal normal 14px/1 "Font Awesome 5 Free";
+    font: normal normal normal 14px/1 "Font Awesome 5 Free", sans-serif;
     font-weight: 600;
     outline: 1px solid red;
     text-rendering: auto;   
@@ -163,8 +185,8 @@ select::-ms-expand
     display: none;
     }
 
-#clearbutton {margin: 10px 5px 0 0;width: 122px;}
-#searchbutton{ width: 122px;margin: 10px 0 0 0;}
+#clearbutton {margin: 10px 5px 0 0;width: 122px; font-weight: 600;}
+#searchbutton{ width: 122px;margin: 10px 0 0 0; font-weight: 600;}
 /*General tags*/
 .clearer {clear:both;}
 .clearerleft {clear:left;}
@@ -176,11 +198,13 @@ select::-ms-expand
 .pageline{border-bottom: 1px solid #d7d7d7;  margin-right:10px;margin-left:5px;}
 .DisplayNone { display: none !important; }
 .AbsoluteTopLeft { position: absolute; top: 0; left: 0; }
+.PointerEventsNone { pointer-events: none; }
+.MarginLeft1rem { margin-left: 1rem; }
 
 /* General Form tags */
-.checkoption {vertical-align: top;display: inline-block;width: 195px;margin: 2px; *display:inline;*zoom: 1;}
-.checkbox {margin-right: 3px;vertical-align: top;display: inline-block;*display:inline;*zoom: 1;}
-.checkboxtext {margin-right: 2px;width: 160px;display: inline-block;*display:inline;*zoom: 1;}
+.checkoption {vertical-align: top;display: inline-block;width: 195px;margin: 2px;}
+.checkbox {margin-right: 3px;vertical-align: top;display: inline-block;}
+.checkboxtext {margin-right: 2px;width: 160px;display: inline-block;}
 .checkboxes{margin-top: 5px;padding-left: 300px;}
 .verticalcheckboxes {padding-left: 300px;}
 
@@ -188,9 +212,9 @@ select::-ms-expand
 
 .radioblock { float: left;padding-left: 300px;clear: left;margin-top: -1em;}
 .radiotext label.customFieldLabel {float:none;}
-.radiotext {margin-right: 2px;width: 160px;display: inline-block;*display:inline;*zoom: 1;}
-.radio{margin-right: 3px;vertical-align: top;display: inline-block;*display:inline;*zoom: 1;}
-.radiooption {vertical-align: top;display: inline-block;width: 195px;margin: 2px; *display:inline;*zoom: 1;}
+.radiotext {margin-right: 2px;width: 160px;display: inline-block;}
+.radio{margin-right: 3px;vertical-align: top;display: inline-block;}
+.radiooption {vertical-align: top;display: inline-block;width: 195px;margin: 2px;}
 #custom_access {padding-left: 300px;}
 #custom_access .radiooptions{margin: 5px;}
 
@@ -220,10 +244,19 @@ select::-ms-expand
 #HeaderNav1 ul, #Headernav2 ul {padding: 0.2em 0;}
 .HeaderImgLink{float:left;height:100%;width: auto;margin-right: 20px;}
 #HeaderImg{margin:0;max-height: 40px; }
-.HorizontalNav li,  .HorizontalNav li {display: inline-block;zoom: 1;*display: inline;}
-.HorizontalNav li a, .HorizontalNav li a{display: inline-block;zoom: 1;*display: inline;}
-.RecordBox {margin: 10px 20px 10px 0;}
+.HorizontalNav li a {display: inline-block;zoom: 1;}
 h2#CollectionsPanelHeader {display:none;}
+.HeaderLink a {
+    border-radius: 8px;
+    padding: 0 8px;
+    font-weight: 500;
+}
+.HeaderLink a.current {
+    background: #00000012;
+}
+.HorizontalNav li.HeaderLink {
+    padding: 0;
+}
 
 .ProfileImage { vertical-align:top; width:36px; height:36px; border-radius:36px}
 
@@ -283,6 +316,7 @@ div#CentralSpaceContainer.SlimHeaderFixedPosition { margin-top: 100px; }
     max-height: 60px;
     display: block;
     margin: 0 auto;
+    padding: 10px;
 }
 
 #Footer {clear: both; margin:20px 25px 38px 25px;padding:0;text-align:left;}
@@ -303,16 +337,16 @@ div#CentralSpaceContainer.SlimHeaderFixedPosition { margin-top: 100px; }
     text-align:left;
     }
 #CentralSpaceContainerRestrict {margin:0 15px 20px 25px;padding:0;text-align:left;}
-#CentralSpaceLogin {margin: 100px auto;padding:0;width: 600px;text-align:left;}
+#CentralSpaceLogin {margin: 100px auto;padding:0;width: 600px;text-align:left; position: relative;}
 #CentralSpace {text-align:left;position:relative;display: inline-block; width: 100%;}
 
-.TopInpageNav {clear: left;margin-bottom:15px;margin-right: 0;position:relative;min-height: 30px;}
+.TopInpageNav {clear: left;margin-bottom:10px;margin-right: 0;position:relative;min-height: 30px;}
 .BottomInpageNav {clear: left;padding-top: 5px;margin: 20px 15px 20px 0; position:relative;}
 .BottomInpageKey {margin-right: 15px; clear: left; text-align: left;}
 .TopInpageNavLeft{float:left; width: 90%;}
 .TopInpageNavRight{position:absolute;right:0;top:3px;width:max-content;text-align:right;}
-.InpageNavLeftBlock {display:inline-block; *display: inline; *zoom: 1;text-align:left;margin: 0 20px 0 0;}
-.InpageNavRightBlock {display:inline-block; *display: inline; *zoom: 1;text-align:left;margin: 0 15px 0 0;}
+.InpageNavLeftBlock {display:inline-block;text-align:left;margin: 0 20px 5px 0;}
+.InpageNavRightBlock {display:inline-block;text-align:left;margin: 0 15px 0 0;}
 .BottomInpageNavLeft {float:left;}
 .BottomInpageNavRight{float:right;margin-right:10px;text-align:right;}
 .BottomInpageNavRight .TopInpageNavRight {position:relative;}
@@ -322,7 +356,7 @@ div#CentralSpaceContainer.SlimHeaderFixedPosition { margin-top: 100px; }
 
 
 .HorizontalNav ul {padding:0.2em 0;margin:0;list-style:none;white-space: nowrap; overflow: hidden;font-size: 0;}
-.HorizontalNav li {display:inline;padding:0 0.35em 0 0.5em;margin:0; font-size: 16px; line-height: 36px;}
+.HorizontalNav li {display:inline;padding:0 0.35em 0 0.5em;margin:0; font-size: 16px; line-height: 36px; zoom: 1;}
 .HorizontalNav a:link, .HorizontalNav a:visited {text-decoration:none;}
 .HorizontalNav a:hover, .HorizontalNav a:active {text-decoration:underline;}
 .HorizontalWhiteNav li:first-child {border-left:none;}
@@ -400,24 +434,27 @@ input[type="number"].NumberSearchWidth {width:80px; margin: 0 10px;}
 #SearchBarContainer {height: 100%; float: right;}
 #SearchBox {float: right; width: 295px;text-align:left; height: inherit; overflow-x: hidden;}
 #SearchBoxPanel {width: inherit;}
-#ResearchBoxPanel {width: 100%;margin-top: 15px;}
-#SearchBox .PopupCategoryTree {display: none; text-align: left; z-index: 999; padding: 5px; background: none;}
+#ResearchBoxPanel {width: 100%;}
+#SearchBox .PopupCategoryTree {display: none; text-align: left; z-index: 999; padding: 5px; background: none; overflow-x: scroll;}
+.PoweredByPanel {font-style: italic; margin: 0 15px 15px 15px; font-size: 13px;}
+.PoweredByPanel img {max-width: 215px; margin-top: 8px;}
 
 /*Resource Panel layout*/
-.ResourcePanel {padding:0;margin:0 14px 14px 0;width: 175px;float:left;position:relative; overflow: hidden;}
+.ResourcePanel {padding:0;margin:0 14px 14px 0;width: 200px;float:left;position:relative; overflow: hidden;}
 .ResourcePanelPreview {height: 156px;width: 156px;margin: 3px;}
-.ResourcePanelInfo {margin: 0;overflow:hidden;white-space:nowrap;padding:5px;text-align:justify;text-overflow: ellipsis;}   
+.ResourcePanelInfo {margin: 0;overflow:hidden;white-space:nowrap;padding:5px 5px 0 5px;text-align:justify;text-overflow: ellipsis; font-size: 13px; min-height: 19px;}
+.ResourcePanelInfo.ResourcePanelTitle {font-size: 15px; min-height: 21px;}
 .ResourcePanelCountry {margin-right: 5px;margin-left: 5px;margin-bottom: 0;float: left;clear: left;display:inline;}
-.ResourcePanelIcons {padding: 5px;text-align:right;bottom:0;right:0;} 
+.ResourcePanelIcons {padding: 5px;text-align:right;bottom:0;right:0;font-size:0;} 
 .ResourcePanelSmallIcons {padding-left: 5px;}
-.ResourcePanelTop {height: 22px;} 
-.ImageWrapper {height:175px;display:block;padding:0;vertical-align: middle;text-align: center;clear: right;}
-.ImageWrapperSmall {height:75px;display:block;padding:0;;vertical-align: middle;text-align: center;clear: right;}
+.ResourcePanelTop {position: absolute; width: 100%;} 
+.ImageWrapper {height:200px;display:block;padding:0;vertical-align: middle;text-align: center;clear: right;}
+.ImageWrapperSmall {height:75px;display:block;padding:0;vertical-align: middle;text-align: center;clear: right;}
 .ImageWrapperLarge {height:320px; display:block; padding:0; vertical-align: middle; text-align:center; clear:right;}
 .ImageColourWrapper {display: inline-block;}
 
 .ResourceAlign {width:172px;height:177px;text-align: center;vertical-align: middle;}
-.ResourceTypeIcon.fa-fw {height: 16px;width:16px;float:right;margin: 3px; }
+.ResourceTypeIcon.fa-fw {height: 16px;float:right;margin: 3px; background: #ffffffcc; padding: 3px 4px 2px 4px; border-radius: 3px;}
 .ResourcePanelShell a:link, .ResourcePanelShell a:visited {text-decoration:none;}
 .ResourcePanelShell a:hover, .ResourcePanelShell a:active {text-decoration:underline;}
 .ResourcePanelShell.ui-draggable {text-align: left;}
@@ -432,9 +469,11 @@ input[type="number"].NumberSearchWidth {width:80px; margin: 0 10px;}
 .ResourcePanelSmall .ResourcePanelIcons {font-size:0.8em;}
 .ResourceAlignLarge {width:365px;height:365px;text-align: center;vertical-align: middle;}
 
-.ResourcePanelIcons a, .CollectionPanelTools a  {margin-left: 3px;margin-right:2px; text-decoration:none;}
+.ResourcePanelIcons a, .CollectionPanelTools a  {text-decoration:none; font-size: 16px;}
+.ResourcePanelIcons a {padding: 5px;}
+.ResourcePanelResourceID {font-size: 15px; text-align:left; display: block; }
 .CollectionPanelTools .fa, .CollectionPanelTools .fas {font-size: 13px;}
-.ListTools a    {float: right;margin-left: 5px;text-decoration:none;}
+.ListTools a {float: right;margin-left: 10px;text-decoration:none;}
 .ResourcePanelIcons a:hover {text-decoration:none;}
 .ListTools a:hover  {text-decoration:none;}
 a:hover .fa,.fa:hover {text-decoration:none !important;} /* Never underline a FontAwesome icon */
@@ -446,14 +485,14 @@ a:hover .fa,.fa:hover {text-decoration:none !important;} /* Never underline a Fo
 .DESC {display: inline;padding-right: 10px;}
 
 .thumbs-file-extension {
-    font-weight: bold;
-    background: #e4e4e4;
-    color: #404040;
-    border-radius: 4px;
+    font-weight: 600;
+    background: #ffffffcc;
+    border-radius: 3px;
     font-size: 12px;
-    padding: 3px;
-    margin: 1px;
+    padding: 3px 4px 1px 4px;
+    margin: 3px;
     cursor: default;
+    float: left;
 }
 
 /*Resource Panel layout*/
@@ -465,9 +504,11 @@ a:hover .fa,.fa:hover {text-decoration:none !important;} /* Never underline a Fo
 .ListTitle {font-weight: bold;}
 .Listview .IconStar {width:11px;height:12px;padding: 0;display: block;float:left;}
 .ListViewBulkActions {margin-bottom: 15px;}
-.ListViewBulkActions a {margin-right: 5px; margin-left: 5px; text-decoration: none;}
 .ListViewBulkActions i {padding-right: 8px;}
-.ListViewBulkActions .DisabledLink:hover {color: #474747;}
+.ListViewBulkActions .DisabledLink:hover {color: #666666;}
+.ListViewBulkActions span {cursor: pointer; margin-right: 5px; margin-left: 5px; color: #666666}
+.ListViewBulkActions span .DisabledLink {cursor: default;}
+.ListViewBulkActions span:hover {color: #2E99E6;}
 
 /*Search Panel layout*/
 .SearchSpace {padding: 15px;width: auto;}
@@ -506,12 +547,11 @@ a:hover .fa,.fa:hover {text-decoration:none !important;} /* Never underline a Fo
     }
 }
 .Question label, .QuestionSubmit label{ width: 300px;float: left;margin-top: 0.3em;padding-right:10px;}
-.Question .customFieldLabel { width: auto; margin: 0;}
 .Question .customFieldset { padding: 0; border: 0;}
 .Question #capswarning { margin-left: 190px; display: none; color: red;font-weight: bold;}
 .Question .stdwidth,.stdwidth, .dynamickeywords {width: 420px;font-size: 1em;}
 .Question .medwidth,.medwidth{width: 285px;font-size: 1em;}
-.Question .shrtwidth,.shrtwidth{width: 145px;font-size: 1em;margin: 0;}
+.Question .shrtwidth,.shrtwidth{width: 145px;font-size: 1em;}
 .Question .vshrtwidth{width: 93px;font-size: 0.9em;}
 .Question .medcomplementwidth{width: 105px;font-size: 1em;}
 .Question .Inline {float: left;margin: 0 10px 0 0;vertical-align: middle;}
@@ -523,20 +563,21 @@ a:hover .fa,.fa:hover {text-decoration:none !important;} /* Never underline a Fo
 
 .Question .indent {
     float:left;
-    width: 700px;
+    width: 600px;
 }
 
 .FormWide .Question label{width: 20%}
 .FormWide .Question .Inline label { width: auto; }
-.FormWide .Question .stdwidth, .FormWide .Question .tickset{width: 70%}
+.FormWide .Question .stdwidth, .FormWide .Question .tickset{width: 70%; max-width: 625px;}
 .FormWide .Question .tickset .stdwidth{width: 99%}
 .FormWide .Question .FormHelp {margin: 0 10px 4px 20%;}
-.FormWide .Question .FormHelp .FormHelpInner {width: 87.2%; margin-left: 10px;}
+.FormWide .Question .FormHelp .FormHelpInner {width: 89%; margin-left: 10px; max-width: 625px; box-sizing: border-box; font-style: italic;}
+.FormWide .Question .label-spacer {margin-left: calc(20% + 10px);}
 
 .Question .Fixed {    width: 300px;float: left;margin-top: 0.4em;font-weight: bold;} 
 .FormError{font-weight: bold;font-size: 1.1em;margin: 0 0 10px 190px;padding: 10px 0 0;}
 .FormIncorrect {font-weight: bold;font-size: 1.1em;margin: 10px 0;text-align: center;padding: 5px; border-radius: 6px;}
-.PageInformal, .PageInfoMessage{ font-weight: bold; font-size: 1.1em; margin: 15px 0 10px; text-align: center; padding: 3px; border-radius:4px; }
+.PageInformal, .PageInfoMessage{ font-weight: bold; font-size: 1.1em; margin: 15px 5px 10px 5px; text-align: center; padding: 3px; border-radius:4px; }
 .AutoSaveStatus {font-weight: bold;float:right;padding:6px 0 0;min-width:100px;min-height:15px;}
 .PurgeUsersMonths {width:4em;}
 /*Record Panel layout*/
@@ -556,7 +597,7 @@ a:hover .fa,.fa:hover {text-decoration:none !important;} /* Never underline a Fo
 .backtoresults .prevLink:hover,.backtoresults .nextLink:hover,.backtoresults .closeLink:hover,.backtoresults .maxLink:hover {text-decoration:none;}
 .RequiredFieldLabel {display: inline-block; margin-left: 10px;}
 
-.RecordPanel .RecordResouce {position:relative;clear: left;} 
+.RecordPanel .RecordResource {position:relative;clear: left;} 
 .RecordPanel .Picture {margin: 0 auto;display: block;width: auto;max-width: 720px;}
 #previewimagewrapper {float:left;margin: 0 15px 15px 0; position: relative; min-width: 720px;margin-top:40px}
 #openseadragon_viewer { width: 100%; height: 600px; } /* width and height in line with #previewimagewrapper and #previewimage, as best as it can. */
@@ -564,15 +605,15 @@ a:hover .fa,.fa:hover {text-decoration:none !important;} /* Never underline a Fo
 /* Larger layout changes */
 .RecordPanelLarge #previewimagewrapper {float: none; text-align: center; margin: 0 0 10px 0;}
 .RecordPanel.RecordPanelLarge .Picture {display: inline-block; max-width: 100%;}
-.RecordPanel.RecordPanelLarge .RecordDownload {width: 100%;}
+.RecordPanel.RecordPanelLarge .RecordDownload {width: 70%; margin-right: 10px;}
 .RecordPanel.RecordPanelLarge #ResourceDownloadOptions {
-    width: 70%;
     float: left;
     margin-right: 3%;
     clear: left;
 }
 .RecordPanel.RecordPanelLarge .RecordDownloadSpace {
     padding: 6px 1rem;
+    overflow: hidden;
 }
 .RecordPanelLarge #ResourceToolsContainer, .FloatingOptions {
     display: inline-grid;
@@ -605,15 +646,23 @@ a:hover .fa,.fa:hover {text-decoration:none !important;} /* Never underline a Fo
 .RecordPanel .RecordDownload {float: left;width: 445px;margin: 0 0 10px 0;}
 .RecordPanel .RecordDownload table {width: 100%;margin: 0;padding: 0;}
 .RecordPanel .RecordDownload td {padding: 5px 5px 5px 0;margin: 0;}
-.RecordPanel .RecordDownload .DownloadDBlend td {margin: 0;vertical-align: middle;}
-.RecordPanel .RecordDownloadSpace {padding: 5px 10px 0 10px;}
+.RecordPanel .RecordDownload .DownloadDBlend td {margin: 0;vertical-align: middle;padding: 0.4rem 0.2rem;}
+.RecordPanel .RecordDownloadSpace {padding: 5px 10px 0 10px; border-top-right-radius: 8px;}
 .RecordPanel .RecordDownloadSpace ul {padding:0.2em 0;margin:0;margin-top: 5px;list-style:none;}
 .RecordPanel .RecordDownloadSpace li {padding:0;margin:0 12px 3px 0;float:left;min-width:198px;}
 .RecordPanel .RecordDownloadSpace li a:hover {text-decoration:none;}
 
+.RecordPanel .RecordDownloadSpace#DownloadsTab {overflow: hidden;}
 .RecordPanel .RecordDownloadSpace .DownloadDBlend .DownloadButton {text-align: center;font-weight: bold;}
 .RecordPanel .RecordDownloadSpace .DownloadDBlend h2 {margin:0;padding:0;font-size: 1em;    text-align: left;}
 .RecordPanel .RecordDownloadSpace .DownloadDBlend p {margin:0;padding:0;    text-align: left;}
+
+.RecordPanel.RecordPanelLarge #RecordDownloadTabContainer {width: 100%; margin-right: 10px;}
+.RecordPanel.RecordPanelLarge .RecordDownload table {width: 67%;}
+
+.RecordTools {display: inline-block; background: #FFF; border-radius: 8px; width: 445px; box-sizing: border-box;}
+.RecordPanel .RecordDownloadSpace.RecordTools {padding-bottom: 5px;}
+.RecordPanelLarge .RecordTools {width: calc(30% - 10px)}
 
 .RecordStory {padding: 8px;}
 .RecordStory h1{font-size:1.25em; padding:0.5em 0 0.5em 0; margin:0;}
@@ -648,11 +697,10 @@ a:hover .fa,.fa:hover {text-decoration:none !important;} /* Never underline a Fo
 
 .HomePanelPromotedImageWrap {text-align:center;min-height:155px;vertical-align:middle;}
 #SlideshowContainer #HomeSiteText {width: 100%;clear: left;}
-a.HomePanel {text-decoration:none;}
-a.HomePanel {cursor:pointer;}
+a.HomePanel {text-decoration:none; cursor:pointer;}
 
-.TabBar {padding:8px 0 0 0;margin-bottom: -1px; background-color: #ededed;}
-.Tab a {margin:0 5px 0 0;padding:5px 1rem;display:inline-block; border-top-right-radius:5px;border-top-left-radius:5px;}
+.TabBar {padding:8px 0 0 0;margin-bottom: -1px;}
+.Tab a {margin:0 5px 0 0;padding:5px 1rem;display:inline-block; border-top-right-radius:6px;border-top-left-radius:6px;}
 .Tab a:hover {text-decoration: none;}
 .Tab {display:inline;}
 .StyledTabbedPanel {
@@ -663,6 +711,10 @@ a.HomePanel {cursor:pointer;}
 }
 .TabSelected {margin-right: 5px;}
 .TabSelected a { margin: 0;}
+#RecordDownloadTabButtons {width: 445px;}
+.RecordPanelLarge #RecordDownloadTabButtons {width: 100%;}
+.NonMetadataProperties { padding-bottom: 8px; }
+div#Metadata > div.Title { padding-top: 0.3em; }
 
 .infotable {border-top: 1px solid #999999;}
 .infotable td,.infotable th {border-bottom: 1px solid #999999;}
@@ -695,7 +747,7 @@ table.TableArray:not(:first-of-type) {margin-top: 5px;}
 .SearchBreadcrumbs + .RecordHeader .SearchTitle {margin-top:0;}
 
 .CategoryBox {overflow:auto;width:414px;height:80px;padding:2px;font-size:1em;}
-.MiniCategoryBox {overflow:auto;width:auto;height:80px;padding:2px;font-size:1em;}
+.MiniCategoryBox {overflow:auto;width:240px;height:80px;padding:4px;font-size:1em;border: 1px solid rgba(0,0,0,0.25)}
  
 .CategoryTree {overflow:auto;width:420px;height:400px;display:none;}
 .backline {
@@ -710,7 +762,7 @@ table.TableArray:not(:first-of-type) {margin-top: 5px;}
 .URLDisplay {width: 100%;font-size: 1em;}
 
 .PageIntrotext{
-    padding-top: 15px;
+    padding-top: 8px;
 }
 
 .BreadcrumbsBox .HelpLink {
@@ -773,14 +825,16 @@ div.autocomplete ul li {
 #overlay{position: absolute; top: 0; left: 0; z-index: 90; width: 100%; height: 500px;}
 
 .FormHelp{margin: 0 0 10px 310px;padding: 0; word-wrap:break-word;}
-.FormHelpInner{width:408px;padding:5px;margin:10px 0 0 0;}
+.FormHelpInner{width:408px;padding:5px;margin:10px 0 0 0;font-style: italic;}
+.FormHelpInner a {font-weight: bold;}
+.FormHelpInner p {padding: 0;}
 
 #ThemeBox {padding:0;margin:0;text-align:left;width: 170px;}
 #ThemeBoxPanel {width: 170px;padding:0;margin:0;}
 
 .DownloadDisabled {font-weight: normal;}
 
-.AltThumb {float:left;padding-right:5px;max-width:85px;max-height:75px;}
+.AltThumb {padding-right:5px;max-width:85px;max-height:75px;}
 
 /* single file upload progress bar */
 .meter-wrap{position: relative;width:290px;}
@@ -808,11 +862,6 @@ div.autocomplete ul li {
     padding:0px;
     }
 
-.plupload_container {min-height:450px;}
-.plupload_droptext {font-size:20px;line-height:400px;}
-.plupload_wrapper, .plupload_header_title {font-family: inherit;}
-.plupload_header {display:none;}
-.plupload_content {top:0 !important;}
 .ui-widget-content {border:3px dashed #ccc;border-radius:10px;}
 
 #uploader .uppy-size--md .uppy-DashboardContent-addMore {
@@ -821,10 +870,14 @@ div.autocomplete ul li {
 .uppy-StatusBar-actionBtn,
 .uppy-Dashboard-browse,
 .uppy-StatusBar.is-waiting .uppy-StatusBar-actionBtn--upload,
-.uppy-DashboardContent-back,
-.uppy-DashboardContent-addMore {
-    background-color: #1988d7 !important;
+.uppy-StatusBar.is-waiting .uppy-StatusBar-actionBtn--upload:hover,
+.uppy-DashboardContent-back, .uppy-DashboardContent-back:focus,
+.uppy-DashboardContent-addMore, .uppy-DashboardContent-addMore:focus {
+    background-color: #1988d7;
     color: #fff;
+}
+.uppy-Dashboard-browse:focus, .uppy-Dashboard-browse:hover {
+    border: 1px solid transparent;
 }
 .uppy-DashboardContent-back:hover,
 .uppy-DashboardContent-addMore:hover {
@@ -867,11 +920,27 @@ div.autocomplete ul li {
     line-height: normal;
 }
 
-.uppy-Dashboard-Item.is-complete > .uppy-Dashboard-Item-fileInfoAndButtons > .uppy-Dashboard-Item-fileInfo > .uppy-Dashboard-Item-name {
+.uppy-Dashboard-Item.is-complete > .uppy-Dashboard-Item-fileInfoAndButtons > .uppy-Dashboard-Item-fileInfo > .uppy-Dashboard-Item-fileName > .uppy-Dashboard-Item-name {
     display:none;
 }
-.uppy-Dashboard-Item.is-inprogress > .uppy-Dashboard-Item-fileInfoAndButtons > .uppy-Dashboard-Item-fileInfo > .uppy-Dashboard-Item-name {
+
+.uppy-Dashboard-Item.is-inprogress > .uppy-Dashboard-Item-fileInfoAndButtons > .uppy-Dashboard-Item-fileInfo > .uppy-Dashboard-Item-fileName > .uppy-Dashboard-Item-name {
     display:none;
+}
+
+.uppy-DashboardTab-btn {
+    max-height:73px; 
+}
+ 
+.uppy-ProviderBrowserItem-inner {
+    color: #000;
+    background-color: #F0F0F0;
+    width: 100%;
+}
+ 
+.uppy-ProviderBrowser-searchInput[type="text"] {
+    padding-left: 27px;
+    margin: 0 8px;
 }
 
 #showlog,#hidelog
@@ -946,7 +1015,7 @@ h2.CollapsibleSectionHead, h1.CollapsibleSectionHead
 .CommentFormBody {width: 600px; height: 60px; font-size: 1em; margin: 3px 0 0 0;}
 .CommentRespond {display: inline-block; width: auto; margin-right: 12px;}
 .TaggingHint {cursor: hand;display:block;width:588px;padding:5px;}
-.TaggingHint::before {content: "\f02b  ";   font: normal normal normal 14px "Font Awesome 5 Free";font-weight: 600;}
+.TaggingHint::before {content: "\f02b  ";   font: normal normal normal 14px "Font Awesome 5 Free", sans-serif;font-weight: 600;}
 .comment_form_container{background-color: white; border: 1px solid lightgray; padding: 8px; border-radius: 4px; width: 600px; margin-top: 5px;}
 
 .collectionscompactstylespacer {height:25px;}
@@ -1001,16 +1070,33 @@ h2.CollapsibleSectionHead, h1.CollapsibleSectionHead
     {
     margin-right: 10px;
     margin-top: 3px;
+    background-color: white;
+    padding: 4px 4px 4px 5px;
+    box-shadow: 0 1px 3px 1px rgb(0 0 0 / 10%);
+    border-radius: 5px;
     }
+
+.icondisplay .fa-map {
+    font-size:22px;
+    margin-right: 2px;
+}
 
 #searchSortOrderContainer, #resultsdisplay, .InpageNavLeftBlock {
     vertical-align: top;
 }
 
+.update_result_order_button {
+    display: inline-block;
+    background-color: white;
+    padding: 6px 8px 5px 8px;
+    vertical-align: middle;
+    border-radius: 5px;
+    box-shadow: 0 1px 3px 1px rgb(0 0 0 / 10%);
+}
+
 #SearchResultFound {
-    padding-top: 3px;
+    padding-top: 7px;
     min-width: 90px;
-    padding-left: 10px;
 }
 
 #contactadminbox  textarea{
@@ -1029,8 +1115,9 @@ h2.CollapsibleSectionHead, h1.CollapsibleSectionHead
     }
 
 #ssearchbox {
-    margin-top:8px;
+    margin-top:0;
     padding: 4px 30px 4px 6px;
+    border: none;
 }
 
 .search-icon,
@@ -1038,13 +1125,19 @@ h2.CollapsibleSectionHead, h1.CollapsibleSectionHead
 .search-icon:active {
     float: left;
     position: relative;
-    color: gray;
-    margin-top: -31px;
-    margin-left: 220px;
+    color: #0299d8;
+    margin-top: -35px;
+    margin-left: 219px;
     font-size: 17px;
-    background-color: unset;
+    background-color: #e8edf1;
     box-shadow: none;
-    padding: 0 5px;
+    padding: 7px 6px 6px 6px;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    filter: unset;
+    -moz-filter: unset;
+    -webkit-filter: unset;
+    min-width: unset;
 }
 
 .CollectionsCompactToolsContainerDummy, .CollectionsCompactToolsContainer {display:inline-block;}
@@ -1121,7 +1214,7 @@ h2.CollapsibleSectionHead, h1.CollapsibleSectionHead
     padding-top:20px;
 }
 a.HomePanel:hover {
-    border-radius:4px;
+    border-radius:8px;
     box-shadow: 1px 1px 8px rgba(0, 0, 0, 0.3);
 }
 
@@ -1203,7 +1296,7 @@ a.HomePanel:hover {
 .plugin-category-container .CollapsiblePluginList {margin-top:10px; margin-left: 30px;}
 .plugin-category-container{margin-bottom:10px;}
 .plugin-upload{margin-top:20px;}
-#SearchPlugins, .ResultsFilterTopRight {
+#SearchSystemPages, .ResultsFilterTopRight {
     float: right;
     font-size: 0.7em;
 }
@@ -1251,8 +1344,13 @@ a.HomePanel:hover {
 }
 
 div.video-js {margin:auto;}
+.video-js button {min-width: unset;}
 .video-thumbs .vjs-control-bar {font-size:7px;}
 .video-thumbs .vjs-control-bar .vjs-live-controls {display:none;}
+
+.vjs-gif-transparent {
+    background-color: transparent !important;
+}
 
 /* Modals */
 
@@ -1329,11 +1427,12 @@ div.video-js {margin:auto;}
         
 #modal_dialog .MessageText {
     text-align:left;
+    margin-bottom: 10px;
     }
 
 #modal .TopInpageNav {
     margin: 0;
-    padding: 0x 20px 10px 5px;
+    padding: 0 20px 10px 5px;
     }
 
 #modal .TopInpageNav .TopInpageNavRight {
@@ -1342,6 +1441,10 @@ div.video-js {margin:auto;}
 
 #modal .BasicsBox .HelpHeader a { color: #999; }
 #modal .BasicsBox .HelpHeader .backtoresults { margin-top: 18px; }
+
+#modal:focus {
+    outline: none;
+}
 
 .modalform {
     min-width: 600px;
@@ -1353,7 +1456,7 @@ div.video-js {margin:auto;}
 }
 
 .ListTools .ActionsContainer select {
-    width: 150px !important; /*not permanent...until we get out of bug fix period*/
+    width: 250px;
 }
 
 .ListTools .ActionsContainer .DropdownActionsLabel {
@@ -1408,7 +1511,7 @@ div.MessageBox a {
     position: relative;
     margin-top: 10px;
     height: 160px;
-    border-radius:4px;
+    border-radius:8px;
     overflow: hidden;
 }
 
@@ -1497,15 +1600,10 @@ a.FeaturedSimpleLink:hover, a.FeaturedSimpleLink:active  {
     
 }
 
-#CentralSpaceLogin {
-    position: relative;
-}
-
 #login_box {
     padding: 20px 25px 5px 25px;
     border-radius: 15px;
     box-shadow: 0 1px 10px 1px rgba(0,0,0,0.25);
-    display: inline-block;
 }
 
 #login_box h1 {
@@ -1540,8 +1638,12 @@ a.FeaturedSimpleLink:hover, a.FeaturedSimpleLink:active  {
     width: 250px;
 }
 #login_box .QuestionSubmit {
-    float: right;
     margin-top: 5px;
+    padding: 1em 0;
+}
+#login_box .UserRequestSubmit {
+    display: block;
+    float: none;
 }
 #login_box .QuestionSubmit label {
     display: none;
@@ -1553,7 +1655,6 @@ a.FeaturedSimpleLink:hover, a.FeaturedSimpleLink:active  {
 }
 #login_box .Question.KeepLoggedIn {
     display: inline-block;
-    margin: 12px 0 20px 0;
 }
 
 #login_box .KeepLoggedIn label {
@@ -1639,8 +1740,8 @@ form.FormFilter button.ClearButton {
     }
 
 /* Collapsible sections - using FontAwesome */
-.collapsed:before {content: "\f054";    font: normal normal normal 14px "Font Awesome 5 Free";font-weight: 600;padding-right:12px; display: inline-block; width:0.6em;}
-.expanded:before {content: "\f078";    font: normal normal normal 14px "Font Awesome 5 Free";font-weight: 600;padding-right:12px; display: inline-block; width:0.6em;/*! margin-right: 6px; */}
+.collapsed:before {content: "\f054";    font: normal normal normal 14px "Font Awesome 5 Free", sans-serif;font-weight: 600;padding-right:12px; display: inline-block; width:0.6em;}
+.expanded:before {content: "\f078";    font: normal normal normal 14px "Font Awesome 5 Free", sans-serif;font-weight: 600;padding-right:12px; display: inline-block; width:0.6em;/*! margin-right: 6px; */}
 
 /* Subtext */
 .sub {font-size:0.8em;}
@@ -1702,11 +1803,13 @@ form.FormFilter button.ClearButton {
     
 .CollectionPanelTools {visibility:hidden;text-align:right;}
 .CollectionPanelShell:hover .CollectionPanelTools {visibility:visible;}
-#FilterNodeOptions .FilterItemContainer > label { width: 150px; }.tag-editor li { padding: initial; }
+.tag-editor li { padding: initial; }
 
 /* Pill-like display for keywords */
 .ResponsiveViewFullSite { display: none; }
 .Question .customFieldLabel {
+    width: auto;
+    margin: 0;
     float: left;
     border-radius:4px;
     padding:2px 6px;
@@ -1784,13 +1887,10 @@ a.Enabled, a:visited.Enabled {
 
 .checkselect {float:left;padding-left:5px;}
 
-.ResourcePanelResourceID {float:left;}
-
 #Metadata {
     background-color: #FFF;
-    border-radius: 4px;
-    margin-bottom: 10px;
-    padding-bottom: 8PX;
+    border-radius: 6px;
+    padding-bottom: 8px;
 }
 
 .ReportSheet {padding:10px;}
@@ -1810,12 +1910,8 @@ a.Enabled, a:visited.Enabled {
 /* Breadcrumbs */
 .BreadcrumbsBox {
     display: table;
-    border-radius: 6px;
-    -moz-border-radius: 6px;
-    -webkit-border-radius: 6px;
-    margin: 1em 1em 0.8em 0;
-    padding: 8px 10px;
-    background: gray;
+    margin: 0 0 8px 0;
+    padding: 0 0 8px 0;
 }
 .BreadcrumbsBox > .SearchBreadcrumbs{
     margin: 0;
@@ -1843,6 +1939,7 @@ a.Enabled, a:visited.Enabled {
     height: 30px;
     vertical-align: top;
     margin: 0;
+    min-width: unset;
 }
 
 /* jQuery UI */
@@ -1898,7 +1995,7 @@ a.Enabled, a:visited.Enabled {
     max-height: 600px;
 }
 
-#preview {
+#preview, #wmpreview {
     box-shadow: 0 2px 6px rgba(0,0,0,0.2);
     max-height: 250px;
     max-width: 240px;
@@ -1921,6 +2018,10 @@ select.MultiSelect:before {
     padding: 3px;
     border: 1px solid rgba(0,0,0,0.25);
     border-radius: 4px;
+}
+.MultiRTypeSelect label {
+    float: unset;
+    padding-left: 3px;
 }
 .RecordPanel .RecordDownloadSpace .DownloadDBlend .AltThumbLink {
     min-height: unset;
@@ -1949,6 +2050,7 @@ select.MultiSelect:before {
 #BrowseBarContainer {
     overflow: hidden;
     white-space: nowrap;
+    padding-top: 5px;
 }
 #BrowseBar {
     text-align: left;
@@ -1961,14 +2063,14 @@ select.MultiSelect:before {
     float: left;
     overflow-x: hidden;
     overflow-y: auto;
-    min-width: 265px;
+    min-width: 272px;
 }
 .BrowseBarStructure {
     display: table-cell;
     min-width: 6px;
-    font-family: "Font Awesome 5 Free";
+    font-family: "Font Awesome 5 Free", sans-serif;
     font-weight: 600;
-    padding-left: 10px;
+    padding-left: 8px;
     padding-top: 2px;
     padding-bottom: 2px;
 }
@@ -1984,36 +2086,12 @@ select.MultiSelect:before {
 .BrowseBarLink{
     display: table-cell;
     white-space: normal;
-    padding-left: 4px;
+    padding-left: 8px;
     font-size: 90%;
 }
 #BrowseBar .BrowseLine {
     border-right: 1px solid;
     width: 6px;
-}
-#BrowseBarTabContainer{
-    display: inline-block;
-    right: 0;
-    height: 100%;
-}
-#BrowseBarTab {    
-    position: relative;
-    float: right;
-    top: 130px;
-    height: 140px;
-    border-top-right-radius: 10px;
-    border-bottom-right-radius: 10px;
-    width: 30px;
-}
-.BrowseBarTabText {
-    margin-bottom: 10px;
-    margin-left: 26px;
-    padding-top: 80px;
-    text-transform: capitalize;
-    text-align: center;
-    transform: rotate(-90deg);
-    transform-origin: left bottom;
-    font-size: 1.2em;
 }
 #BrowseBarContainer a:hover, .BrowseBarItem a:hover, #BrowseBarContainer a:visited, .BrowseBarItem a:visited, .row_clickable{
     text-decoration: none;
@@ -2030,10 +2108,13 @@ select.MultiSelect:before {
     background: rgba(255, 255, 255, 0.1);
     padding-top: 2px;
     padding-bottom: 2px;
+    margin-top: 10px;
+    border-radius: 4px;
 }
 
 .BrowseBarItem {
-    padding-left: 10px;
+    margin-left: 10px;
+    max-width: 262px;
 }
 
 #BrowseBarContainer .BrowseBarItem:first-child {
@@ -2052,7 +2133,16 @@ select.MultiSelect:before {
 }
 .browse_expanded:after {
     content: "\f078";
+}
+.BrowseBarRoot .browse_expand {
+    padding: 0;
+}
+.browse_expand {
+    padding: 5px;
 } 
+.BrowseBarExpand {
+    padding-left: 4px;
+}
 
 .BrowseTypeNode:after {
     content: "\f02b";
@@ -2061,7 +2151,7 @@ select.MultiSelect:before {
     content: "\f1b2";
 } 
 .BrowseTypeNew:after {
-    content: "\f055";
+    content: "\2b";
 }  
 a.BrowseRefresh{
     display:none;
@@ -2071,20 +2161,20 @@ a.BrowseRefresh{
     display: table-cell;
     padding-left: 5px;
 }
-.ui-layout-west{overflow-x: hidden;}
-.ui-layout-resizer-west{transform: translateX(-37px);} 
 
 .RecordPanelLarge #ResourceWorkflowActions, .RecordPanelLarge #RecordDownloadSummary {
     width: 100%;
+    box-sizing: border-box;
 }
 
 .UploadButton a
     {
-    border-radius:4px;    
+    border-radius:5px;
     padding:0 10px 0 10px;
     opacity:0.9 !important;
     margin-right:10px;
     border: none;
+    font-weight: 600;
     }
 
 .HelpLink {
@@ -2102,7 +2192,7 @@ a.BrowseRefresh{
 
 .ResourceLocked:before{
     content: "\f023";
-    font: normal normal normal 15px "Font Awesome 5 Free";
+    font: normal normal normal 15px "Font Awesome 5 Free", sans-serif;
     font-weight: 600;
     display: inline-block;
     width: 1.25em;
@@ -2111,7 +2201,7 @@ a.BrowseRefresh{
 
 .ResourceUnlocked:before{
     content: "\f09c";
-    font: normal normal normal 15px "Font Awesome 5 Free";
+    font: normal normal normal 15px "Font Awesome 5 Free", sans-serif;
     font-weight: 600;
     display: inline-block;
     width: 1.25em;
@@ -2120,6 +2210,9 @@ a.BrowseRefresh{
 
 .userselect {
     z-index:500;
+    max-height: 250px;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .FullWidth { width: 100%; }
@@ -2127,11 +2220,6 @@ a.BrowseRefresh{
 
 .JobTable {
     clear: both;
-}
-
-.JobTable .ListTools a {
-    float: left;
-    margin-left: 10px;
 }
 
 .TablePagerHolder .TopInpageNavRight {
@@ -2183,6 +2271,10 @@ a.BrowseRefresh{
     margin-top: 75px;
 }
 
+#modal #BasicsBoxTabs {
+    padding: 0px 10px 10px 0px;
+}
+
 .FloatingPreviewContainer {
     position: -webkit-sticky; 
     position: sticky;
@@ -2197,15 +2289,17 @@ a.BrowseRefresh{
 .TileNav a:hover {text-decoration:none;}
 .TileNav .fa {font-size:48px;padding-bottom:10px;}
 .TileNav .Pill {position:absolute; top:0; right:25px;border-radius:10px;font-size:115%;}
+.TileNav .overquota {width: 95% !important; height: auto !important;}
 /* Additional CSS to show list views correctly on top menus. */
 .TileReflow br {display:none;}
 .TileReflow .fa {display:inline-block; min-width:26px;}
 .TileReflow a:hover {text-decoration:none;}
+.TileReflow .overquota {width: auto !important; height: auto !important;}
 
 .titlediv h1 {float :left;}
 .sharelink:before {
     content: "\f0c1";
-    font: normal normal normal 14px "Font Awesome 5 Free";
+    font: normal normal normal 14px "Font Awesome 5 Free", sans-serif;
     font-weight: 600;
     padding-right:12px;
     display: inline-block; width:0.6em;
@@ -2243,7 +2337,6 @@ a.BrowseRefresh{
     width: 85%;
     padding: 8px;
     clear:both;
-    /* padding:5px 0 60px 0; */
     }
 
 .user_message_text {
@@ -2270,9 +2363,11 @@ a.BrowseRefresh{
 .own_message, .own_message .user_message, .own_message .user_message_text, .own_message .profileimage {float:right;}
 
 /* Fixes for form checkboxes and date range fields */
-.BasicsBoxEdit .Question label:not(.customFieldLabel) {width: 250px;}
+.BasicsBoxEdit .Question label:not(.customFieldLabel) {width: 200px;}
 .BasicsBoxEdit .Question label.InnerLabel {width: 200px;}
 .BasicsBoxEdit .FormHelp {margin: 0 0 10px 210px;}
+
+.ckeditorEdit {display: inline-block; width: 100%;}
 
 .nodes_input_checkbox {float:left; margin-top: 5px}
 
@@ -2303,7 +2398,7 @@ input[type="text"]#iconpicker-input {
     border-top-right-radius: 4px;
     border-bottom-right-radius: 4px;
     background-color: white;
-    padding: 3px 10px 2px 10px;
+    padding: 5px 10px 4px 10px;
     border: 1px solid rgba(0,0,0,0.25);
     display: inline-block;
     vertical-align: top;
@@ -2351,7 +2446,7 @@ input[type="text"]#iconpicker-input {
     top: 0;
     position: -webkit-sticky; 
     position: sticky;
-    background-color: #f2f2f2;
+    background-color: #efefef;
     border-bottom: 1px solid #c1c1c1;
     box-shadow: 0 12px 10px -12px #bbbbbb;
     z-index: 101;
@@ -2360,13 +2455,11 @@ input[type="text"]#iconpicker-input {
 }
 
 /* jQuery tagEditor */
-
 .SearchSpace .tag-editor{
-    border-radius: 4px;
+    border-radius: 5px;
     min-height: 28px;
     width: 250px;
-    border: 1px solid rgba(0,0,0,0.25);
-    box-shadow: inset 0 1px 2px 0 rgba(0,0,0,0.1);
+    display: inline-block;
 }
 
 .SearchSpace .tag-editor li {
@@ -2380,4 +2473,111 @@ input[type="text"]#iconpicker-input {
     margin: 0;
     border: none;
     box-shadow: none;
+}
+
+.inline_config_search {
+    display: inline-block;
+}
+
+/* Skip to main content hidden button */
+.skip-to-main-content {
+    position: absolute;
+    left: -9999px;
+    z-index: 999;
+    padding: 1em;
+    background-color: white;
+    opacity: 0;
+}
+
+.skip-to-main-content:focus {
+    left: 0;
+    top: 50px;
+    opacity: 1;
+}
+
+.config-image-preview {
+    float: left;
+    max-height: 200px;
+    max-width: 200px;
+}
+
+#config-image-preview-label{
+    height: 240px;
+}
+
+/* jsTree improvements */
+.jstree-default-dark {
+    background-color: transparent;
+}
+.jstree-default-dark .jstree-anchor {
+    text-shadow: none;
+    color: #666666;
+}
+.jstree-default-dark .jstree-wholerow {
+    border-radius: 5px;
+}
+.jstree-default-dark .jstree-wholerow-hovered {
+    background: gray;
+}
+.jstree-default-dark .jstree-wholerow-clicked {
+    background: #737373;
+}
+.jstree-default-dark .jstree-hovered,
+.jstree-default-dark>.jstree-wholerow-ul .jstree-clicked {
+    color: white;
+}
+
+/* Search Bar Tab styling */
+#SearchBarTabsContainer {
+    background: rgb(0 0 0 / 20%);
+}
+#SearchBarTabsContainer a {
+    display: inline-block;
+}
+.SearchBarTab {
+    padding: 10px 5px;
+    min-width: 116px;
+    display: inline-block;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    font-weight: 500;
+    text-align: center;
+    color: white;
+}
+.SearchBarTab:hover {
+    background: rgba(255, 255, 255, 10%);
+}
+.SearchBarTab.SearchTab {
+    margin: 10px 2px 0 10px;
+}
+.SearchBarTab.BrowseTab {
+    margin: 10px 10px 0 2px;
+}
+.SearchBarTab.SearchBarTabSelected {
+    background: rgb(255 255 255 / 14%);
+}
+
+#LoginError {
+    outline: none;
+}
+
+/* Leaflet Maps */
+.leaflet-touch .leaflet-control-geocoder-icon {
+    min-width: unset; 
+}
+
+.codeexample
+    {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    width:100%;
+    padding:10px;
+    }
+.codeoutput
+    {
+    white-space: pre-wrap;word-wrap: break-word; width:100%;padding:5px;
+    }
+
+.cke_notification_warning {
+    display: none;
 }

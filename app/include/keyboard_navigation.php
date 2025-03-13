@@ -1,4 +1,7 @@
-<?php global $k;?>
+<?php 
+global $k;
+$k= $k??"";
+?>
 <script type="text/javascript">
 
 jQuery(document).ready(function() {
@@ -16,21 +19,21 @@ jQuery(document).ready(function() {
         }
     else
         {
-        var share='<?php echo htmlspecialchars($k) ?>';
+        var share='<?php echo escape($k) ?>';
         var modAlt=e.altKey;
         var modShift=e.shiftKey;
         var modCtrl=e.ctrlKey;
         var modMeta=e.metaKey;
         var modOn=(modAlt || modShift || modCtrl || modMeta);
-        
+
          switch (e.which) 
          {
-			 
+
 		    <?php hook ("addhotkeys"); //this comes first so overriding the below is possible ?>
             // left arrow
             case <?php echo $keyboard_navigation_prev; ?>: if ((jQuery('.prevLink').length > 0)<?php if ($pagename=="view") { ?>&&(jQuery("#fancybox-content").html()=='')<?php } ?>) {jQuery('.prevLink').click();break;}
               if (<?php if ($keyboard_navigation_pages_use_alt) echo "modAlt&&"; ?>(jQuery('.prevPageLink').length > 0)) jQuery('.prevPageLink').click();
-              
+
                      <?php 
                      if (($pagename=="preview_all") && $keyboard_scroll_jump) { ?>
                      currentX=jQuery(window).scrollLeft();
@@ -75,24 +78,6 @@ jQuery(document).ready(function() {
             case <?php echo $keyboard_navigation_view_all; ?>: if(!modOn){CentralSpaceLoad('<?php echo $baseurl;?>/pages/search.php?search=!collection'+document.getElementById("currentusercollection").innerHTML+'&k='+share,true)};
                      break;
             <?php if(($pagename=='search' && $keyboard_navigation_video_search) || ($pagename=='view' && $keyboard_navigation_video_view) || (($pagename=='preview' || $pagename=='preview_all') && $keyboard_navigation_video_preview)){?>
-				<?php if($video_playback_backwards){ ?>
-					case <?php echo $keyboard_navigation_video_search_backwards?>:
-						//console.log("backwards button pressed");
-						//console.log("Player is "+vidActive);
-						curPlayback=vidActive.playbackRate();
-						//console.log("Current playback rate is "+curPlayback);
-						if(playback=='backward'){
-							newPlayback=curPlayback+1;
-						}
-						else{
-							newPlayback=1;
-						}
-						//console.log("New playback rate is "+newPlayback);
-						playback='backward';
-						videoRewind(newPlayback);
-						break;
-				<?php } ?>
-				
 				case <?php echo $keyboard_navigation_video_search_play_pause?>:
 					<?php if($pagename=='view' || $pagename=='preview'){ ?>
 						vidActive=document.getElementById('introvideo<?php echo $ref?>');
@@ -103,7 +88,7 @@ jQuery(document).ready(function() {
 					//console.log("active="+vidActive);
 					videoPlayPause(vidActive);
 					break;
-					
+
 				case <?php echo $keyboard_navigation_video_search_forwards?>:
 					//console.log("forward button pressed");
 					//console.log("Player is "+vidActive);
@@ -124,7 +109,7 @@ jQuery(document).ready(function() {
 					break;
 				<?php } ?>
          }
-         
+
      }
  });
 });

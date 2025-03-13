@@ -4,15 +4,15 @@ include_once "../../../include/render_functions.php";
 include_once "../../lightbox_preview/include/utility.php";
 include_once "../config/config.php";
 
-$search=getvalescaped("search","");
-$sign=getvalescaped("sign","");
-$offset=getvalescaped("offset",0,true);
-$pagesize=getvalescaped("pagesize",$resourceconnect_pagesize);
-$affiliatename=getvalescaped("affiliatename","");
+$search=getval("search","");
+$sign=getval("sign","");
+$offset=getval("offset",0,true);
+$pagesize=getval("pagesize",$resourceconnect_pagesize);
+$affiliatename=getval("affiliatename","");
 
-$per_page=getvalescaped("per_page","");if (is_numeric($per_page)) {$pagesize=$per_page;} # Manual setting of page size.
-$sort=getvalescaped("sort","");
-$order_by=getvalescaped("order_by","");
+$per_page=getval("per_page","");if (is_numeric($per_page)) {$pagesize=$per_page;} # Manual setting of page size.
+$sort=getval("sort","");
+$order_by=getval("order_by","");
 
 $original_user=getval("user","");
 
@@ -38,7 +38,7 @@ setup_user($user_data[0]);
 $restypes="";
 # Resolve resource types
 $resource_types=get_resource_types("", false);
-$rtx=explode(",",getvalescaped("restypes",""));
+$rtx=explode(",",getval("restypes",""));
 foreach ($rtx as $rt)
     {
     # Locate the resource type name in the local list.  
@@ -183,9 +183,9 @@ else
         # Add image 
         if ($result["has_image"]==1)
             { 
-            $add_url.="&thumb=" . urlencode(get_resource_path($ref,false,"col",false,"jpg"));
-            $add_url.="&large_thumb=" . urlencode(get_resource_path($ref,false,"thm",false,"jpg"));
-            $add_url.="&xl_thumb=" . urlencode(get_resource_path($ref,false,"pre",false,"jpg"));
+            $add_url.="&thumb=" . urlencode(generateURL($baseurl . '/pages/download.php', ['ref' => $ref, 'size' => 'col', 'k' => substr(md5($access_key . $ref), 0, 10)]));
+            $add_url.="&large_thumb=" . urlencode(generateURL($baseurl . '/pages/download.php', ['ref' => $ref, 'size' => 'thm', 'k' => substr(md5($access_key . $ref), 0, 10)]));
+            $add_url.="&xl_thumb=" . urlencode(generateURL($baseurl . '/pages/download.php', ['ref' => $ref, 'size' => 'pre', 'k' => substr(md5($access_key . $ref), 0, 10)]));
             }   
         else
             {
@@ -203,7 +203,7 @@ else
         <?php if ($result["has_image"]==1) {
             
             $img_url = get_resource_path($ref,false,"thm",false,$result["preview_extension"],-1,1,false,$result["file_modified"]);
-            
+            $display_url = generateURL($baseurl . '/pages/download.php', ['ref' => $ref, 'size' => 'thm', 'k' => $k]);
             
             $size = getimagesize($img_url);
             $ratio = (isset($size[0]))? $size[0] / $size[1] : 1; 
@@ -230,13 +230,13 @@ else
             $width = $defaultwidth;
             $margin = "auto";
             }
-            echo "<img height=\"$height\" width=\"$width\" margin=\"$margin\" src=\"$img_url\" style=\"margin-top:$margin;\" />";
+            echo "<img height=\"$height\" width=\"$width\" margin=\"$margin\" src=\"$display_url\" style=\"margin-top:$margin;\" />";
             # add icon overlay if remote image
             hook("aftersearchimg","",array($result, $img_url));
             ?>
         <?php } else { ?>
                 
-        <img border=0 src="<?php echo $baseurl ?>/gfx/<?php echo get_nopreview_icon($result["resource_type"],$result["file_extension"],false,false,true) ?>"
+        <img border=0 src="<?php echo $baseurl ?>/gfx/<?php echo get_nopreview_icon($result["resource_type"],$result["file_extension"],false) ?>"
 
         /><?php } ?></a>
     
@@ -252,7 +252,7 @@ else
         $url = $baseurl . "/pages/preview.php?ref=" . $result["ref"] . "&k=" . substr(md5($access_key . $ref),0,10) . "&resourceconnect_source=1";
     if ($url!==false)
                 { ?>
-                <a aria-hidden="true" class="fa fa-expand" target="_blank" 
+                <a class="fa fa-expand" target="_blank" 
                         href="<?php echo $url ?>"
                         title="<?php echo $lang["fullscreenpreview"]?>" rel="lightbox"
                 ></a>

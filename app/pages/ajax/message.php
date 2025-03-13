@@ -29,14 +29,14 @@
             exit();
             }
 
-        $user            = getvalescaped('user', 0, true);
-        $seen            = getvalescaped('seen', 0, true);
-        $unseen          = getvalescaped('unseen', 0, true);
-        $allseen         = getvalescaped('allseen', 0, true);
-        $deleteselusrmsg = getvalescaped('deleteselusrmsg', "");
-        $selectedseen    = getvalescaped('selectedseen', "");
-        $selectedunseen  = getvalescaped('selectedunseen', "");
-        $getrefs         = getvalescaped('getrefs', 0, true);
+        $user            = getval('user', 0, true);
+        $seen            = getval('seen', 0, true);
+        $unseen          = getval('unseen', 0, true);
+        $allseen         = getval('allseen', 0, true);
+        $deleteselusrmsg = getval('deleteselusrmsg', "");
+        $selectedseen    = getval('selectedseen', "");
+        $selectedunseen  = getval('selectedunseen', "");
+        $getrefs         = getval('getrefs', 0, true);
 
 		if(0 < $user)
 			{
@@ -241,7 +241,7 @@
                         }
                     if (actioncount>0)
                         {
-                        jQuery('span.ActionCountPill').html(actioncount).fadeIn();;
+                        jQuery('span.ActionCountPill').html(actioncount).fadeIn();
                         }
                     else
                         {
@@ -249,7 +249,7 @@
                         }
                     if (messagecount>0)
                         {
-                        jQuery('span.MessageCountPill').html(messagecount).fadeIn();;
+                        jQuery('span.MessageCountPill').html(messagecount).fadeIn();
                         }
                     else
                         {
@@ -319,7 +319,10 @@
 		{
 			return;
 		}
-		jQuery('div#MessageContainer').append("<div class='MessageBox' style='display: none;' id='" + id + "'>" + nl2br(message) + "<br />" + url + "</div>").after(function()
+
+    jQuery('div#MessageContainer')
+        .append("<div class='MessageBox' style='display: none;' id='" + id + "'>" + nl2br(DOMPurify.sanitize(message)) + "<br />" + url + "</div>")
+        .after(function()
 		{
 			var t = window.setTimeout(function()
 			{
@@ -363,47 +366,53 @@
 		});
 	}
 	
-	function message_modal(message, url, ref, owner)
-		{
-		if (typeof ref==="undefined")
-			{
-				ref=new Date().getTime();
-			}
-		if (typeof url==="undefined")
-			{
-				url="";
-			}
-		if (url!="")
-			{
-				url=decodeURIComponent(url);
-				url="<a href='" + url + "'><?php echo $lang['link']; ?></a>";
-			}
-		if (typeof owner==="undefined" || owner=='')
-			{
-			owner = '<?php echo htmlspecialchars($applicationname, ENT_QUOTES); ?>';
-			}
-		jQuery("#modal_dialog").html("<div class='MessageText'>" + nl2br(message) + "</div><br />" + url);
-		jQuery("#modal_dialog").addClass('message_dialog');
-		jQuery("#modal_dialog").dialog({
-			title: '<?php echo $lang['message'] . " " . strtolower($lang["from"]) . " "; ?>' + owner,
-			modal: true,
-			resizable: false,
-			buttons: [{text: '<?php echo $lang['ok'] ?>',
-					  click: function() {
-						jQuery( this ).dialog( "close" );
-						}}],
-			dialogClass: 'message',
-			width: 400,
-			draggable: true,
-			open: function(event, ui) { jQuery('.ui-widget-overlay').bind('click', function(){ jQuery("#modal_dialog").dialog('close'); }); },
-			close: function( event, ui ) {
-				jQuery('#modal_dialog').html('');
-				jQuery("#modal_dialog").removeClass('message_dialog');
-				jQuery.get('<?php echo $baseurl; ?>/pages/ajax/message.php?ajax=true&seen=' + ref);
-				},
-			dialogClass: 'no-close'
-			});
-			 
-		}
+    function message_modal(message, url, ref, owner)
+        {
+        if (typeof ref==="undefined")
+            {
+                ref=new Date().getTime();
+            }
+        if (typeof url==="undefined")
+            {
+                url="";
+            }
+        if (url!="")
+            {
+                url=decodeURIComponent(url);
+                url=DOMPurify.sanitize(url);
+                url="<a class='message_link' href='" + url + "'><?php echo escape($lang['link']); ?></a>";
+            }
+        if (typeof owner==="undefined" || owner=='')
+            {
+            owner = '<?php echo escape($applicationname); ?>';
+            }
+
+        jQuery("#modal_dialog").html("<div class='MessageText'>" + nl2br(DOMPurify.sanitize(message)) + "</div>" + url);
+        jQuery("#modal_dialog").addClass('message_dialog');
+        jQuery("#modal_dialog").dialog({
+            title: '<?php echo $lang['message'] . " " . strtolower($lang["from"]) . " "; ?>' + owner,
+            modal: true,
+            resizable: false,
+            buttons: [{text: "<?php echo $lang['ok'] ?>",
+                        click: function() {
+                        jQuery( this ).dialog( "close" );
+                        }}],
+            dialogClass: 'message',
+            width: (jQuery(window).width() <= 1280) ? jQuery(window).width()*0.7 : 600,
+            maxHeight: jQuery(window).height()*0.8,
+            draggable: true,
+            open: function(event, ui) {
+                jQuery('.ui-widget-overlay').bind('click', function(){ jQuery("#modal_dialog").dialog('close'); });
+                jQuery( ".ui-dialog-content" ).scrollTop(0);
+                },
+            close: function( event, ui ) {
+                jQuery('#modal_dialog').html('');
+                jQuery("#modal_dialog").removeClass('message_dialog');
+                jQuery.get('<?php echo $baseurl; ?>/pages/ajax/message.php?ajax=true&seen=' + ref);
+                },
+            dialogClass: 'no-close'
+            });
+                
+        }
 
 </script>

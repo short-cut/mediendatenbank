@@ -3,8 +3,8 @@ include "../include/db.php";
 
 include "../include/authenticate.php";
 
-$ref=getvalescaped("ref","",true);
-$k=getvalescaped("k","");
+$ref=getval("ref","",true);
+$k=getval("k","");
 $modal = (getval("modal", "") == "true");
 
 $filter_by_type = trim(getval("filter_by_type", ""));
@@ -26,19 +26,18 @@ if(!checkperm('v') && !$bypass_permission_check)
     }
 
 # fetch the current search (for finding simlar matches)
-$search=getvalescaped("search","");
-$order_by=getvalescaped("order_by","relevance");
-$search_offset=getvalescaped("search_offset",0,true);
-$restypes=getvalescaped("restypes","");
+$search=getval("search","");
+$order_by=getval("order_by","relevance");
+$search_offset=getval("search_offset",0,true);
+$restypes=getval("restypes","");
 if (strpos($search,"!")!==false) {$restypes="";}
-$archive=getvalescaped("archive",0,true);
-$starsearch=getvalescaped("starsearch","");
+$archive=getval("archive",0,true);
 $default_sort_direction="DESC";
 if (substr($order_by,0,5)=="field"){$default_sort_direction="ASC";}
 $sort=getval("sort",$default_sort_direction);
 
-$offset=getvalescaped("offset",0,true);
-$per_page=getvalescaped("per_page", $default_perpage_list,true);
+$offset=getval("offset",0,true);
+$per_page=getval("per_page", $default_perpage_list,true);
 $per_page = ($per_page == 0) ? $default_perpage_list : $per_page;
 rs_setcookie('per_page', $per_page);
 // When filtering by download records only the table output will be slightly different, showing only the following columns:
@@ -51,13 +50,13 @@ $go=getval("search_go","");
 if ($go!="")
 	{
 	$origref=$ref; # Store the reference of the resource before we move, in case we need to revert this.
-	
+
 	# Re-run the search and locate the next and previous records.
 	$modified_result_set=hook("modifypagingresult"); 
 	if ($modified_result_set){
 		$result=$modified_result_set;
 	} else {
-		$result=do_search($search,$restypes,$order_by,$archive,240+$search_offset+1,$sort,false,$starsearch);
+		$result=do_search($search,$restypes,$order_by,$archive,240+$search_offset+1,$sort,false,DEPRECATED_STARSEARCH);
 	}
 	if (is_array($result))
 		{
@@ -133,8 +132,8 @@ elseif ($previous_page_modal)
                 if($modal)
                     {
                     ?>
-                    &nbsp;&nbsp;<a class="maxLink fa fa-expand" href="<?php echo generateURL("{$baseurl_short}pages/log.php", array_merge($url_params, $filter_url_params)); ?>" onclick="return CentralSpaceLoad(this);"></a>
-                    &nbsp;<a href="#" class="closeLink fa fa-times" onclick="ModalClose();"></a>
+                    &nbsp;&nbsp;<a class="maxLink fa fa-expand" href="<?php echo generateURL("{$baseurl_short}pages/log.php", array_merge($url_params, $filter_url_params)); ?>" onclick="return CentralSpaceLoad(this);" title="<?php echo escape($lang["maximise"]); ?>"></a>
+                    &nbsp;<a href="#" class="closeLink fa fa-times" onclick="ModalClose();" title="<?php echo escape($lang["close"]); ?>"></a>
                     <?php
                     }
                 ?>
@@ -166,7 +165,8 @@ else
     }
 
 # Calculate pager vars.
-$results    =   count($log);
+$results    =   $log["total"];
+$log        =   $log["data"];
 $totalpages =   ceil($results/$per_page);
 $curpage    =   floor($offset/$per_page)+1;
 $url        =  generateURL(
@@ -197,6 +197,7 @@ $tabledata = array(
     "defaulturl"=>$baseurl . "/pages/log.php",
     "params"=>array_merge($url_params, $filter_url_params),
     "pager"=>array("current"=>$curpage,"total"=>$totalpages, "per_page"=>$per_page, "break" =>false),
+    "modal" => $modal,
     "data"=>array()
     );
 
@@ -215,7 +216,7 @@ for ($n=$offset;(($n<count($log)) && ($n<($offset+$per_page)));$n++)
         {
         if(isset($download_usage_options[$log[$n]["usageoption"]]) && $log[$n]["usageoption"] != -1 && $log[$n]["usageoption"] >= 0)
             {
-            $logentry["usage"] = nl2br(htmlspecialchars($download_usage_options[$log[$n]["usageoption"]]));
+            $logentry["usage"] = nl2br(htmlspecialchars(i18n_get_translated($download_usage_options[$log[$n]["usageoption"]])));
             }
         $logentry["usagemedium"]  = htmlspecialchars($log[$n]["notes"]);
         $tabledata["data"][] = $logentry;        

@@ -1,5 +1,4 @@
 <?php
-
     
 function HookRse_VersionAllBeforeremoveexistingfile($ref)
     {
@@ -13,16 +12,16 @@ function HookRse_VersionAllBeforeremoveexistingfile($ref)
 
     $old_extension=ps_value("SELECT file_extension value from resource where ref=?",array("i",$ref),"");
 
-    if ($old_extension!="")	
+    if ($old_extension!="")
     	{
     	$old_path=get_resource_path($ref,true,"",true,$old_extension);
     	if (file_exists($old_path))
             {
             $alt_file=add_alternative_file($ref,'','','',$old_extension,0,'');
             $new_path = get_resource_path($ref, true, '', true, $old_extension, -1, 1, false, "", $alt_file);
-            
+
             copy($old_path,$new_path);
-            
+
             # Also copy thumbnail
             $old_thumb=get_resource_path($ref,true,'thm',true,"");
             if (file_exists($old_thumb))
@@ -65,4 +64,52 @@ function HookRse_VersionAllGet_alternative_files_extra_sql($resource)
             from resource_log where previous_file_alt_ref is not null and type='u' and resource=?)";
     $extra_query->parameters=array("i",$resource);
     return $extra_query;
+    }
+
+
+function HookRse_versionAllSave_resource_data_multi_extra_modes($ref,$field,$existing,$postvals,&$errors)
+    {
+    # Process the batch revert action - hooks in to the save operation (save_resource_data_multi())
+    global $FIXED_LIST_FIELD_TYPES, $lang, $user_local_timezone;
+    # Remove text/option(s) mode?
+    if (($postvals["modeselect_" . $field["ref"]] ?? "") == "Revert")
+        {
+        $revert_date = $postvals["revert_" . $field["ref"]] ?? "";
+
+        if(in_array($field["type"],$FIXED_LIST_FIELD_TYPES))
+            {
+            // Check if nodes can be reverted - only supported from date moved to system upgrade level 23 (v10.1)
+            $revert_min_time = get_sysvar("fixed_list_revert_enabled");
+            if($revert_min_time  > $revert_date)
+                {
+                $errors[$field["ref"]] = str_replace("%%DATE%%",$revert_min_time,$lang["rse_version_invalid_time"]);
+                return false;
+                }
+            }
+
+        # The incoming revert date is in local timezone; convert it to UTC for the fetch
+        $dateTime_from = $revert_date; 
+        $newDateTime = new DateTime($dateTime_from, new DateTimeZone($user_local_timezone)); 
+        $newDateTime->setTimezone(new DateTimeZone("UTC")); 
+        $revert_date = $newDateTime->format("Y-m-d H:i:s");
+
+        # Find the value of this field as of this date and time in the resource log.
+        $parameters=array("i",$ref, "i",$field["ref"], "s",$revert_date);
+        $value=ps_value("SELECT previous_value value from resource_log 
+            where resource=? and resource_type_field=? 
+            and (type='e' or type='m') and date>? and previous_value is not null order by date limit 1",$parameters,-1);
+        if ($value!=-1) {return $value;}
+        // No log entries for this field, don't change
+        return $existing;
+        }
+    return false;
+    }
+
+function HookRse_versionAllGet_resource_log_extra_fields()
+    {
+    # Extend get_resource_log so that the state of the previous value is fetched also.
+    return new PreparedStatementQuery(
+        ",previous_file_alt_ref, ((r.previous_value IS NOT NULL AND (r.type='e' OR r.type='m' OR r.type='N')) 
+            OR (r.previous_file_alt_ref IS NOT NULL AND r.type='u')) revert_enabled"
+        );
     }

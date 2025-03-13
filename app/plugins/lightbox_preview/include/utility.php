@@ -2,11 +2,15 @@
 
 function getPreviewURLForType($resource, $type, $alternative = -1, $page = 1)
     {
-    global $use_watermark, $ffmpeg_preview_extension;
+    global $baseurl, $use_watermark, $ffmpeg_preview_extension;
 
-    if(file_exists(get_resource_path($resource['ref'], true, "", false, $ffmpeg_preview_extension, -1, $page, $use_watermark, '', $alternative)))
+    if ($resource['file_extension'] == $ffmpeg_preview_extension)
         {
         return false;
+        }
+    else if(resource_has_access_denied_by_RT_size($resource['resource_type'], $type))
+        {
+        return $baseurl . '/gfx/' . get_nopreview_icon($resource['resource_type'], $resource['file_extension'], false);
         }
 
     $path = get_resource_path(
@@ -67,7 +71,7 @@ function addLightBox($selector, $url = "", $title = "", $set = "")
                     .attr('href', '<?php echo $url ?>')
                     <?php }
                 ?>
-                .attr('data-title', "<?php echo str_replace(array("\r","\n")," ", htmlspecialchars(strip_tags(i18n_get_translated($title)))); ?>")
+                .attr('data-title', "<?php echo escape(str_replace(array("\r","\n","\\")," ", strip_tags(i18n_get_translated($title)))); ?>")
                 .attr('data-lightbox', 'lightbox<?php if ($set != "") {echo $set;} ?>');
     });
     </script>

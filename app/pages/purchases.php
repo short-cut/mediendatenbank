@@ -3,13 +3,13 @@ include "../include/db.php";
 
 include "../include/authenticate.php"; if (checkperm("b")){exit("Permission denied");}
 
-$offset=getvalescaped("offset",0,true);
-$find=getvalescaped("find",getvalescaped("saved_find",""));rs_setcookie('saved_find', $find);
-$col_order_by=getvalescaped("col_order_by",getvalescaped("saved_col_order_by","created"));rs_setcookie('saved_col_order_by', $col_order_by);
-$sort=getvalescaped("sort",getvalescaped("saved_col_sort","ASC"));rs_setcookie('saved_col_sort', $sort);
+$offset=getval("offset",0,true);
+$find=getval("find",getval("saved_find",""));rs_setcookie('saved_find', $find);
+$col_order_by=getval("col_order_by",getval("saved_col_order_by","created"));rs_setcookie('saved_col_order_by', $col_order_by);
+$sort=getval("sort",getval("saved_col_sort","ASC"));rs_setcookie('saved_col_sort', $sort);
 $revsort = ($sort=="ASC") ? "DESC" : "ASC";
 # pager
-$per_page=getvalescaped("per_page_list",$default_perpage_list,true);rs_setcookie('per_page_list', $per_page);
+$per_page=getval("per_page_list",$default_perpage_list,true);rs_setcookie('per_page_list', $per_page);
 
 $collection_valid_order_bys=array("fullname","name","ref","count");
 $modified_collection_valid_order_bys=hook("modifycollectionvalidorderbys");
@@ -18,9 +18,9 @@ if (!in_array($col_order_by,$collection_valid_order_bys)) {$col_order_by="create
 
 if (array_key_exists("find",$_POST)) {$offset=0;} # reset page counter when posting
 
-$name=getvalescaped("name","");
+$name=getval("name","");
 
-$delete=getvalescaped("delete","");
+$delete=getval("delete","");
 if ($delete!="" && enforcePostRequest(getval("ajax", false)))
 	{
 	# Delete collection
@@ -28,7 +28,7 @@ if ($delete!="" && enforcePostRequest(getval("ajax", false)))
 
 	# Get count of collections
 	$c=get_user_collections($userref);
-	
+
 	# If the user has just deleted the collection they were using, select a new collection
 	if ($usercollection==$delete && count($c)>0)
 		{
@@ -48,26 +48,26 @@ if ($delete!="" && enforcePostRequest(getval("ajax", false)))
 	refresh_collection_frame($usercollection);
 	}
 
-$remove=getvalescaped("remove","");
+$remove=getval("remove","");
 if ($remove!="" && enforcePostRequest(getval("ajax", false)))
 	{
 	# Remove someone else's collection from your My Collections
 	remove_collection($userref,$remove);
-	
+
 	# Get count of collections
 	$c=get_user_collections($userref);
-	
+
 	# If the user has just removed the collection they were using, select a new collection
 	if ($usercollection==$remove && count($c)>0) {
 		# Select the first collection in the dropdown box.
 		$usercollection=$c[0]["ref"];
 		set_user_collection($userref,$usercollection);
 		}
-	
+
 	refresh_collection_frame();
 	}
 
-$reload=getvalescaped("reload","");
+$reload=getval("reload","");
 if ($reload!="")
 	{
 	# Refresh the collection frame (just edited a collection)
@@ -95,7 +95,7 @@ $jumpcount=1;
 $url=$baseurl_short."pages/my_purchases.php?paging=true&col_order_by=".$col_order_by."&sort=".$sort."&find=".urlencode($find)."";
 
 	?>
-  
+
 <form method=post id="collectionform" action="<?php echo $baseurl_short?>pages/my_purchases.php">
 <?php generateFormToken("collectionform"); ?>
 <input type=hidden name="delete" id="collectiondelete" value="">
@@ -144,7 +144,7 @@ for ($n=$offset;(($n<count($collections)) && ($n<($offset+$per_page)));$n++)
 	?><tr <?php hook("collectionlistrowstyle");?>>
 	<td><div class="ListTitle">
 		<a <?php if ($collections[$n]["type"] == COLLECTION_TYPE_FEATURED) { ?>style="font-style:italic;"<?php } ?> href="<?php echo $baseurl_short?>pages/search.php?search=<?php echo urlencode("!collection" . $collections[$n]["ref"])?>" onClick="return CentralSpaceLoad(this);"><?php echo highlightkeywords(i18n_get_collection_name($collections[$n]),$find)?></a></div></td>
-	<td><?php echo highlightkeywords($collection_prefix . $collections[$n]["ref"],$find)?></td>
+	<td><?php echo highlightkeywords($collections[$n]["ref"],$find)?></td>
 	<td><?php echo nicedate($collections[$n]["created"],true)?></td>
 	<td><?php echo $collections[$n]["count"]?></td>
 
@@ -152,13 +152,13 @@ for ($n=$offset;(($n<count($collections)) && ($n<($offset+$per_page)));$n++)
 	<td>	
         <div class="ListTools">
 		<a onClick="return CentralSpaceLoad(this,true);" href="<?php echo $baseurl_short?>pages/search.php?search=<?php echo urlencode("!collection" . $collections[$n]["ref"])?>"><?php echo LINK_CARET ?><?php echo $lang["viewall"]?></a>
-	
-	<?php if ($contact_sheet==true && $manage_collections_contact_sheet_link) { ?>
+
+	<?php if ($contact_sheet==true) { ?>
     &nbsp;<a href="<?php echo $baseurl_short?>pages/contactsheet_settings.php?ref=<?php echo $collections[$n]["ref"]?>" onClick="return CentralSpaceLoad(this);"><?php echo LINK_CARET ?><?php echo $lang["contactsheet"]?></a>
 	<?php } ?>
 
 	<?php hook("addcustomtool"); ?>
-	
+
 	</td>
 	</tr><?php
 }

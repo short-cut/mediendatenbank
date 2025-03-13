@@ -8,11 +8,13 @@ include "../../include/dash_functions.php";
 include "../../include/header.php";
 ?>
 <div class="BasicsBox"> 
+<h1><?php echo $lang["specialdashtiles"]; ?></h1>
 <?php
 $links_trail = array(
     array(
         'title' => $lang["teamcentre"],
-        'href'  => $baseurl_short . "pages/team/team_home.php"
+        'href'  => $baseurl_short . "pages/team/team_home.php",
+		'menu' =>  true
     ),
     array(
         'title' => $lang["specialdashtiles"],
@@ -33,7 +35,7 @@ renderBreadcrumbs($links_trail);
 <p></p>
 <ul>
 	<li>
-		<a href="<?php echo $baseurl."/pages/dash_tile.php?create=true&tltype=ftxt&modifylink=true&freetext=Helpful%20tips%20here&nostyleoptions=true&tile_audience=true&link=http://resourcespace.org/knowledge-base/&title=Knowledge%20Base";?>">
+		<a href="<?php echo $baseurl."/pages/dash_tile.php?create=true&tltype=ftxt&modifylink=true&freetext=Helpful%20tips%20here&nostyleoptions=true&tile_audience=true&link=https://resourcespace.com/knowledge-base/&title=Knowledge%20Base";?>">
 			<?php echo $lang["createdashtilefreetext"];?>
 		</a>
 	</li>

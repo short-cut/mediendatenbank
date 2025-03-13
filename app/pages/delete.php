@@ -2,9 +2,9 @@
 include "../include/db.php";
 include "../include/authenticate.php";
 
-$ref=getvalescaped("ref","",true);
+$ref=getval("ref","",true);
 
-if ((isset($allow_resource_deletion) and !$allow_resource_deletion) or (checkperm('D') and !hook('check_single_delete'))){
+if (checkperm('D') and !hook('check_single_delete')){
 	include "../include/header.php";
 	echo "Error: Resource deletion is disabled.";
 	exit;
@@ -12,18 +12,18 @@ if ((isset($allow_resource_deletion) and !$allow_resource_deletion) or (checkper
 $resource=get_resource_data($ref);
 
 # fetch the current search 
-$search=getvalescaped("search","");
-$order_by=getvalescaped("order_by","relevance");
-$offset=getvalescaped("offset",0,true);
-$restypes=getvalescaped("restypes","");
+$search=getval("search","");
+$order_by=getval("order_by","relevance");
+$offset=getval("offset",0,true);
+$restypes=getval("restypes","");
 if (strpos($search,"!")!==false) {$restypes="";}
-$archive=getvalescaped("archive","");
+$archive=getval("archive","");
 
 $modal=(getval("modal","")=="true");
 $default_sort_direction="DESC";
 if (substr($order_by,0,5)=="field"){$default_sort_direction="ASC";}
 $sort=getval("sort",$default_sort_direction);
-$curpos=getvalescaped("curpos","");
+$curpos=getval("curpos","");
 
 $error="";
 
@@ -42,7 +42,7 @@ $urlparams= array(
 );
 
 # Not allowed to edit this resource? They shouldn't have been able to get here.
-if (!get_edit_access($ref,$resource["archive"],false,$resource)) {exit ("Permission denied.");}
+if (!get_edit_access($ref,$resource["archive"],$resource)) {exit ("Permission denied.");}
 
 if($resource["lock_user"] > 0 && $resource["lock_user"] != $userref)
     {
@@ -146,8 +146,7 @@ if(!$modal)
 	?>
 	
 	<div class="QuestionSubmit">
-	<input name="save" type="hidden" value="true" />
-	<label for="buttons"> </label>			
+	<input name="save" type="hidden" value="true" />	
 	<input name="save" type="submit" value="&nbsp;&nbsp;<?php echo $lang["deleteresource"]?>&nbsp;&nbsp;"  onclick="return ModalPost(this.form,true);"/>		
 	<input name="cancel" type="button" value="&nbsp;&nbsp;<?php echo $lang["cancel"]?>&nbsp;&nbsp;"  onclick='return CentralSpaceLoad("<?php echo $cancelurl ?>",true);'/>
 	</div>

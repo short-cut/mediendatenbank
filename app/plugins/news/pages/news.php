@@ -25,7 +25,7 @@ else
 	$debugtext="Debug: ";
 	}
 
-if (!isset($ref)){$ref=getvalescaped("ref","",true);}
+if (!isset($ref)){$ref=getval("ref","",true);}
 
 if ((getval("edit","")!="") && (checkperm("o")))
 	{
@@ -34,14 +34,14 @@ if ((getval("edit","")!="") && (checkperm("o")))
 		
 if ((getval("previous","")!=""))
 	{
-	$ref=getvalescaped("ref","",true);
+	$ref=getval("ref","",true);
 	$ref--;
 	redirect("plugins/news/pages/news.php?ref=".$ref);
 	}
 
 if ((getval("next","")!=""))
 	{
-	$ref=getvalescaped("ref","",true);
+	$ref=getval("ref","",true);
 	$ref++;
 	redirect("plugins/news/pages/news.php?ref=".$ref);
 	}
@@ -92,14 +92,11 @@ include dirname(__FILE__)."/../../../include/header.php";
  
 <div>
 <form id="NewsNav" action="<?php echo $baseurl . '/plugins/news/pages/news.php?ref=' . $ref ?>" method="post">
-<?php generateFormToken("news"); ?>
-	<label for="buttons"></label>		
+<?php generateFormToken("news"); ?>	
 	<input name="previous" type="submit" value="&lt;"/>	
-	<?php if (checkperm("o")) { ?>
-		<label for="buttons"> </label>		
+	<?php if (checkperm("o")) { ?>	
 		<input name="edit" type="submit" value="<?php echo $lang["action-edit"]?>"/>
-	<?php } ?>
-	<label for="buttons"> </label>		
+	<?php } ?>		
 	<input name="next" type="submit" value="&gt;"/>
 </div>
 </form>	
@@ -113,5 +110,3 @@ include dirname(__FILE__)."/../../../include/header.php";
 
 <?php
 include dirname(__FILE__)."/../../../include/footer.php";
-?>
-

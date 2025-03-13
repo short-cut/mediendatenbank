@@ -1,7 +1,7 @@
 <?php
 include '../../include/db.php';
 
-$k = getvalescaped('k','');
+$k = getval('k','');
 $upload_collection = getval('upload_share_active',''); 
 if ($k=="" || (!check_access_key_collection($upload_collection,$k)))
     {
@@ -10,18 +10,18 @@ if ($k=="" || (!check_access_key_collection($upload_collection,$k)))
 
 // Initialise
 $ajax           = ('' != getval('ajax', '') ? true : false);
-$node_ref       = getvalescaped('node_ref', null, true);
-$field          = (int) getvalescaped('field', '', true);
-$selected_nodes = getvalescaped('selected_nodes', array());
+$node_ref       = getval('node_ref', null, true);
+$field          = (int) getval('field', '', true);
+$selected_nodes = getval('selected_nodes', array());
 $opened_nodes   = array();
 $js_tree_data   = array();
 
 $nodes = get_nodes($field, $node_ref);
 
-// Find the root nodes for any of the searched nodes
+// Find the ancestor nodes for any of the searched nodes
 // Most of the nodes will most likely be a tree leaf. 
 // This allows us to know which tree nodes we need to 
-// expand from the begining
+// expand from the beginning
 foreach($selected_nodes as $selected_node)
     {
     $tree_level = get_tree_node_level($selected_node);
@@ -31,10 +31,13 @@ foreach($selected_nodes as $selected_node)
         continue;
         }
 
-    $found_root_node = get_root_node_by_leaf($selected_node, $tree_level);
-    if($found_root_node)
+    $found_all_parents = get_all_ancestors_for_node($selected_node, $tree_level);
+    if(is_array($found_all_parents))
         {
-        $opened_nodes[] = $found_root_node;
+        foreach($found_all_parents[0] as $p_key => $p_ref)
+            {
+            $opened_nodes[] = $p_ref;
+            }
         }
     }
 

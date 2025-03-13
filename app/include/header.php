@@ -1,18 +1,32 @@
 <?php 
 hook ("preheaderoutput");
  
-$k=getvalescaped("k","");
+$k=getval("k","");
 if(!isset($internal_share_access))
 	{
 	// Set a flag for logged in users if $external_share_view_as_internal is set and logged on user is accessing an external share
     $internal_share_access = internal_share_access();
 	}
 
-$logout=getvalescaped("logout","");
-$loginas=getvalescaped("loginas","");
+$logout=getval("logout","");
+$loginas=getval("loginas","");
 
 # Do not display header / footer when dynamically loading CentralSpace contents.
 $ajax=getval("ajax","");
+
+// Force full page reload if CSS or JS has been updated
+$current_css_reload = getval("css_reload_key",0,true);
+if($ajax != "" && $current_css_reload != 0 && $current_css_reload != $css_reload_key)
+    {
+    http_response_code(205);
+    $return["error"] = array(
+        "status" => 205,
+        "title"  => htmlspecialchars($lang["error-reload-required"]),
+    );
+    echo json_encode($return);
+    exit();
+    }
+rs_setcookie("css_reload_key", $css_reload_key);
 
 if ($ajax=="" && !hook("replace_header")) { 
 
@@ -26,8 +40,15 @@ if(!isset($thumbs) && ($pagename!="login") && ($pagename!="user_password") && ($
         }
     }
 
-$noauth_page = ($pagename == "login");
-	
+$noauth_page = in_array(
+    $pagename,
+    array(
+        "login",
+        "user_change_password",
+        "user_request",
+        "done",
+    ));
+
 ?><!DOCTYPE html>
 <html lang="<?php echo $language ?>">	
 
@@ -53,7 +74,7 @@ $noauth_page = ($pagename == "login");
     }
 ?>
 
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <?php hook('extra_meta'); ?>
 
 <title><?php echo htmlspecialchars($applicationname)?></title>
@@ -139,27 +160,20 @@ if($simple_search_pills_view)
     }
 ?>
 
-<!-- FLOT for graphs -->
-<script language="javascript" type="text/javascript" src="<?php echo $baseurl_short; ?>lib/flot/jquery.flot.js"></script> 
-<script language="javascript" type="text/javascript" src="<?php echo $baseurl_short; ?>lib/flot/jquery.flot.time.js"></script> 
-<script language="javascript" type="text/javascript" src="<?php echo $baseurl_short; ?>lib/flot/jquery.flot.pie.js"></script>
-<script language="javascript" type="text/javascript" src="<?php echo $baseurl_short; ?>lib/flot/jquery.flot.tooltip.min.js"></script>
+<!-- Chart.js for graphs -->
+<script language="javascript" type="module" src="<?php echo $baseurl_short; ?>lib/js/chartjs-4-4-0.js"></script>
+<script language="javascript" type="module" src="<?php echo $baseurl_short; ?>lib/js/date-fns.js"></script>
+<script language="javascript" type="module" src="<?php echo $baseurl_short; ?>lib/js/chartjs-adapter-date-fns.js"></script>
 
 <!-- jsTree -->
-<link rel="stylesheet" href="<?php echo $baseurl_short; ?>lib/jstree/themes/default/style.min.css">
+<link rel="stylesheet" href="<?php echo $baseurl_short; ?>lib/jstree/themes/default-dark/style.min.css">
 <script src="<?php echo $baseurl_short; ?>lib/jstree/jstree.min.js"></script>
 <script src="<?php echo $baseurl_short; ?>lib/js/category_tree.js?css_reload_key=<?php echo $css_reload_key; ?>"></script>
 
-<!-- Chosen support -->
+<!-- DOMPurify -->
+<script src="<?php echo $baseurl; ?>/lib/js/purify.min.js"></script>
+
 <?php 
-if ($chosen_dropdowns || $chosen_dropdowns_collection) 
-        { 
-        ?>
-        <script src="<?php echo $baseurl_short ?>lib/chosen/chosen.jquery.min.js" type="text/javascript"></script>
-        <link rel="stylesheet" href="<?php echo $baseurl_short ?>lib/chosen/chosen.min.css">
-        <?php
-        }
-        
 global $not_authenticated_pages;
 $not_authenticated_pages = array('login', 'user_change_password','user_password','user_request');
 if(isset($GLOBALS['modify_header_not_authenticated_pages']) && is_array($GLOBALS['modify_header_not_authenticated_pages']))
@@ -170,65 +184,42 @@ if(isset($GLOBALS['modify_header_not_authenticated_pages']) && is_array($GLOBALS
 $browse_on = has_browsebar();
 if($browse_on)
     {
-    $browse_width   = $browse_default_width;
-    $browse_show    = getval("browse_show","") == "show";
     ?>
     <script src="<?php echo $baseurl_short ?>lib/js/browsebar_js.php" type="text/javascript"></script>
     <?php
     }
+$selected_search_tab = getval("selected_search_tab","");
 ?>
 
 <script type="text/javascript">
 var baseurl_short="<?php echo $baseurl_short?>";
 var baseurl="<?php echo $baseurl?>";
 var pagename="<?php echo $pagename?>";
-var errorpageload = "<h1><?php echo $lang["error"] ?></h1><p><?php echo str_replace(array("\r","\n"),'',nl2br($lang["error-pageload"])) ?></p>";
-var errortext = "<?php echo $lang["error"] ?>";
+var errorpageload = "<h1><?php echo escape($lang["error"]) ?></h1><p><?php echo escape(str_replace(array("\r","\n"),'',nl2br($lang["error-pageload"]))) ?></p>";
+var errortext = "<?php echo escape($lang["error"]) ?>";
 var applicationname = "<?php echo $applicationname?>";
-var branch_limit="<?php echo $cat_tree_singlebranch?>";
+var branch_limit=false;
 var branch_limit_field = new Array();
-var global_cookies = "<?php echo $global_cookies?>";
 var global_trash_html = '<!-- Global Trash Bin (added through CentralSpaceLoad) -->';
 var TileNav = <?php echo ($tilenav?"true":"false") ?>;
-var errornotloggedin = '<?php echo htmlspecialchars($lang["error_not_logged_in"]) ?>';
-var login = '<?php echo htmlspecialchars($lang["login"]) ?>';
+var errornotloggedin = '<?php echo escape($lang["error_not_logged_in"]) ?>';
+var login = '<?php echo escape($lang["login"]) ?>';
 <?php
 if (!hook("replacetrashbin", "", array("js" => true)))
     {
     echo "global_trash_html += '" . render_trash("trash","", true) . "';\n";
     }
 ?>
-oktext="<?php echo $lang["ok"] ?>";
+oktext="<?php echo escape($lang["ok"]) ?>";
 var scrolltopElementCentral='.ui-layout-center';
 var scrolltopElementContainer='.ui-layout-container';
 var scrolltopElementCollection='.ui-layout-south';
 var scrolltopElementModal='#modal'
-collection_bar_hide_empty=<?php echo $collection_bar_hide_empty?"true":"false"; ?>;
-<?php 
-if ($chosen_dropdowns) 
-	{ 
-	?>
-	var chosen_config = 
-		{
-		"#CentralSpace select"           : {disable_search_threshold:<?php echo $chosen_dropdowns_threshold_main ?>, allow_single_deselect: true, width:"0px"},
-		"#SearchBox select"           : {disable_search_threshold:<?php echo $chosen_dropdowns_threshold_simplesearch ?>, allow_single_deselect: true, width:"0px"}
-		}
-	<?php
-	}
-?>
-var chosenCollection='<?php echo ($chosen_dropdowns_collection)?>';
 <?php
-if($chosen_dropdowns_collection)
-    {
-    ?>
-    var chosenCollectionThreshold='<?php echo $chosen_dropdowns_threshold_collection ?>';
-	<?php
-	}
 
 if($browse_on)
     {
-    echo "browse_width = '" . $browse_width . "';
-    browse_clicked = false;";     
+    echo "browse_clicked = false;";     
     }
 ?>
 </script>
@@ -252,85 +243,82 @@ $extrafooterhtml="";
 <!-- Colour stylesheet -->
 <link href="<?php echo $baseurl?>/css/colour.css?css_reload_key=<?php echo $css_reload_key?>" rel="stylesheet" type="text/css" media="screen,projection,print" />
 <!-- Override stylesheet -->
-<link href="<?php echo $baseurl?>/css/css_override.php?k=<?php echo htmlspecialchars($k); ?>&css_reload_key=<?php echo $css_reload_key?>&noauth=<?php echo $noauth_page; ?>" rel="stylesheet" type="text/css" media="screen,projection,print" />
+<link href="<?php echo $baseurl?>/css/css_override.php?k=<?php echo escape($k); ?>&css_reload_key=<?php echo $css_reload_key?>&noauth=<?php echo $noauth_page; ?>" rel="stylesheet" type="text/css" media="screen,projection,print" />
 <!--- FontAwesome for icons-->
 <link rel="stylesheet" href="<?php echo $baseurl?>/lib/fontawesome/css/all.min.css?css_reload_key=<?php echo $css_reload_key?>">
 <link rel="stylesheet" href="<?php echo $baseurl?>/lib/fontawesome/css/v4-shims.min.css?css_reload_key=<?php echo $css_reload_key?>">
 <!-- Load specified font CSS -->
-<link id="global_font_link" href="<?php echo $baseurl?>/css/fonts/<?php echo $global_font ?>.css?css_reload_key=<?php echo $css_reload_key?>" rel="stylesheet" type="text/css" />
+<?php
+if (!isset($custom_font) || $custom_font == '')
+    {
+    ?><link id="global_font_link" href="<?php echo $baseurl?>/css/fonts/<?php echo $global_font ?>.css?css_reload_key=<?php echo $css_reload_key?>" rel="stylesheet" type="text/css" /><?php
+    }
+?>
+<!-- Web app manifest -->
+<link rel="manifest" href="<?php echo $baseurl . escape($web_app_manifest_location) ?>">
 
 <?php
 if(!$disable_geocoding)
     {
-    if($leaflet_maps_enable)
-        {
-        // Geocoding & leaflet maps
-        // Load Leaflet and plugin files.
-        ?>
-        <!--Leaflet.js v1.7.1 files-->
-        <link rel="stylesheet" href="<?php echo $baseurl?>/lib/leaflet_1.7.1/leaflet.css"/>
-        <script src="<?php echo $baseurl?>/lib/leaflet_1.7.1/leaflet.min.js"></script>
+    // Geocoding & leaflet maps
+    // Load Leaflet and plugin files.
+    ?>
+    <!--Leaflet.js files-->
+    <link rel="stylesheet" href="<?php echo $baseurl; ?>/lib/leaflet/leaflet.css?css_reload_key=<?php echo $css_reload_key; ?>"/>
+    <script src="<?php echo $baseurl; ?>/lib/leaflet/leaflet.js?<?php echo $css_reload_key; ?>"></script>
 
-        <?php 
-        if($geo_leaflet_maps_sources)
-            {?>
-            <!--Leaflet Providers v1.10.2 plugin files-->
-            <script src="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-providers-1.10.2/leaflet-providers.js"></script>
-            <?php
-            }
-        else
-            {
-            header_add_map_providers();
-            }?>
-
-        <!--Leaflet PouchDBCached v1.0.0 plugin file with PouchDB v7.1.1 file-->
-        <?php if ($map_default_cache || $map_layer_cache)
-            { ?>
-            <script src="<?php echo $baseurl?>/lib/leaflet_plugins/pouchdb-7.1.1/pouchdb-7.1.1.min.js"></script>
-            <script src="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-PouchDBCached-1.0.0/L.TileLayer.PouchDBCached.min.js"></script> <?php
-            } ?>
-
-        <!--Leaflet MarkerCluster v1.4.1 plugin files-->
-        <link rel="stylesheet" href="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-markercluster-1.4.1/dist/MarkerCluster.css"/>
-        <link rel="stylesheet" href="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-markercluster-1.4.1/dist/MarkerCluster.Default.css"/>
-
-        <!--Leaflet ColorMarkers v1.0.0 plugin file-->
-        <script src="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-colormarkers-1.0.0/js/leaflet-color-markers.js"></script>
-
-        <!--Leaflet NavBar v1.0.1 plugin files-->
-        <link rel="stylesheet" href="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-NavBar-1.0.1/src/Leaflet.NavBar.css"/>
-        <script src="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-NavBar-1.0.1/src/Leaflet.NavBar.min.js"></script>
-            
-        <!--Leaflet Omnivore v0.3.1 plugin file-->
-        <?php if ($map_kml)
-            { ?>
-            <script src="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-omnivore-0.3.4/leaflet-omnivore.min.js"></script> <?php
-            } ?>
-
-        <!--Leaflet EasyPrint v2.1.9 plugin file-->
-        <script src="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-easyPrint-2.1.9/dist/bundle.min.js"></script>
-
-        <!--Leaflet StyledLayerControl v5/16/2019 plugin files-->
-        <link rel="stylesheet" href="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-StyledLayerControl-5-16-2019/css/styledLayerControl.css"/>
-        <script src="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-StyledLayerControl-5-16-2019/src/styledLayerControl.min.js"></script>
-
-        <!--Leaflet Zoomslider v0.7.1 plugin files-->
-        <link rel="stylesheet" href="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-zoomslider-0.7.1/src/L.Control.Zoomslider.css"/>
-        <script src="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-zoomslider-0.7.1/src/L.Control.Zoomslider.min.js"></script>
-
-        <!--Leaflet Shades v1.0.2 plugin files-->
-        <link rel="stylesheet" href="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-shades-1.0.2/src/css/leaflet-shades.css"/>
-        <script src="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-shades-1.0.2/leaflet-shades.js"></script>
-
+    <?php 
+    if($geo_leaflet_maps_sources)
+        {?>
+        <!--Leaflet Providers v1.10.2 plugin files-->
+        <script src="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-providers-1.10.2/leaflet-providers.js"></script>
         <?php
         }
     else
         {
-        // Legacy OpenLayers code
-        ?>
-        <script src="<?php echo $baseurl ?>/lib/OpenLayers/OpenLayers.js"></script>
-        <?php
-        }
+        header_add_map_providers();
+        }?>
+
+    <!--Leaflet PouchDBCached v1.0.0 plugin file with PouchDB v7.1.1 file-->
+    <?php if ($map_default_cache || $map_layer_cache)
+        { ?>
+        <script src="<?php echo $baseurl?>/lib/leaflet_plugins/pouchdb-7.1.1/pouchdb-7.1.1.min.js"></script>
+        <script src="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-PouchDBCached-1.0.0/L.TileLayer.PouchDBCached.min.js"></script> <?php
+        } ?>
+
+    <!--Leaflet MarkerCluster v1.4.1 plugin files-->
+    <link rel="stylesheet" href="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-markercluster-1.4.1/dist/MarkerCluster.css"/>
+    <link rel="stylesheet" href="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-markercluster-1.4.1/dist/MarkerCluster.Default.css"/>
+
+    <!--Leaflet ColorMarkers v1.0.0 plugin file-->
+    <script src="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-colormarkers-1.0.0/js/leaflet-color-markers.js"></script>
+
+    <!--Leaflet NavBar v1.0.1 plugin files-->
+    <link rel="stylesheet" href="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-NavBar-1.0.1/src/Leaflet.NavBar.css"/>
+    <script src="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-NavBar-1.0.1/src/Leaflet.NavBar.min.js"></script>
+
+    <!--Leaflet Omnivore v0.3.1 plugin file-->
+    <?php if ($map_kml)
+        { ?>
+        <script src="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-omnivore-0.3.4/leaflet-omnivore.min.js"></script> <?php
+        } ?>
+
+    <!--Leaflet EasyPrint v2.1.9 plugin file-->
+    <script src="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-easyPrint-2.1.9/dist/bundle.min.js"></script>
+
+    <!--Leaflet StyledLayerControl v5/16/2019 plugin files-->
+    <link rel="stylesheet" href="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-StyledLayerControl-5-16-2019/css/styledLayerControl.css"/>
+    <script src="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-StyledLayerControl-5-16-2019/src/styledLayerControl.min.js"></script>
+
+    <!--Leaflet Zoomslider v0.7.1 plugin files-->
+    <link rel="stylesheet" href="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-zoomslider-0.7.1/src/L.Control.Zoomslider.css"/>
+    <script src="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-zoomslider-0.7.1/src/L.Control.Zoomslider.min.js"></script>
+
+    <!--Leaflet Shades v1.0.2 plugin files-->
+    <link rel="stylesheet" href="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-shades-1.0.2/src/css/leaflet-shades.css"/>
+    <script src="<?php echo $baseurl?>/lib/leaflet_plugins/leaflet-shades-1.0.2/leaflet-shades.js"></script>
+
+<?php
     }
 echo get_plugin_css();
 // after loading these tags we change the class on them so a new set can be added before they are removed (preventing flickering of overridden theme)
@@ -339,14 +327,16 @@ echo get_plugin_css();
 <?php
 
 hook("headblock");
- 
+
 endif; # !hook("customhtmlheader") 
 ?>
 </head>
 <body lang="<?php echo $language ?>" class="<?php echo implode(' ', $body_classes); ?>" <?php if (isset($bodyattribs)) { ?><?php echo $bodyattribs?><?php } ?>>
 
+<a href="#UICenter" class="skip-to-main-content"><?php echo htmlspecialchars($lang["skip-to-main-content"]); ?></a>
+
 <!-- Processing graphic -->
-<div id='ProcessingBox' style='display: none'><h3><?php echo $lang["status_processing"]; ?></h3><i aria-hidden="true" class="fa fa-cog fa-spin fa-3x fa-fw"></i></div>
+<div id='ProcessingBox' style='display: none'><h3><?php echo htmlspecialchars($lang["status_processing"]); ?></h3><i aria-hidden="true" class="fa fa-cog fa-spin fa-3x fa-fw"></i></div>
 
 <!-- Loading graphic -->
 <?php
@@ -362,7 +352,7 @@ hook("bodystart"); ?>
 <!--Global Header-->
 <?php
 if (($pagename=="terms") && (getval("url","")=="index.php")) {$loginterms=true;} else {$loginterms=false;}
-if (($pagename!="preview" || $preview_header_footer) && $pagename!="preview_all")
+if ($pagename!="preview" && $pagename!="preview_all")
     {
     // Standard header
     $homepage_url=$baseurl."/pages/".$default_home_page;
@@ -388,7 +378,6 @@ if (($pagename!="preview" || $preview_header_footer) && $pagename!="preview_all"
     <div id="Header" class="<?php
             echo in_array($pagename, $not_authenticated_pages) ? ' LoginHeader ' : ' ui-layout-north ';
             echo ((isset($slimheader_darken) && $slimheader_darken) ? 'slimheader_darken' : '');
-            echo ((isset($slimheader_fixed_position) && $slimheader_fixed_position) ? ' SlimHeaderFixedPosition' : '');
             echo " " . $header_size;
     ?>">
 
@@ -399,33 +388,21 @@ if (($pagename!="preview" || $preview_header_footer) && $pagename!="preview_all"
         <div id="HeaderResponsive">
         <?php
         }
-        
+
     hook('responsiveheader');
 
     if(!hook('replace_header_text_logo'))
         {
-        if($header_text_title) 
+        $header_img_src = get_header_image();
+        if($header_link && ($k=="" || $internal_share_access))
             {?>
-            <div id="TextHeader"><?php if ($k=="" || $internal_share_access){?><a href="<?php echo $homepage_url?>"  onClick="return CentralSpaceLoad(this,true);"><?php } ?><?php echo $applicationname;?><?php if ($k=="" || $internal_share_access){?></a><?php } ?></div>
-            <?php if ($applicationdesc!="")
-                {?>
-                <div id="TextDesc"><?php echo i18n_get_translated($applicationdesc);?></div>
-                <?php 
-                }
+            <a href="<?php echo $linkUrl; ?>" onClick="return CentralSpaceLoad(this,true);" class="HeaderImgLink"><img src="<?php echo $header_img_src; ?>" id="HeaderImg" alt="<?php echo $applicationname;?>"></a>
+            <?php
             }
         else
-            {
-            $header_img_src = get_header_image();
-            if($header_link && ($k=="" || $internal_share_access))
-                {?>
-                <a href="<?php echo $linkUrl; ?>" onClick="return CentralSpaceLoad(this,true);" class="HeaderImgLink"><img src="<?php echo $header_img_src; ?>" id="HeaderImg" ></a>
-                <?php
-                }
-            else
-                {?>
-                <div class="HeaderImgLink"><img src="<?php echo $header_img_src; ?>" id="HeaderImg"></div>
-                <?php
-                }
+            {?>
+            <div class="HeaderImgLink"><img src="<?php echo $header_img_src; ?>" id="HeaderImg" alt="<?php echo $applicationname;?>"></div>
+            <?php
             }
         }
 
@@ -439,7 +416,16 @@ if (($pagename!="preview" || $preview_header_footer) && $pagename!="preview_all"
             ?>   
             <div id="HeaderButtons" style="display:none;">
                 <a href="#" id="HeaderNav1Click" class="ResponsiveHeaderButton ResourcePanel ResponsiveButton">
-                    <span class="rbText"><?php echo $allow_password_change == false ? htmlspecialchars(($userfullname=="" ? $username : $userfullname)) : $lang["responsive_settings_menu"]; ?></span>
+                    <span class="rbText">
+                        <?php if ($allow_password_change == false)
+                            {
+                            echo htmlspecialchars((!isset($userfullname)||$userfullname==""?$username:$userfullname));
+                            }
+                        else 
+                            {
+                            echo htmlspecialchars($lang["responsive_settings_menu"]);
+                            }?>
+                        </span>
                     <?php if ($user_profile_image != "")
                         {
                         ?><img src='<?php echo $user_profile_image; ?>' alt='Profile icon' class="ProfileImage" id='UserProfileImage'> <?php
@@ -450,7 +436,7 @@ if (($pagename!="preview" || $preview_header_footer) && $pagename!="preview_all"
                         }
                     ?></a>
                 <a href="#" id="HeaderNav2Click" class="ResponsiveHeaderButton ResourcePanel ResponsiveButton">
-                    <span class="rbText"><?php echo $lang["responsive_main_menu"]; ?></span>
+                    <span class="rbText"><?php echo htmlspecialchars($lang["responsive_main_menu"]); ?></span>
                     <span class="fa fa-fw fa-lg fa-bars"></span>
                 </a>
             </div>
@@ -476,9 +462,9 @@ if (($pagename!="preview" || $preview_header_footer) && $pagename!="preview_all"
                 {
                 ?>
                 <ul>
-                <li><a href="<?php echo $baseurl?>/login.php"<?php if($anon_login_modal){?> onClick="return ModalLoad(this,true,true);" <?php } ?>><?php echo $lang["login"]?></a></li>
+                <li><a href="<?php echo $baseurl?>/login.php"><?php echo htmlspecialchars($lang["login"]) ?></a></li>
                 <?php hook("addtoplinksanon");?>
-                <?php if ($contact_link) { ?><li><a href="<?php echo $baseurl?>/pages/contact.php" onClick="return CentralSpaceLoad(this,true);"><?php echo $lang["contactus"]?></a></li><?php } ?>
+                <?php if ($contact_link) { ?><li><a href="<?php echo $baseurl?>/pages/contact.php" onClick="return CentralSpaceLoad(this,true);"><?php echo htmlspecialchars($lang["contactus"]) ?></a></li><?php } ?>
                 </ul>
                 <?php
                 } /* end replaceheadernav1anon */
@@ -488,37 +474,20 @@ if (($pagename!="preview" || $preview_header_footer) && $pagename!="preview_all"
             if (!hook("replaceheadernav1"))
                 {
                 echo "<ul>";
-                if ($header_search && $k=="")
-                    { ?>
-                    <li>
-                        <form class="HeaderSearchForm" id="header_search_form" method="post" action="<?php echo $baseurl?>/pages/search.php" onSubmit="return CentralSpacePost(this,true);">
-                        <?php
-                        generateFormToken("header_search_form");
-                        ?>
-                        <input id="ssearchbox" name="search" type="text" class="searchwidth" placeholder="<?php echo $lang['simplesearch'] . '...'; ?>" value="<?php echo (isset($quicksearch)?$htmlspecialchars($quicksearch):"") ?>" />
-                        
-                        <a href="<?php echo $baseurl; ?>/pages/simple_search.php" onClick="ModalClose(); return ModalLoad(this, true, true, 'right');">
-                                    <i aria-hidden="true" class="fa fa-filter fa-lg fa-fw"></i>
-                                </a>
-                        </form>
-                    </li>
-                    <?php
-                    }
-
                 if (($top_nav_upload && checkperm("c")) || ($top_nav_upload_user && checkperm("d")))
                     {
                     $topuploadurl = get_upload_url("",$k);
                     ?>
                     <li class="HeaderLink UploadButton">
-                        <a href="<?php echo $topuploadurl ?>" onClick="return CentralSpaceLoad(this,true);"><?php echo UPLOAD_ICON ?><?php echo $lang["upload"]; ?></a>
+                        <a href="<?php echo $topuploadurl ?>" onClick="return CentralSpaceLoad(this,true);"><?php echo UPLOAD_ICON ?><?php echo htmlspecialchars($lang["upload"]); ?></a>
                     </li><?php
                     }
-            
+
                 if(!hook('replaceheaderfullnamelink'))
                     {
                     ?>
                     <li>
-                        <a href="<?php echo $baseurl; ?>/pages/user/user_home.php" onClick="ModalClose(); return ModalLoad(this, true, true, 'right');" alt="<?php echo $lang['myaccount']; ?>" title="<?php echo $lang['myaccount']; ?>">
+                        <a href="<?php echo $baseurl; ?>/pages/user/user_home.php" onClick="ModalClose(); return ModalLoad(this, true, true, 'right');" alt="<?php echo escape($lang['myaccount']); ?>" title="<?php echo escape($lang['myaccount']); ?>">
                         <?php
                         if (isset($header_include_username) && $header_include_username)
                             {
@@ -557,12 +526,12 @@ if (($pagename!="preview" || $preview_header_footer) && $pagename!="preview_all"
                     }
                     ?>
                 </li>
-            
+
                 <!-- Admin menu link -->
                 <?php if (checkperm("t"))
-                    { ?><li><a href="<?php echo $baseurl?>/pages/team/team_home.php" onClick="ModalClose();return ModalLoad(this,true,true,'right');" alt="<?php echo $lang['teamcentre']; ?>" title="<?php echo $lang['teamcentre']; ?>"><i aria-hidden="true" class="fa fa-lg fa-bars fa-fw"></i></a>
+                    { ?><li><a href="<?php echo $baseurl?>/pages/team/team_home.php" onClick="ModalClose();return ModalLoad(this,true,true,'right');" alt="<?php echo escape($lang['teamcentre']); ?>" title="<?php echo escape($lang['teamcentre']); ?>"><i aria-hidden="true" class="fa fa-lg fa-bars fa-fw"></i>
                     <?php 
-                        if (!$actions_on && $team_centre_alert_icon && (checkperm("R")||checkperm("r")))
+                        if (!$actions_on && (checkperm("R")||checkperm("r")))
                             {
                             # Show pill count if there are any pending requests
                             $pending=ps_value("select sum(thecount) value from (select count(*) thecount from request where status = 0 union select count(*) thecount from research_request where status = 0) as theunion",array(),0);
@@ -573,12 +542,12 @@ if (($pagename!="preview" || $preview_header_footer) && $pagename!="preview_all"
                             ?><span id="TeamMessages" class="Pill" style="display:none"></span><?php
                             }
                         ?>
-                    </li><?php
+                    </a></li><?php
                     } ?>
                 <!-- End of Admin link -->
-                
+
                 <?php hook("addtoplinks"); ?>
-                
+
                 </ul>
                 <?php
                 } /* end replaceheadernav1 */
@@ -604,7 +573,7 @@ if (($pagename!="preview" || $preview_header_footer) && $pagename!="preview_all"
         # Empty Header?>
         <div id="HeaderNav1" class="HorizontalNav ">&nbsp;</div>
         <div id="HeaderNav2" class="HorizontalNav HorizontalWhiteNav">&nbsp;</div>
-        <?php 
+<?php 
         }
     }
 hook("headerbottom"); ?>
@@ -626,14 +595,11 @@ hook("headerbottom"); ?>
 
 if($pagename == "terms" && isset($_SERVER["HTTP_REFERER"]) && strpos($_SERVER["HTTP_REFERER"],"login") !== false && $terms_login)
     {
-        array_push($omit_searchbar_pages, 'terms');
-        $collections_footer = false;
+    array_push($omit_searchbar_pages, 'terms');
     }
- 
+
 # if config set to display search form in header or (usergroup search permission omitted and anonymous login panel not to be displayed, then do not show simple search bar    
-if ($header_search || (!checkperm("s") && !($show_anonymous_login_panel && isset($anonymous_login) && (isset($username)) && ($username==$anonymous_login)) ) )
-    { }
-    else 
+if (checkperm("s") || (is_anonymous_user() && $show_anonymous_login_panel))
     {
     # Include simple search sidebar?
 
@@ -651,7 +617,7 @@ if ($header_search || (!checkperm("s") && !($show_anonymous_login_panel && isset
         <div id="SearchBarContainer" class="ui-layout-east" >
         <?php
         include dirname(__FILE__)."/searchbar.php";
-        
+
         ?>
         </div>
         <?php
@@ -685,36 +651,26 @@ else
     }
 ?>
 <!--Main Part of the page-->
-<?php
 
-if($browse_on && checkperm("s") === true)
+<!-- Global Trash Bin -->
+<?php if (!hook("replacetrashbin"))
     {
-    render_browse_bar();
-    }
-        
-echo '<div id="UICenter" class="ui-layout-center ' . $uicenterclass . '">';
+    render_trash("trash", "");
+    } ?>
+
+<?php
+echo '<div id="UICenter" role="main" class="ui-layout-center ' . $uicenterclass . '">';
 
 hook('afteruicenter');
 
 if (!in_array($pagename, $not_authenticated_pages))
     {
-    // Set classes for CentralSpaceContainer
-    $csc_classes = array();
-    if(isset($username) && !in_array($pagename, $not_authenticated_pages) && false == $loginterms && ('' == $k || $internal_share_access) && $browse_bar) 
-        {
-        if($header_search)
-            {
-            $csc_classes[] = "NoSearchBar";
-            }
-        }
-    echo '<div id="CentralSpaceContainer" ' . (count($csc_classes) > 0 ? 'class="' . implode(' ', $csc_classes) . '"' : '' ) . '>';
+    echo '<div id="CentralSpaceContainer">';
     }
 
 hook("aftercentralspacecontainer");
 ?>
 <div id="<?php echo $div?>">
-
-
 <?php
 
 hook("afterheader");
@@ -731,10 +687,11 @@ $port   = (isset($parsed_url['port']) ? ":{$parsed_url['port']}" : "");
 
 $activate_header_link = "{$scheme}://{$host}{$port}" . urlencode($_SERVER["REQUEST_URI"]);
 
-if($leaflet_maps_enable)
+if(!$disable_geocoding) 
     {
     get_geolibraries();
     }
+
 ?>
 <script>
  
@@ -763,9 +720,7 @@ window.onresize=function()
 </script>
 <?php
 // Non-ajax specific hook 
-hook("start_centralspace");
-
-	
+hook("start_centralspace");	
 
 if ($k!="" && !$internal_share_access) { ?>
 <style>
@@ -781,4 +736,3 @@ if ($ajax) {
     <?php
     hook("afterheaderajax");
 }
-?>

@@ -17,7 +17,7 @@ function get_reports()
     # The reports are always listed in the same order - regardless of the used language. 
 
     # Executes query.
-    $r = sql_query("SELECT ref, `name`, `query`, support_non_correlated_sql FROM report ORDER BY name");
+    $r = ps_query("SELECT ref, `name`, `query`, support_non_correlated_sql FROM report ORDER BY name");
 
     # Translates report names in the newly created array.
     $return = array();
@@ -26,8 +26,9 @@ function get_reports()
         if (!hook('ignorereport', '', array($r[$n])))
             {
             $r[$n]["name"] = get_report_name($r[$n]);
-            $r[$n]["contains_date"] = report_has_date($r[$n]["query"]);
-            $return[] = $r[$n]; # Adds to return array.
+            $r[$n]["contains_date"] = report_has_date((string) $r[$n]["query"]);
+            $r[$n]['has_thumbnail'] = report_has_thumbnail((string) $r[$n]["query"]);
+            $return[] = $r[$n];
             }
         }
     return $return;
@@ -61,8 +62,7 @@ function do_report($ref,$from_y,$from_m,$from_d,$to_y,$to_m,$to_d,$download=true
     # Run report with id $ref for the date range specified. Returns a result array.
     global $lang, $baseurl, $report_rows_attachment_limit;
 
-    $ref_escaped = escape_check($ref);
-    $report = sql_query("SELECT ref, `name`, `query`, support_non_correlated_sql FROM report WHERE ref = '{$ref_escaped}'");
+    $report = ps_query("SELECT ref, `name`, `query`, support_non_correlated_sql FROM report WHERE ref = ?",array("i",$ref));
 
     if (count($report) < 1)
         {
@@ -92,21 +92,19 @@ function do_report($ref,$from_y,$from_m,$from_d,$to_y,$to_m,$to_d,$download=true
     else
         {
         // Generate report results normally
-        $sql=$report["query"];
-        $sql=str_replace("[from-y]",$from_y,$sql);
-        $sql=str_replace("[from-m]",$from_m,$sql);
-        $sql=str_replace("[from-d]",$from_d,$sql);
-        $sql=str_replace("[to-y]",$to_y,$sql);
-        $sql=str_replace("[to-m]",$to_m,$sql);
-        $sql=str_replace("[to-d]",$to_d,$sql);
-
-        global $view_title_field;
-        $sql=str_replace("[title_field]",$view_title_field,$sql);
-
-        // IF report supports being run on search results
-        if($report['support_non_correlated_sql'] === '1' && !empty($search_params))
+        $sql_parameters = array();
+        $report_placeholders = [
+            '[from-y]' => $from_y,
+            '[from-m]' => $from_m,
+            '[from-d]' => $from_d,
+            '[to-y]' => $to_y,
+            '[to-m]' => $to_m,
+            '[to-d]' => $to_d,
+        ];
+        if((bool)$report['support_non_correlated_sql'] === true && !empty($search_params))
             {
-            $search_sql = do_search(
+            // If report supports being run on search results, embed the non correlated sql necessary to feed the report
+            $returned_search = do_search(
                 $search_params['search'],
                 $search_params['restypes'],
                 $search_params['order_by'],
@@ -114,7 +112,7 @@ function do_report($ref,$from_y,$from_m,$from_d,$to_y,$to_m,$to_d,$download=true
                 -1, # fetchrows
                 $search_params['sort'],
                 false, # access_override
-                $search_params['starsearch'],
+                DEPRECATED_STARSEARCH,
                 false, # ignore_filters
                 false, # return_disk_usage
                 $search_params['recentdaylimit'],
@@ -124,17 +122,18 @@ function do_report($ref,$from_y,$from_m,$from_d,$to_y,$to_m,$to_d,$download=true
                 false, # editable_only
                 true # returnsql
             );
-            if(!is_string($search_sql))
+
+            if(!is_a($returned_search,"PreparedStatementQuery") || !is_string($returned_search->sql))
                 {
                 debug("Invalid SQL returned by do_search(). Report cannot be generated");
-                return false;
+                return "";
                 }
-            $ncsql = sprintf('(SELECT ncsql.ref FROM (%s) AS ncsql)', $search_sql);
-
-            $sql = str_replace(REPORT_PLACEHOLDER_NON_CORRELATED_SQL, $ncsql, $sql);
+            $sql_parameters = array_merge($sql_parameters, $returned_search->parameters);
+            $report_placeholders[REPORT_PLACEHOLDER_NON_CORRELATED_SQL] = "(SELECT ncsql.ref FROM ({$returned_search->sql}) AS ncsql)";
             }
 
-        $results = sql_query($sql);
+        $sql = report_process_query_placeholders($report['query'], $report_placeholders);
+        $results = ps_query($sql,$sql_parameters);
         }
     
     $resultcount = count($results);
@@ -257,13 +256,31 @@ function do_report($ref,$from_y,$from_m,$from_d,$to_y,$to_m,$to_d,$download=true
                     $thm_path=get_resource_path($value,true,"thm",false,"",$scramble=-1,$page=1,false);
                     if (!file_exists($thm_path)){
                         $resourcedata=get_resource_data($value);
-                        $thm_url= $baseurl . "/gfx/" . get_nopreview_icon($resourcedata["resource_type"],$resourcedata["file_extension"],true);
+                        if(is_array($resourcedata))
+                            {
+                            $thm_path = sprintf(
+                                '%s/gfx/%s',
+                                dirname(__DIR__),
+                                get_nopreview_icon($resourcedata["resource_type"],$resourcedata["file_extension"],true)
+                            );
+                            }
+                        else
+                            {
+                            $thm_path = dirname(__DIR__) . "/gfx/no_preview/resource_type/type1.png";
+                            }
                         }
                     else
                         {
-                        $thm_url=get_resource_path($value,false,"col",false,"",-1,1,false);
+                        $thm_path = get_resource_path($value,true,"col",false,"",-1,1,false);
                         }
-                    $output.="<td><a href=\"" . $baseurl . "/?r=" . $value .  "\" target=\"_blank\"><img src=\"" . $thm_url . "\"></a></td>\r\n";
+
+                    $output.=sprintf(
+                        "<td><a href=\"%s/?r=%s\" target=\"_blank\"><img src=\"data:image/%s;base64,%s\"></a></td>\r\n",
+                        $baseurl,
+                        $value,
+                        pathinfo($thm_path, PATHINFO_EXTENSION),
+                        base64_encode(file_get_contents($thm_path))
+                    );
                     }
                 else
                     {
@@ -294,44 +311,26 @@ function do_report($ref,$from_y,$from_m,$from_d,$to_y,$to_m,$to_d,$download=true
 */
 function create_periodic_email($user, $report, $period, $email_days, array $user_groups, array $search_params)
     {
+    if ($email_days < 1)
+        {
+        $email_days = 1; # Minimum email frequency is daily.
+        }
     # Delete any matching rows for this report/period.
-    $query = sprintf("
-            DELETE
-              FROM report_periodic_emails
-             WHERE user = '%s'
-               AND report = '%s'
-               AND period = '%s';
-        ",
-        escape_check($user),
-        escape_check($report),
-        escape_check($period)
-    );
-    sql_query($query);
+    $query = "DELETE FROM report_periodic_emails
+              WHERE user = ?
+              AND report = ?
+              AND period = ?";
+    $parameters=array("i",$user, "i",$report, "i",$period);
+    ps_query($query,$parameters);
 
     # Insert a new row.
-    $query = sprintf("
-            INSERT INTO report_periodic_emails (
-                                                   user,
-                                                   report,
-                                                   period,
-                                                   email_days,
-                                                   search_params
-                                               )
-                 VALUES (
-                            '%s', 
-                            '%s', 
-                            '%s', 
-                            '%s', 
-                            '%s'   
-                        );
-        ",
-        escape_check($user),
-        escape_check($report),
-        escape_check($period),
-        escape_check($email_days),
-        escape_check(json_encode($search_params, JSON_UNESCAPED_UNICODE | JSON_NUMERIC_CHECK))
-    );
-    sql_query($query);
+    $query = "INSERT INTO report_periodic_emails 
+                        (user, report, period, email_days, search_params)
+                 VALUES (?,?,?,?,?)";
+    $parameters=array("i",$user, "i",$report, "i",$period, "i",$email_days, 
+                      "s",json_encode($search_params, JSON_UNESCAPED_UNICODE | JSON_NUMERIC_CHECK));
+    ps_query($query,$parameters);
+
     $ref = sql_insert_id();
     
     # Send to all users?
@@ -339,22 +338,8 @@ function create_periodic_email($user, $report, $period, $email_days, array $user
         {
         if(!empty($user_groups))
             {
-
-            // Manually implode usergroups to allow an escape_check()
-            $ugstring="";
-            $ugindex=0;
-            $ugcount=count($user_groups);
-            foreach($user_groups as $ug) {
-                $ugindex+=1;
-                if($ugindex < $ugcount) {
-                    $ugstring = $ugstring . escape_check($ug) . ",";
-                }
-                else {
-                    $ugstring = $ugstring . escape_check($ug);
-                }
-            }
-
-            sql_query("UPDATE report_periodic_emails SET user_groups = '" . $ugstring . "' WHERE ref = '" . escape_check($ref) . "';");
+            $ugstring=implode(",",$user_groups);
+            ps_query("UPDATE report_periodic_emails SET user_groups = ? WHERE ref = ?",array("s",$ugstring, "i",$ref));
             }
         }
 
@@ -366,7 +351,19 @@ function create_periodic_email($user, $report, $period, $email_days, array $user
 function send_periodic_report_emails($echo_out = true, $toemail=true)
     {
     # For all configured periodic reports, send a mail if necessary.
-    global $lang,$baseurl, $report_rows_zip_limit, $email_notify_usergroups;
+    global $lang,$baseurl, $report_rows_zip_limit, $email_notify_usergroups, $userref;
+
+    if (is_process_lock("periodic_report_emails")) 
+        {
+        echo " - periodic_report_emails process lock is in place. Skipping.\n";
+        return;
+        }
+    
+    set_process_lock("periodic_report_emails");
+
+    // Keep record of temporary CSV/ZIP files to delete after emails have been sent
+    $deletefiles = array();
+    $users = [];
 
     # Query to return all 'pending' report e-mails, i.e. where we haven't sent one before OR one is now overdue.
     $query = "
@@ -385,13 +382,10 @@ function send_periodic_report_emails($echo_out = true, $toemail=true)
           JOIN user u ON pe.user = u.ref
           JOIN report r ON pe.report = r.ref
          WHERE pe.last_sent IS NULL
-            OR date_add(date(pe.last_sent), INTERVAL pe.email_days DAY) <= date(now());
+            OR (date_add(date(pe.last_sent), INTERVAL pe.email_days DAY) <= date(now()) AND pe.email_days > 0);
     ";
+    $reports=ps_query($query);
 
-    // Keep record of temporary CSV/ZIP files to delete after emails have been sent
-    $deletefiles = array();
-
-    $reports=sql_query($query);
     foreach ($reports as $report)
         {
         $start=time()-(60*60*24*$report["period"]);
@@ -404,78 +398,6 @@ function send_periodic_report_emails($echo_out = true, $toemail=true)
         $to_m = date("m");
         $to_d = date("d");
 
-        // Translates the report name.
-        $report["name"] = lang_or_i18n_get_translated($report["name"], "report-");
-
-        $search_params = (trim($report['search_params']) !== '' ? json_decode($report['search_params'], true) : []);
-
-        # Generate report (table or CSV)
-        $output=do_report($report["report"], $from_y, $from_m, $from_d, $to_y, $to_m, $to_d,false,true, $toemail, $search_params);
-
-        // Formulate a title
-        $title = $report["name"] . ": " . str_replace("?",$report["period"],$lang["lastndays"]);
-
-        // If report is large, make it an attachment (requires $use_phpmailer=true)
-        $reportfiles = array();
-        if(is_array($output) && isset($output["file"]))
-            {
-            $deletefiles[] = $output["file"];
-            //Include the file as an attachment
-            if($output["rows"] > $report_rows_zip_limit)
-                {
-                // Convert to  zip file
-                $unique_id=uniqid();
-                $zipfile = get_temp_dir(false, "Reports") . "/Report_" . $unique_id . ".zip";
-                $zip = new ZipArchive();
-                $zip->open($zipfile, ZIPARCHIVE::CREATE);
-                $zip->addFile($output["file"], $output["filename"]);
-            
-                $zip->close();
-                $deletefiles[] = $zipfile;
-                $zipname = str_replace(".csv",".zip", $output["filename"]);
-                $reportfiles[$zipname] = $zipfile;
-                }
-            else
-                {
-                $reportfiles[$output["filename"]] = $output["file"];
-                }
-            $output = str_replace("%%REPORTTITLE%%", $title, $lang["report_periodic_email_report_attached"]);
-            }
-
-        // Send mail to original user - this contains the unsubscribe link
-        // Note: this is basically the only way at the moment to delete a periodic report
-        $delete_link = "<br /><br />" . $lang["report_delete_periodic_email_link"] . "<br /><a href=\"" . $baseurl . "/?dr=" . $report["ref"] . "\" target=\"_blank\">" . $baseurl . "/?dr=" . $report["ref"] . "</a>";
-        
-        $unsubscribe="<br /><br />" . $lang["unsubscribereport"] . "<br /><a href=\"" . $baseurl . "/?ur=" . $report["ref"] . "\" target=\"_blank\">" . $baseurl . "/?ur=" . $report["ref"] . "</a>";
-        $email=$report["email"];
-
-        // Check user unsubscribed from this report
-        $query = sprintf('
-                SELECT true as `value`
-                  FROM report_periodic_emails_unsubscribe
-                 WHERE user_id = "%s"
-                   AND periodic_email_id = "%s";
-            ',
-            $report['user'],
-            $report['ref']
-        );
-        $unsubscribed_user = sql_value($query, false);
-        if(!$unsubscribed_user)
-            {
-            if ($echo_out) {echo $lang["sendingreportto"] . " " . $email . "<br />" . $output . $delete_link . $unsubscribe . "<br />";}
-            send_mail($email,$title,$output . $delete_link  . $unsubscribe,"","","","","","","",$reportfiles);
-            }
-
-        // Jump to next report if this should only be sent to one user
-        if(!$report['send_all_users'] && empty($report['user_groups']))
-            {
-            # Mark as done.
-            sql_query('UPDATE report_periodic_emails set last_sent = now() where ref = "' . $report['ref'] . '";');
-            
-            continue;
-            }
-
-        $users = array();
         // Send e-mail reports to users belonging to the specific user groups
         if(empty($report['user_groups']))
             {
@@ -503,44 +425,140 @@ function send_periodic_report_emails($echo_out = true, $toemail=true)
             {
             $users = get_users($report['user_groups'],"","u.username",false,-1,1);
             }
+        
+        // Always add original report creator
+        $creator = get_user($report['user']);
+        $users[] = $creator;
+        $sentousers  = []; 
+        if(isset($userref))
+            {
+            // Store current user before emulating each to get report
+            $saveduserref = $userref;
+            }
 
+        // Get unsubscribed users
+        $unsubscribed = ps_array(
+                'SELECT user_id as `value` 
+                FROM report_periodic_emails_unsubscribe 
+                WHERE periodic_email_id = ?',
+                ["i",$report['ref']]);
+
+        $reportcache = NULL;
         foreach($users as $user)
             {
-            $email = $user['email'];
+            if(in_array($user["ref"],$unsubscribed) || in_array($user["ref"],$sentousers))
+                {
+                // User has unsubscribed from this report or already been sent it
+                continue;
+                }
 
-            # Do not send to original report user, as they receive the mail with the unsubscribe link above.
-            if(($email == $report['email']) || !filter_var($email, FILTER_VALIDATE_EMAIL))
+            // Check valid email
+            $email = $user['email'];
+            if(!filter_var($email, FILTER_VALIDATE_EMAIL))
                 {
                 continue;
                 }
 
-            // Check user unsubscribed from this report
-            $query = sprintf('
-                    SELECT true as `value`
-                      FROM report_periodic_emails_unsubscribe
-                     WHERE user_id = "%s"
-                       AND periodic_email_id = "%s";
-                ',
-                $user['ref'],
-                $report['ref']
-            );
-            $unsubscribed_user = sql_value($query, false);
+            // Construct and run the report
+            // Emulate the receiving user so language text strings are translated and search results take into account any permissions and filters
+            emulate_user($user["ref"]);
+            $userref = $user["ref"];
+    
+            // Translates the report name.
+            $report["name"] = lang_or_i18n_get_translated($report["name"], "report-");
 
-            if(!$unsubscribed_user)
+            $search_params = (trim($report['search_params']??"") !== '' ? json_decode($report['search_params'], true) : []);
+
+            $static_report = true; // If no dynamic search results are included then the same report results can be used for all  recipients
+
+            if(!empty($search_params))
                 {
-                $unsubscribe_link = sprintf('<br />%s<br />%s/?ur=%s',
-                    $lang['unsubscribereport'],
-                    $baseurl,
-                    $report['ref']
-                );
-
-                if ($echo_out) {echo $lang["sendingreportto"] . " " . $email . "<br />" . $output . $unsubscribe_link . "<br />";}
-                send_mail($email, $title, $output . $unsubscribe_link);
+                $static_report = false; // Report may vary so cannot be cached
                 }
+            
+            # Generate report (table or CSV)
+            if($static_report && isset($reportcache))
+                {
+                $output = $reportcache["output"];
+                $reportfiles = $reportcache["reportfiles"];
+                }
+            else
+                {
+                $output = do_report($report["report"], $from_y, $from_m, $from_d, $to_y, $to_m, $to_d,false,true, $toemail, $search_params);
+
+                if(empty($output))
+                    {
+                    // No data, maybe no access to search results
+                    $output = "<br/>" . $lang["reportempty"] . "<br/>";
+                    }
+                $reportfiles = [];
+                // If report is large, make it an attachment (requires $use_phpmailer=true)
+                if(is_array($output) && isset($output["file"]))
+                    {
+                    $deletefiles[] = $output["file"];
+                    // Include the file as an attachment
+                    if($output["rows"] > $report_rows_zip_limit)
+                        {
+                        // Convert to  zip file
+                        $unique_id=uniqid();
+                        $zipfile = get_temp_dir(false, "Reports") . "/Report_" . $unique_id . ".zip";
+                        $zip = new ZipArchive();
+                        $zip->open($zipfile, ZIPARCHIVE::CREATE);
+                        $zip->addFile($output["file"], $output["filename"]);
+
+                        $zip->close();
+                        $deletefiles[] = $zipfile;
+                        $zipname = str_replace(".csv",".zip", $output["filename"]);
+                        $reportfiles[$zipname] = $zipfile;
+                        }
+                    else
+                        {
+                        $reportfiles[$output["filename"]] = $output["file"];
+                        }
+                    }
+                if($static_report)
+                    {
+                    $reportcache["output"] = $output;
+                    $reportcache["reportfiles"] = $reportfiles;
+                    }
+                }
+
+            // Formulate a title
+            $title = $report["name"] . ": " . str_replace("?",$report["period"],$lang["lastndays"]);
+            if(!empty($reportfiles))
+                {
+                $output = str_replace("%%REPORTTITLE%%", $title, $lang["report_periodic_email_report_attached"]);
+                }
+
+            $unsubscribe_url = generateURL($baseurl,["ur"=>$report["ref"],"u"=>$user["ref"]]);
+            $unsubscribe_link = sprintf(
+                "<br />%s<br /><a href=\"%s\" target=\"_blank\">%s</a>",
+                $lang["unsubscribereport"],$unsubscribe_url,$unsubscribe_url
+            );
+
+            if ($echo_out)
+                {
+                echo $lang["sendingreportto"] . " " . $email . "<br />" . $output . $unsubscribe_link . "<br />";
+                }
+
+            $delete_link = "";
+            if ((int)$user['ref'] == (int)$report["user"])
+                {
+                // Add a delete link to the report
+                $delete_link = "<br />" . $lang["report_delete_periodic_email_link"] . "<br /><a href=\"" . $baseurl . "/?dr=" . $report["ref"] . "\" target=\"_blank\">" . $baseurl . "/?dr=" . $report["ref"] . "</a>";
+                }
+            send_mail($email,$title,$output . $delete_link  . $unsubscribe_link,"","","","","","","",$reportfiles);
+            $sentousers[] =  $user['ref'];          
+            }
+
+        if(isset($saveduserref))
+            {
+            $userref = $saveduserref;
+            emulate_user($userref);
             }
 
         # Mark as done.
-        sql_query('UPDATE report_periodic_emails set last_sent = now() where ref = "' . $report['ref'] . '";');
+        ps_query('UPDATE report_periodic_emails set last_sent = now() where ref = ?',array("i",$report['ref']));
         }
 
     $GLOBALS["use_error_exception"] = true;
@@ -556,33 +574,25 @@ function send_periodic_report_emails($echo_out = true, $toemail=true)
             }
         }
     unset($GLOBALS["use_error_exception"]);
+
+    clear_process_lock("periodic_report_emails");
     }
 
 function delete_periodic_report($ref)
     {
     global $userref;
-    sql_query('DELETE FROM report_periodic_emails WHERE user = "' . $userref . '" AND ref = "' . $ref . '";');
-    sql_query('DELETE FROM report_periodic_emails_unsubscribe WHERE periodic_email_id = "' . $ref . '"');
+    ps_query('DELETE FROM report_periodic_emails WHERE user = ? AND ref = ?', array("i",$userref, "i",$ref));
+    ps_query('DELETE FROM report_periodic_emails_unsubscribe WHERE periodic_email_id = ?', array("i", $ref));
 
     return true;
     }
 
 function unsubscribe_user_from_periodic_report($user_id, $periodic_email_id)
     {
-    $query = sprintf('
-            INSERT INTO report_periodic_emails_unsubscribe (
-                                                               user_id,
-                                                               periodic_email_id
-                                                           )
-                 VALUES (
-                            "%s", # user_id
-                            "%s"  # periodic_email_id
-                        );
-        ',
-        $user_id,
-        $periodic_email_id
-    );
-    sql_query($query);
+    $query = 'INSERT INTO report_periodic_emails_unsubscribe 
+                  (user_id, periodic_email_id)
+                 VALUES (?, ?)';
+    ps_query($query, array("i",$user_id, "i",$periodic_email_id));
 
     return true;
     }
@@ -636,7 +646,191 @@ function report_has_date(string $query)
  */
 function report_has_date_by_id(int $report)
     {
-    $query = sql_value("SELECT `query` as value FROM report WHERE ref = '" . escape_check($report) . "'",0);
+    $query = ps_value("SELECT `query` as value FROM report WHERE ref = ?", array("i",$report), 0);
     $result = report_has_date($query);
     return $result;
+    }
+
+/**
+ * Check if report has a "thumbnail" column in its SQL query.
+ * 
+ * @param string $query The reports' SQL query.
+*/
+function report_has_thumbnail(string $query): bool
+    {
+    return preg_match('/(AS )*\'thumbnail\'/mi', $query);
+    }
+
+/**
+ * Get report date range based on user input
+ * 
+ * @param array $info Information about the period selection. See unit test for example input
+ */
+function report_process_period(array $info): array
+    {
+    $available_periods = array_merge($GLOBALS['reporting_periods_default'], [0, -1]);
+    $period = isset($info['period']) && in_array($info['period'], $available_periods) ? $info['period'] : $available_periods[0];
+
+    // Specific number of days specified.
+    if($period == 0)
+        {
+        $period = (int) $info['period_days'] ?? 0;
+        if($period < 1)
+            {
+            $period = 1;
+            }
+        }
+
+    // Specific date range specified.
+    if($period == -1)
+        {
+        $from_y = $info['from-y'] ?? '';
+        $from_m = $info['from-m'] ?? '';
+        $from_d = $info['from-d'] ?? '';
+        
+        $to_y = $info['to-y'] ?? '';
+        $to_m = $info['to-m'] ?? '';
+        $to_d = $info['to-d'] ?? '';
+        }
+    // Work out the FROM and TO range based on the provided period in days.
+    else
+        {
+        $start = time() - (60 * 60 * 24 * $period);
+
+        $from_y = date('Y', $start);
+        $from_m = date('m', $start);
+        $from_d = date('d', $start);
+            
+        $to_y = date('Y');
+        $to_m = date('m');
+        $to_d = date('d');
+        }
+
+    return [
+        'from_year' => $from_y,
+        'from_month' => $from_m,
+        'from_day' => $from_d,
+        'to_year' => $to_y,
+        'to_month' => $to_m,
+        'to_day' => $to_d,
+    ];
+    }
+
+
+/**
+ * Find and replace a reports' query placeholders with their values.
+ * 
+ * @param string $query Reports' SQL query
+ * @param array $placeholders Map between a placeholder and its actual value
+ */
+function report_process_query_placeholders(string $query, array $placeholders): string
+    {
+    $default_placeholders = [
+        '[title_field]' => $GLOBALS['view_title_field'],
+    ];
+    $all_placeholders = array_merge($default_placeholders, $placeholders);
+
+    $sql = $query;
+    foreach($all_placeholders as $placeholder => $value)
+        {
+        $sql = str_replace($placeholder, $value, $sql);
+        }
+
+    return $sql;
+    }
+
+/**
+ * Output the Javascript to build a pie chart in the canvas denoted by $id
+ * $data must be in the following format
+ * $data = array(
+ *     "slice_a label" => "slice_a value",
+ *     "slice_b label" => "slice_b value",
+ * );
+ * 
+ * @param  string       $id     identifier for the canvas to render the chart in
+ * @param  array        $data   data to be rendered in the chart
+ * @param  string|null  $total  null will mean that the data is complete and an extra field is not required
+ *                              a string can be used to denote the total value to pad the data to
+ * @return void
+ */
+function render_pie_graph($id,$data,$total=NULL)
+    {
+    global $home_colour_style_override,$header_link_style_override;
+
+    $rt=0;
+    $labels = [];
+    $values = [];
+    foreach ($data as $row)
+        {
+        $rt+=$row["c"];
+        $values[ ]= $row["c"];
+        $labels[] = $row["name"];
+        }
+    
+    if (!is_null($total) && $total>$rt)
+        {
+        # The total doesn't match, some rows were truncated, add an "Other".
+        $values[] = $total-$rt;
+        $labels[] = "Other";
+        }
+    ?>
+    <script type="text/javascript">
+    // Setup Styling
+
+
+    new Chart(document.getElementById('<?php echo htmlspecialchars($id) ?>'), {
+        type: 'pie',
+        data: {
+            labels: ['<?php echo htmlspecialchars(implode("', '",$labels)) ?>'],
+                datasets: [
+                        {
+                    data: [<?php echo htmlspecialchars(implode(", ",$values)) ?>]
+                }
+            ]
+        },
+        options: chartstyling<?php echo htmlspecialchars($id)?>,
+
+
+    });
+
+    </script>
+    <?php
+    }
+
+/**
+ * Output the Javascript to build a bar chart in the canvas denoted by $id
+ * $data must be in the following format
+ * $data = array(
+ *     "point_a x value" => "point_a y value",
+ *     "point_b x value" => "point_b y value",
+ *
+ * @param  string   $id     identifier for the canvas to render the chart in
+ * @param  array    $data   data to be rendered in the chart
+ * @return void
+ */
+function render_bar_graph(string $id, array $data)
+    {
+    $values = "";
+    foreach ($data as $t => $c)
+        {
+        $values .= "{x: $t, y: $c },\n";
+        }
+    ?>
+    <script type="text/javascript">
+        new Chart(
+            document.getElementById('<?php echo htmlspecialchars($id) ?>'),
+            {
+            type: 'line',
+            data: {
+                datasets: [
+                    {
+                        data: [<?php echo htmlspecialchars($values) ?>]
+                    }
+                ]
+            },
+            options: chartstyling<?php echo htmlspecialchars($id)?>,
+        }
+        );
+    </script>
+    <?php
     }

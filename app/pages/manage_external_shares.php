@@ -24,10 +24,18 @@ if($share_collection != 0 &&!collection_readable($share_collection))
 if(!checkperm('a') || $share_user == $userref)
     {
     $pagetitle  = $lang["my_shares"];
+    $breadcrumbs = [
+        ['title' => $userfullname == "" ? $username : $userfullname, 'href'  => $baseurl_short . "pages/user/user_home.php", 'menu' => true],
+        ['title' => $pagetitle]
+    ];
     }
 else
     {
     $pagetitle  = $lang["manage_shares_title"];
+    $breadcrumbs = [
+        ['title' => $lang["teamcentre"], 'href'  => $baseurl_short . "pages/team/team_home.php", 'menu' => true],
+        ['title' => $pagetitle]
+    ];
     }
 
 $ajax              = ('true' == getval('ajax', '') ? true : false);
@@ -37,8 +45,8 @@ $messages           = array();
 // Process access key deletion
 if($delete_access_key != "" && enforcePostRequest($ajax))
     {
-    $deleteresource   = getvalescaped('delete_resource', '');
-    $deletecollection = getvalescaped('delete_collection', '');
+    $deleteresource   = getval('delete_resource', '');
+    $deletecollection = getval('delete_collection', '');
     $response   = array(
         'success' => false
     );
@@ -98,12 +106,10 @@ foreach($sharedcols as $sharedcol)
         $allsharedcols[$sharedcol] = i18n_get_translated($coldetails["name"]);
         }
     }
-    
 
-//echo "<pre>" . print_r($shares) . "</pre>";
 $expiredshares = 0;
-$per_page =getvalescaped("per_page",$default_perpage, true); 
-$per_page = (!in_array($per_page,$list_display_array)) ? $default_perpage_list : $per_page;
+$per_page =getval("per_page",$default_perpage, true); 
+$per_page = (!in_array($per_page,array_merge($list_display_array,[99999]))) ? $default_perpage_list : $per_page;
 $sharecount   = count($shares);
 $totalpages = ceil($sharecount/$per_page);
 $offset     = getval("offset",0,true);
@@ -194,6 +200,7 @@ for($n=0;$n<$sharecount;$n++)
             {
             $expiredshares++;
             $tableshare["alerticon"] = "fas fa-exclamation-triangle";
+            $tableshare["alerticontitle"] = $lang["share_expired_icon_title"];
             }
 
         $tableshare["upload"] = (bool)$shares[$n]["upload"] ? $lang["share_type_upload"] : $lang["share_type_view"];
@@ -250,7 +257,7 @@ for($n=0;$n<$sharecount;$n++)
                 }
 
             $tableshare["tools"][] = array(
-                "icon"=>"fa fa-pencil",
+                "icon"=>"fas fa-edit",
                 "text"=>$lang["action-edit"],
                 "url"=>$editlink,
                 "modal"=>false,
@@ -298,8 +305,17 @@ function delete_access_key_multiple()
         var access_key_id = deleteAccessKeys[i].id;
         var access_key = access_key_id.substr(11);
         var table_row_cols = jQuery("#"+access_key_id).children();
-        var collection = table_row_cols[2].textContent;
-        var resource = table_row_cols[3].textContent;
+        var alert_row_col_adjust = 0;
+        <?php
+        if (isset($tableshare["alerticon"]))
+            {
+        ?>
+            alert_row_col_adjust = 1;
+        <?php
+            }
+        ?>
+        var collection = table_row_cols[alert_row_col_adjust + 1].textContent;
+        var resource = table_row_cols[alert_row_col_adjust + 2].textContent;
         if (collection!="-") {
             countCollectionKeys += 1;
         }
@@ -334,7 +350,9 @@ function delete_access_key_multiple()
         api('delete_access_keys', params, function(response)
             {
             CentralSpaceLoad(window.location.href);
-            });
+            },
+            <?php echo generate_csrf_js_object('delete_access_keys'); ?>
+        );
 
             return false;
         }
@@ -426,7 +444,9 @@ function clearsharefilter()
 
 <div class='BasicsBox'>
     <h1><?php echo htmlspecialchars($pagetitle);render_help_link('user/manage_external_shares'); ?></h1>
+
     <?php
+    renderBreadcrumbs($breadcrumbs);
 
     if(count($messages) > 0)
         {
@@ -474,7 +494,6 @@ function clearsharefilter()
 
 
             <div class="Question"  id="QuestionShareFilterSubmit">
-                <label></label>
                 <input type="button" id="filter_button" class="searchbutton" value="<?php echo $lang['filterbutton']; ?>" onclick="return CentralSpacePost(document.getElementById('ShareFilterForm'));">
                 <input type="button" id="clear_button" class="searchbutton" value="<?php echo $lang['clearbutton']; ?>" onclick="clearsharefilter();return CentralSpacePost(document.getElementById('ShareFilterForm'));">
                 <div class="clearerleft"></div>

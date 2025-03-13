@@ -4,12 +4,12 @@ include "../../../include/db.php";
 include_once "../../../include/authenticate.php";
 
 
-$ref=getvalescaped("ref","");
-$resource=getvalescaped("resource","");
+$ref=getval("ref","");
+$resource=getval("resource","");
 
 # Check access
 $edit_access=get_edit_access($resource);
-if (!$edit_access) {exit("Access denied");} # Should never arrive at this page without edit access
+if (!$edit_access && !checkperm("cm")) {exit("Access denied");} # Should never arrive at this page without edit access
 
 $url_params = array(
     'ref'        => $resource,
@@ -24,7 +24,7 @@ $redirect_url = generateURL($baseurl_short . "/pages/view.php",$url_params);
 
 if (getval("submitted","")!="" && enforcePostRequest(false))
 	{
-	sql_query("delete from resource_consent where consent='$ref' and resource='$resource'");
+    ps_query("delete from resource_consent where consent= ? and resource= ?", ['i', $ref, 'i', $resource]);
 	
 	resource_log($resource,"","",$lang["unlink_consent"] . " " . $ref);
 	
@@ -50,8 +50,7 @@ include "../../../include/header.php";
 <div class="clearerleft"> </div></div>
 
 
-<div class="QuestionSubmit">
-<label for="buttons"> </label>			
+<div class="QuestionSubmit">		
 <input name="unlink" type="submit" value="&nbsp;&nbsp;<?php echo $lang["action-unlink"]?>&nbsp;&nbsp;" />
 </div>
 </form>

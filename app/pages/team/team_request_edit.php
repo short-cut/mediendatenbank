@@ -11,7 +11,7 @@ include "../../include/authenticate.php";
 if (!checkperm("R")) { exit ("Permission denied."); }
 include "../../include/request_functions.php";
 
-$ref = getvalescaped("ref", "", true);
+$ref = getval("ref", "", true);
 $modal=(getval("modal","")=="true");
 $backurl=getval("backurl","");
 $url=$baseurl_short."pages/team/team_request_edit.php?ref=" . $ref . "&backurl=" . urlencode($backurl);
@@ -52,9 +52,9 @@ include "../../include/header.php";
     <?php if($modal)
         {
         ?>
-        <a class="maxLink fa fa-expand" href="<?php echo $url ?>" onClick="return CentralSpaceLoad(this);"></a>
+        <a class="maxLink fa fa-expand" href="<?php echo $url ?>" onClick="return CentralSpaceLoad(this);" title="<?php echo escape($lang["maximise"]); ?>"></a>
         &nbsp;
-        <a href="#"  class="closeLink fa fa-times" onClick="ModalClose();"></a>
+        <a href="#" class="closeLink fa fa-times" onClick="ModalClose();" title="<?php echo escape($lang["close"]); ?>"></a>
         <?php
         }
         ?>
@@ -77,19 +77,7 @@ if (isset($resulttext))
 
 if ($request !== false)
 	{
-    $show_this_request=false;
-    # Show request assigned to the user if the user can accept requests (permission "Rb")
-    # Should the request be shown if assigned to the user (used to have "Rb") but the user can no longer accept requests
-    if (checkperm("Rb") && ($request["assigned_to"]==$userref))
-        {
-        $show_this_request=true;
-        }
-    # Show request if the user can assign requests (permission "Ra")
-    if(checkperm('Ra'))
-        {
-        $show_this_request=true;
-        }
-    
+    $show_this_request=resource_request_visible($request);    
     if (!$show_this_request)
         {
         ?><p><?php echo str_replace("%","<b>" . ($request["assigned_to_username"]==""?"(unassigned)":$request["assigned_to_username"]) . "</b>",$lang["requestnotassignedtoyou"]) ?></p><?php
@@ -128,7 +116,7 @@ if ($request !== false)
 
         <div class="Question">
             <label><?php echo $lang["comments"]?></label>
-            <div class="Fixed"><?php echo nl2br($request["comments"]) ?></div>
+            <div class="Fixed"><?php echo strip_tags(nl2br($request["comments"]),'<br>')?></div>
             <div class="clearerleft"></div>
         </div>
 
@@ -145,13 +133,20 @@ if ($request !== false)
         # Show any warnings
         if (isset($warn_field_request_approval))
             {
-            $warnings=sql_query("select resource,value from resource_data where resource_type_field='$warn_field_request_approval' and length(value)>0 and resource in (select resource from collection_resource where collection='" . $request["collection"] . "') order by resource");
+            $warnings=ps_query("SELECT rn.resource,n.name
+                                  FROM collection_resource cr
+                            RIGHT JOIN resource_node rn ON cr.resource=rn.resource
+                            RIGHT JOIN node n ON n.ref=rn.node AND n.resource_type_field = ?
+                                 WHERE cr.collection = ?
+                              ORDER BY rn.resource",
+                              ["i",$warn_field_request_approval,"i",$request["collection"]]
+                            );
             foreach ($warnings as $warning)
                 { ?>
                 <div class="Question">
                     <div class="FormError">
                         <?php echo str_replace("%","<a onClick='return CentralSpaceLoad(this,true);' href=".$baseurl_short."pages/view.php?ref=" . $warning["resource"] . ">" . $warning["resource"] . "</a>",$lang["warningrequestapprovalfield"]) ?><br/>
-                        <?php echo $warning["value"] ?>
+                        <?php echo $warning["name"] ?>
                     </div>
                     <div class="clearerleft"></div>
                 </div>
@@ -253,7 +248,7 @@ if ($request !== false)
                     # Option is out of range, but show it anyway.
                     ?>
                     <option value="<?php echo $request["expires"] ?>" selected><?php echo nicedate(date("Y-m-d",strtotime($request["expires"])),false,true)?></option>
-                    <?php
+<?php
                     }
                 ?>
             </select>
@@ -262,13 +257,13 @@ if ($request !== false)
 
         <div class="Question" id="ReasonDecline" <?php if ($request["status"]!=2) { ?>style="display:none;"<?php } ?>>
             <label><?php echo $lang["declinereason"]?></label>
-            <textarea name="reason" class="stdwidth" rows="5" cols="50"><?php echo htmlspecialchars($request["reason"])?></textarea>
+            <textarea name="reason" class="stdwidth" rows="5" cols="50"><?php echo htmlspecialchars((string) $request["reason"])?></textarea>
             <div class="clearerleft"></div>
         </div>
 
         <div class="Question" id="ReasonApprove" <?php if ($request["status"]!=1) { ?>style="display:none;"<?php } ?>>
             <label><?php echo $lang["approvalreason"]?></label>
-            <textarea name="reasonapproved" class="stdwidth" rows="5" cols="50"><?php echo htmlspecialchars($request["reasonapproved"])?></textarea>
+            <textarea name="reasonapproved" class="stdwidth" rows="5" cols="50"><?php echo htmlspecialchars((string) $request["reasonapproved"])?></textarea>
             <div class="clearerleft"></div>
         </div>
 
@@ -278,8 +273,7 @@ if ($request !== false)
             <div class="clearerleft"></div>
         </div>
 
-        <div class="QuestionSubmit">
-            <label></label>          
+        <div class="QuestionSubmit">    
             <input name="save" type="submit" value="&nbsp;&nbsp;<?php echo $lang["save"]?>&nbsp;&nbsp;" />
         </div>
     </form>

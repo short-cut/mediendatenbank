@@ -2,6 +2,11 @@
 /* -------- Dynamic Keywords List ----------- */ 
 global $baseurl, $pagename, $edit_autosave, $dynamic_keyword_and, $k;
 
+if ($pagename == 'search_advanced')
+    {
+    $name .= '_search_adv';
+    }
+
 if(!isset($selected_nodes))
     {
     $selected_nodes = array();
@@ -64,15 +69,26 @@ foreach($nodes_in_sequence as $node)
         continue;
         }
 
+    // Replace & " ' < > characters with &amp &quot &apos &lt &gt
     $i18n_node_name = htmlentities(i18n_get_translated($node['name']),ENT_QUOTES);
 
-    $add_searched_nodes_function_call .= "addKeyword_{$js_keywords_suffix}('{$node['ref']}', '{$i18n_node_name}');";
+    // Strip line breaks because there shouldn't be any within dynamic keywords
+    $i18n_node_name = preg_replace('/[\r\n]+/', '', $i18n_node_name);
+
+    // Normally, when editing multiple resources, we don't want to preselect any fixed list values; the user must make the necessary selections
+    // However, when using copyfrom and editing multiple resources, then preselection does occur
+    if(!$multiple || ($multiple && $copyfrom != ''))
+        {
+        $add_searched_nodes_function_call .= "addKeyword_{$js_keywords_suffix}('{$node['ref']}', '{$i18n_node_name}');";
+        }
     }
     ?>
     <div id="<?php echo $name; ?>_selected" class="keywordsselected"></div>
 </div>
 <div class="clearerleft"></div>
 <script>
+console.debug('<?php printf('(%s) Init global state for Keywords_%s', str_replace(dirname(__DIR__), '', __FILE__), $js_keywords_suffix); ?>');
+
 // Associative array with key being node name and index being the node ID
 // Example: Keywords_nodes_3 = ['United Kingdom']=232, ['United States']=233
 // or Keywords_nodes_searched_3 = ['United Kingdom']=232, ['United States']=233
@@ -81,10 +97,13 @@ var Keywords_<?php echo $js_keywords_suffix; ?> = [];
 
 function updateSelectedKeywords_<?php echo $js_keywords_suffix; ?>(user_action)
     {
+    let fct_name = 'updateSelectedKeywords_<?php echo $js_keywords_suffix; ?>';
+    console.debug('%s(user_action = %o)', fct_name, user_action);
     var html                  = '';
     var hidden_input_elements = '';
     var keyword_count         = 0;
 
+    console.debug('[%s] Keywords_<?php echo $js_keywords_suffix; ?> = %o', fct_name, Keywords_<?php echo $js_keywords_suffix; ?>);
     for (var keyword_value in Keywords_<?php echo $js_keywords_suffix; ?>) 
         {
         var keyword_index = Keywords_<?php echo $js_keywords_suffix; ?>[keyword_value];
@@ -117,13 +136,18 @@ function updateSelectedKeywords_<?php echo $js_keywords_suffix; ?>(user_action)
     	document.getElementById('<?php echo $name; ?>_selector').disabled = false;
     	}
 
-    // Update the result counter, if the function is available (e.g. on Advanced Search).
-    if(typeof(UpdateResultCount) == 'function')
+    <?php
+    if ($pagename != 'edit')
         {
-        UpdateResultCount();
+        ?>
+        // Update the result counter, if the function is available (e.g. on Advanced Search).
+        if(typeof(UpdateResultCount) == 'function' && user_action)
+            {
+            UpdateResultCount();
+            }
+        <?php
         }
 
-    <?php
     if($edit_autosave)
         {
         ?>
@@ -144,6 +168,20 @@ function updateSelectedKeywords_<?php echo $js_keywords_suffix; ?>(user_action)
 
 function removeKeyword_<?php echo $js_keywords_suffix; ?>(node_id, user_action)
     {
+    console.debug('removeKeyword_<?php echo $js_keywords_suffix; ?>(node_id = %o, user_action = %o)', node_id, user_action);
+    <?php
+    if((int)$field["required"] === 1)
+        {?>        
+        // Prevent removal of final keyword if field is required
+        keycount = jQuery("[name^=nodes\\[<?php echo (int) $field["ref"]; ?>\\]]").length;
+        if(keycount == 1 && user_action)
+            {
+            styledalert('<?php echo escape($lang['requiredfield']); ?>','<?php echo escape(i18n_get_translated($field['title'])); ?>');
+            return false;
+            }
+        <?php
+        }?>
+
     // Save existing keywords array    
     var saved_Keywords = Keywords_<?php echo $js_keywords_suffix; ?>;
 
@@ -167,6 +205,7 @@ function removeKeyword_<?php echo $js_keywords_suffix; ?>(node_id, user_action)
 
 function addKeyword_<?php echo $js_keywords_suffix; ?>(node_id, keyword)
     {
+    console.debug('addKeyword_<?php echo $js_keywords_suffix; ?>(node_id = %o, keyword = %o)', node_id, keyword);
     removeKeyword_<?php echo $js_keywords_suffix; ?>(node_id, false);
 
     Keywords_<?php echo $js_keywords_suffix; ?>[keyword] = node_id;
@@ -214,7 +253,7 @@ function selectKeyword_<?php echo $js_keywords_suffix; ?>(event, ui)
                 }
             });        
         }
-    else if(keyword.substring(0, <?php echo mb_strlen($lang['noentryexists'], 'UTF-8') ?>) == '<?php echo $lang["noentryexists"]; ?>')
+    else if(keyword.substring(0, <?php echo mb_strlen(escape($lang['noentryexists']), 'UTF-8') ?>) == '<?php echo escape($lang["noentryexists"]); ?>')
         {
         document.getElementById('<?php echo $name; ?>_selector').value = '';
 
@@ -254,9 +293,21 @@ jQuery('#<?php echo $name; ?>_selector').keydown(function(event)
         }
     });
 
-<?php
-echo $add_searched_nodes_function_call;
-?>
 
-updateSelectedKeywords_<?php echo $js_keywords_suffix; ?>(false);
+jQuery(document).ready(function()
+    {
+    // Run this after the page has loaded as otherwise existing invalid JS functions may still be in place from an earlier edit page
+    <?php 
+    debug("\$add_searched_nodes_function_call = {$add_searched_nodes_function_call}");
+    echo $add_searched_nodes_function_call;
+    ?>
+    console.debug('<?php
+        printf(
+            '[document.ready](%s) Going to call updateselectedkeywords_%s(false)',
+            str_replace(dirname(__DIR__), '', __FILE__),
+            $js_keywords_suffix
+        );
+    ?>');
+    updateSelectedKeywords_<?php echo $js_keywords_suffix; ?>(false);
+    });
 </script>

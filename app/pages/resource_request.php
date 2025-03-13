@@ -1,33 +1,81 @@
 <?php
 include "../include/db.php";
+$k = getval("k", "");
+$ref=getval("ref","",true);
+$internal_share_access = false;
 
+if($k=="" || !check_access_key($ref, $k))
+    {
+    include_once "../include/authenticate.php";
+    $internal_share_access = true;
+    }
 
-$k=getvalescaped("k","");if (($k=="") || (!check_access_key(getvalescaped("ref",""),$k))) {include_once "../include/authenticate.php";}
+if(!checkperm('q'))
+    {
+    exit($lang["error-permissiondenied"]);
+    }
 
-if (!checkperm('q')){exit($lang["error-permissiondenied"]);}
-
-if ($k!="" && (!isset($internal_share_access) || !$internal_share_access) && $prevent_external_requests)
-	{
-	echo "<script>window.location = '" .  $baseurl . "/login.php?error="  . (($allow_account_request)?"signin_required_request_account":"signin_required") . "'</script>";
-	exit();
-	}
+if ($k!="")
+    {
+    if ((!isset($internal_share_access) || !$internal_share_access) && $prevent_external_requests)
+        {
+        echo "<script>window.location = '" .  $baseurl . "/login.php?error="  . (($allow_account_request)?"signin_required_request_account":"signin_required") . "'</script>";
+        exit();
+        }
+    if(internal_share_access())
+        {
+        $internal_share_access = true;
+        }
+    }
 
 include "../include/request_functions.php";
 
-$ref=getvalescaped("ref","",true);
 $error = '';
 hook("addcustomrequestfields");
 
-if ($k == "" && isset($anonymous_login) && $username == $anonymous_login){
-	$user_is_anon = true;
-} else {
-	$user_is_anon = false;
-}
-$use_antispam = ($k !== '' || $user_is_anon);
+if ($k == "" && isset($anonymous_login) && $username == $anonymous_login)
+    {
+    $user_is_anon = true;
+    }
+else
+    {
+    $user_is_anon = false;
+    }
+$use_antispam = (!$internal_share_access || $user_is_anon);
 
 # Allow alternative configuration settings for this resource type.
 $resource            = get_resource_data($ref);
 $resource_field_data = get_resource_field_data($ref);
+
+if(!is_array($resource))
+    {   
+    if(getval("ajax","") != "")
+        {
+        error_alert($lang['resourcenotfound'], false);
+        }
+    else
+        {
+        include "../include/header.php";
+        $onload_message = array("title" => $lang["error"],"text" => $lang['resourcenotfound']);
+        include "../include/footer.php";
+        }
+    exit();
+    }
+
+if(!is_array($resource_field_data))
+    {
+    if(getval("ajax","") != "")
+        {
+        error_alert($lang['error_no_metadata'], false);
+        }
+    else
+        {
+        include "../include/header.php";
+        $onload_message = array("title" => $lang["error"],"text" => $lang['error_no_metadata']);
+        include "../include/footer.php";
+        }
+    exit();
+    }
 
 resource_type_config_override($resource["resource_type"]);
 
@@ -72,47 +120,56 @@ if (getval("save","")!="" && enforcePostRequest(false))
         $result = false;
         $error = $lang["requiredantispam"];
         }
-	else if ($k!="" || $user_is_anon || $userrequestmode==0)
-		{
-		# Request mode 0 : Simply e-mail the request.
-		if (($k!="" || $user_is_anon) && (getval("fullname","")=="" || getvalescaped("email","")==""))
-			{
-			$result=false; # Required fields not completed.
-			}
-		else
-			{
-                        $tmp = hook("emailresourcerequest"); if($tmp): $result = $tmp; else:
-			$result=email_resource_request($ref,getvalescaped("request",""));
-                        endif;
-			}
-		}
+	else if (!$internal_share_access || $user_is_anon || $userrequestmode==0)
+        {
+        if ((!$internal_share_access || $user_is_anon) && (getval("fullname","")=="" || getval("email","")==""))
+            {
+            $result=false; # Required fields not completed.
+            }
+        else
+            {
+            $tmp = hook("emailresourcerequest"); if($tmp): $result = $tmp; else:
+            $result=email_resource_request($ref,getval("request",""));
+            endif;
+            }
+        }
 	else
-		{
-		# Request mode 1 : "Managed" mode via Manage Requests / Orders
-                $tmp = hook("manresourcerequest"); if($tmp): $result = $tmp; else:
-		$result=managed_collection_request($ref,getvalescaped("request",""),true);
-                endif;
-		}
-	
+        {
+        # Request mode 1 : "Managed" mode via Manage Requests / Orders
+        $tmp = hook("manresourcerequest"); if($tmp): $result = $tmp; else:
+        $result=managed_collection_request($ref,getval("request",""),true);
+        endif;
+        }
+
 	if ($result===false)
 		{
 		$error = ($error ?: $lang["requiredfields-general"]);
 		}
 	else
 		{
+        $return_url = generateURL($baseurl_short . "pages/view.php",["ref"=> (int)($ref),"k"=>$k]);
+        $doneurl = generateURL(
+            $baseurl_short . "pages/done.php",
+            ["text"=>"resource_request","resource"=>$ref,"k"=>$k,"return_url"=>$return_url]
+        );
 		?>
 		<script>
-		CentralSpaceLoad("<?php echo $baseurl_short ?>pages/done.php?text=resource_request&resource=<?php echo htmlspecialchars($ref); ?>&k=<?php echo htmlspecialchars($k); ?>",true);
+		CentralSpaceLoad("<?php echo $doneurl ?>",true);
 		</script>
 		<?php
 		}
 	}
 include "../include/header.php";
+$back_url = generateURL(
+    $baseurl_short . "pages/view.php",
+    ["ref"=>$ref,"k"=>$k]
+    );
 ?>
-
 <div class="BasicsBox">
 	<p>
-		<a href="<?php echo $baseurl_short; ?>pages/view.php?ref=<?php echo urlencode($ref); ?>&k=<?php echo urlencode($k); ?>" onClick="return CentralSpaceLoad(this, true);"><?php echo LINK_CARET_BACK ?><?php echo $lang['backtoresourceview']; ?></a>
+        <a href="<?php echo $back_url?>" onClick="return CentralSpaceLoad(this, true);"
+            ><?php echo LINK_CARET_BACK ?><?php echo $lang['backtoresourceview']; ?>
+        </a>
 	</p>
 
   <h1><?php echo i18n_get_translated($lang["requestresource"]); ?></h1>
@@ -135,32 +192,32 @@ include "../include/header.php";
 	<div class="clearerleft"> </div>
 	</div>
 	
-	<?php if ($k!="" || $user_is_anon) { ?>
+	<?php if (!$internal_share_access || $user_is_anon) { ?>
 	<div class="Question">
 	<label><?php echo $lang["fullname"]?> <sup>*</sup></label>
 	<input type="hidden" name="fullname_label" value="<?php echo $lang["fullname"]?>">
-	<input name="fullname" type="text" class="stdwidth" value="<?php echo htmlspecialchars(getvalescaped("fullname","")) ?>">
+	<input name="fullname" type="text" class="stdwidth" value="<?php echo htmlspecialchars(getval("fullname","")) ?>">
 	<div class="clearerleft"> </div>
 	</div>
 	
 	<div class="Question">
 	<label><?php echo $lang["emailaddress"]?> <sup>*</sup></label>
 	<input type="hidden" name="email_label" value="<?php echo $lang["emailaddress"]?>">
-	<input name="email" type="text" class="stdwidth" value="<?php echo htmlspecialchars(getvalescaped("email","")) ?>">
+	<input name="email" type="email" class="stdwidth" value="<?php echo htmlspecialchars(getval("email","")) ?>">
 	<div class="clearerleft"> </div>
 	</div>
 
 	<div class="Question">
 	<label><?php echo $lang["contacttelephone"]?></label>
 	<input type="hidden" name="contact_label" value="<?php echo $lang["contacttelephone"]?>">
-	<input name="contact" type="text" class="stdwidth" value="<?php echo htmlspecialchars(getvalescaped("contact","")) ?>">
+	<input name="contact" type="text" class="stdwidth" value="<?php echo htmlspecialchars(getval("contact","")) ?>">
 	<div class="clearerleft"> </div>
 	</div>
 	<?php } ?>
 
 	<div class="Question">
 	<label for="request"><?php echo $lang["requestreason"]?> <?php if ($resource_request_reason_required) { ?><sup>*</sup><?php } ?></label>
-	<textarea class="stdwidth" name="request" id="request" rows=5 cols=50><?php echo htmlspecialchars(getvalescaped("request","")) ?></textarea>
+	<textarea class="stdwidth" name="request" id="request" rows=5 cols=50><?php echo htmlspecialchars(getval("request","")) ?></textarea>
 	<div class="clearerleft"> </div>
 	</div>
 
@@ -192,13 +249,13 @@ if (isset($custom_request_fields))
 			
 			<?php if ($type==1) {  # Normal text box
 			?>
-			<input type=text name="custom<?php echo $n?>" id="custom<?php echo $n?>" class="stdwidth" value="<?php echo htmlspecialchars(getvalescaped("custom" . $n,""))?>">
-			<?php } ?>
+			<input type=text name="custom<?php echo $n?>" id="custom<?php echo $n?>" class="stdwidth" value="<?php echo htmlspecialchars(getval("custom" . $n,""))?>">
+<?php } ?>
 
 			<?php if ($type==2) { # Large text box 
 			?>
-			<textarea name="custom<?php echo $n?>" id="custom<?php echo $n?>" class="stdwidth" rows="5"><?php echo htmlspecialchars(getvalescaped("custom" . $n,""))?></textarea>
-			<?php } ?>
+			<textarea name="custom<?php echo $n?>" id="custom<?php echo $n?>" class="stdwidth" rows="5"><?php echo htmlspecialchars(getval("custom" . $n,""))?></textarea>
+<?php } ?>
 
 			<?php if ($type==3) { # Drop down box
 			?>
@@ -217,7 +274,7 @@ if (isset($custom_request_fields))
                }
 			?>
 			</select>
-			<?php } ?>
+<?php } ?>
 			
 			<div class="clearerleft"> </div>
 			</div>
@@ -233,17 +290,12 @@ if($use_antispam)
 
 hook("resource_request_form_bottom");
 ?>
-
-	<div class="QuestionSubmit">
-	<label for="buttons"> </label>			
+	<div class="QuestionSubmit">		
 	<input name="save" value="true" type="hidden" />
 	<input name="cancel" type="button" value="&nbsp;&nbsp;<?php echo $lang["cancel"]?>&nbsp;&nbsp;" onclick="document.location='view.php?ref=<?php echo htmlspecialchars($ref)?>';"/>&nbsp;
 	<input name="save" type="submit" value="&nbsp;&nbsp;<?php echo i18n_get_translated($lang["requestresource"])?>&nbsp;&nbsp;" />
 	</div>
 	</form>
-	
 </div>
-
 <?php
 include "../include/footer.php";
-?>

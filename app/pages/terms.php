@@ -3,21 +3,22 @@ include_once "../include/db.php";
 
 
 # External access support (authenticate only if no key provided)
-$k=getvalescaped("k","");
-$k_shares_collection=getvalescaped("collection","");
-$k_shares_ref=getvalescaped("ref","");
-$ref=getvalescaped("ref","");
+$k=getval("k","");
+$k_shares_collection=getval("collection","");
+$k_shares_ref=getval("ref","");
+$ref=getval("ref","");
+$upload=(getval("upload","")!="");
 
 # Check access key because we need to honor terms requirement at user group override level
 if ($k!="") 
 	{
 	if ($k_shares_collection != "") 
 		{
-		if (!check_access_key_collection(getvalescaped("collection","",true),$k)) {include "../include/authenticate.php";}
+		if (!check_access_key_collection(getval("collection","",true),$k)) {include "../include/authenticate.php";}
 		}
 	elseif ($k_shares_ref != "") 
 		{
-		if (!check_access_key(getvalescaped("ref",""),$k)) {include "../include/authenticate.php";}
+		if (!check_access_key(getval("ref",""),$k)) {include "../include/authenticate.php";}
 		}
 	}
 else
@@ -33,20 +34,20 @@ if(is_string($newurl))
     $url = $newurl;
     }
 
-$terms_save=getvalescaped('save', '');
+$terms_save=getval('save', '');
 $terms_url_accepted="";
 if('' != $terms_save && enforcePostRequest(false))
     {
-	$terms_iaccept=getvalescaped('iaccept', '');
+	$terms_iaccept=getval('iaccept', '');
     if('on' == $terms_iaccept)
         {
-		sql_query("UPDATE user SET accepted_terms = 1 WHERE ref = '{$userref}'");
+		ps_query("UPDATE user SET accepted_terms = 1 WHERE ref = ?",array("i",$userref));
 		$terms_url_accepted=(strpos($url, "?")?"&":"?") . "iaccept=".$terms_iaccept;
         }
 
     $url.=$terms_url_accepted;
     
-    if(strpos($url, 'download_progress.php') !== false)
+    if(strpos($url, 'download_progress.php') !== false || strpos($url, 'download.php') !== false)
         {
         $temp_download_key = download_link_generate_key((isset($userref) ? $userref : $k),$ref);
         rs_setcookie("dl_key",$temp_download_key,1, $baseurl_short, "", substr($baseurl,0,5)=="https", true);
@@ -63,6 +64,11 @@ if('' != $terms_save && enforcePostRequest(false))
             }
         }
 
+    if(strpos($url, 'upload_batch.php') !== false || strpos($url, 'edit.php') !== false)
+        {
+        rs_setcookie("acceptedterms",true,1);
+        }
+
     if(false !== strpos($url, 'http'))
         {
         header("Location: {$url}");
@@ -74,7 +80,7 @@ if('' != $terms_save && enforcePostRequest(false))
         }
     }
 
-if($terms_download == false && getval("noredir","") == "")
+if($terms_download == false && $terms_upload==false && getval("noredir","") == "")
     {
     redirect($url);
     }
@@ -88,7 +94,7 @@ include "../include/header.php";
  	<div class="Question">
 	<label><?php echo $lang["termsandconditions"]?></label>
 	<div class="Terms"><?php 
-		$termstext=text("terms");
+		$termstext=text(($upload?"upload_terms":"terms"));
 		$modified_termstext=hook('modified_termstext');
 		if($modified_termstext!=''){$termstext=$modified_termstext;}
 		if (is_html($termstext)){
@@ -112,7 +118,6 @@ include "../include/header.php";
 	</div>
 	
 	<div class="QuestionSubmit">
-        <label></label>
         <input name="save"
                type="submit"
                value="&nbsp;&nbsp;<?php echo $lang["proceed"]?>&nbsp;&nbsp;"

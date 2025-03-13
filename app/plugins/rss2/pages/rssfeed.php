@@ -11,7 +11,7 @@ class RSSFeed
   var $optional = array();
   var $image = array('url' => '', 'title' => '', 'link' => '', 'description' => '', 'w' => 0, 'h' => 0);
 
-  function _RSSFeed($title, $link, $description, $optional = '')
+  public function __construct($title, $link, $description, $optional = '')
   {
     $this->title = $title;
     $this->link = $link;
@@ -79,7 +79,7 @@ function AddArticle($title, $link, $description, $optional = '')
     // Channel optionals
     if( is_array($this->optional) and count($this->optional) )
     {
-      while( list($k, $v) = each($this->optional) ){
+      foreach($this->optional as $k => $v) {
         $out .= "<$k>$v</$k>\n";
       }
     }
@@ -136,4 +136,4 @@ function AddArticle($title, $link, $description, $optional = '')
     }
   }
 }
-?>
+

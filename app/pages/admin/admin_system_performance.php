@@ -11,23 +11,34 @@ $cpu_baseline=970410;
 $disk_baseline=20558;
 ?>
 <div class="BasicsBox">
-<p>&gt; <a href="admin_system_performance.php?reload=<?php echo time() ?>" onClick="return CentralSpaceLoad(this,false);"><?php echo $lang["reload"] ?></a></p>
+    <p>
+        <a href="admin_system_performance.php?reload=<?php echo time() ?>" onClick="return CentralSpaceLoad(this,false);">
+            <?php echo '<i aria-hidden="true" class="fa fa-sync-alt"></i>&nbsp;' . $lang["reload"] ?>
+        </a>
+    </p>
 
-<h1><?php echo $lang["system_performance"] ?></h1>
+    <h1><?php echo $lang["system_performance"] ?></h1>
+
+<?php
+renderBreadcrumbs([
+    ['title' => $lang["systemsetup"], 'href'  => $baseurl_short . "pages/admin/admin_home.php", 'menu' => true],
+    ['title' => $lang["system_performance"]]
+]);
+?>
 
 <?php
 # Database read/write speed
-sql_query("drop table if exists performance_test");
-sql_query("create table performance_test (c int(11),d char(64))");
+ps_query("drop table if exists performance_test");
+ps_query("create table performance_test (c int(11),d char(64))");
 $timer=microtime(true);$counter=0;
 while (microtime(true)<($timer+1)) // Run for one second
     {
-    $d=escape_check(md5(microtime()));
-    sql_query("insert into performance_test(c,d) values ('$counter','" . $d . "')");
-    sql_query("select * from performance_test where c='$counter'");
+    $d=md5(microtime());
+    ps_query("insert into performance_test(c,d) values (?,?)",array("i",$counter,"s",$d));
+    ps_query("select c,d from performance_test where c=?",array("i",$counter));
     $counter++;
     }
-sql_query("drop table if exists performance_test");
+ps_query("drop table if exists performance_test");
 ?>
 <div class="Question">
 <label><?php echo $lang["mysql_throughput"] ?></label><div class="Fixed"><?php echo round(($counter/$mysql_baseline) * 100,1) ?></div>

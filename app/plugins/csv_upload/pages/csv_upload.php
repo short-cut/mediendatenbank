@@ -18,9 +18,17 @@ $existing_config = false;
 
 if(isset($_FILES["csv_config"]) && $_FILES["csv_config"]['error'] == 0)
     {
-    // We have a CSV config file
-    $csv_saved_options = file_get_contents($_FILES["csv_config"]["tmp_name"]);
-    $onload_message = array("title" => $lang["ok"],"text" => $lang["csv_upload_upload_config_set"]);
+    // We have a CSV config file    
+    if(check_valid_file_extension($_FILES["csv_config"],array("json")))
+        {
+        $csv_saved_options = file_get_contents($_FILES["csv_config"]["tmp_name"]);
+        $onload_message = array("title" => $lang["ok"],"text" => $lang["csv_upload_upload_config_set"]);
+        }
+    else
+        {
+        $onload_message = array("title" => $lang["error"],"text" => str_replace("%EXTENSIONS",".json",$lang["invalidextension_mustbe-extensions"]));
+        $csv_saved_options = "";
+        }
     }
 
 if(getval("getconfig","") != "")
@@ -79,7 +87,8 @@ $selected_columns[] = $csv_set_options["status_column"];
 $selected_columns[] = $csv_set_options["access_column"];
 $selected_columns = array_filter($selected_columns,"emptyiszero");
 
-$csvdir     = get_temp_dir() . DIRECTORY_SEPARATOR . "csv_upload" . DIRECTORY_SEPARATOR . $session_hash;
+$usehash = $session_hash ?? get_rs_session_id(true);
+$csvdir     = get_temp_dir() . DIRECTORY_SEPARATOR . "csv_upload" . DIRECTORY_SEPARATOR . md5($usehash);
 if(!file_exists($csvdir))
     {
     mkdir($csvdir,0777,true);
@@ -88,24 +97,29 @@ if(!file_exists($csvdir))
 $csvfile    = $csvdir . DIRECTORY_SEPARATOR  . "csv_upload.csv";
 if(isset($_FILES[$fd]) && $_FILES[$fd]['error'] == 0)
     {
-    // We have a valid CSV, get a checksum and save it to a temporary location for processing	
-    // Needs whole file checksum
-    $csvchecksum = get_checksum($_FILES[$fd]['tmp_name'], true);
-    $csv_set_options["csvchecksum"] = $csvchecksum;
-    $csv_set_options["csv_filename"] = $_FILES[$fd]["name"];   
-
-    // Create target dir if necessary
-	if (!file_exists($csvdir))
+    if(check_valid_file_extension($_FILES[$fd],array("csv")))
         {
-        mkdir($csvdir,0777,true);
+        // We have a valid CSV, get a checksum and save it to a temporary location for processing	
+        // Needs whole file checksum
+        $csvchecksum = get_checksum($_FILES[$fd]['tmp_name'], true);
+        $csv_set_options["csvchecksum"] = $csvchecksum;
+        $csv_set_options["csv_filename"] = $_FILES[$fd]["name"];   
+
+        // Create target dir if necessary
+        if (!file_exists($csvdir))
+            {
+            mkdir($csvdir,0777,true);
+            }
+        $result=move_uploaded_file($_FILES[$fd]['tmp_name'], $csvfile);
         }
-    $result=move_uploaded_file($_FILES[$fd]['tmp_name'], $csvfile);
+    else
+        {
+        $onload_message = array("title" => $lang["error"],"text" => str_replace("%EXTENSIONS",".csv",$lang["invalidextension_mustbe-extensions"]));
+        }
     }
 rs_setcookie("saved_csv_options",json_encode($csv_set_options));
 
 $csvuploaded = file_exists($csvfile);
-
-
 $csvstep = $csvuploaded ? getval("csvstep",1,true) : 1;
 if($csvuploaded)
     {
@@ -116,7 +130,6 @@ if($csvuploaded)
     $offline_text = $force_offline ? $lang["csv_upload_force_offline"] : $lang["csv_upload_recommend_offline"];
     unset($csv_info["row_count"]); // No longer needed
     }
-
 
 include dirname(__FILE__)."/../../../include/header.php";
 
@@ -198,7 +211,6 @@ jQuery('document').ready(function()
     });
 </script>
 <?php
-//echo "<pre>" . print_r($csv_set_options) . "</pre>";
 
 $restypearr = get_resource_types();
 $resource_types = array();
@@ -413,7 +425,6 @@ switch($csvstep)
                 </div>               
 
                 <div class="QuestionSubmit NoPaddingSaveClear QuestionSticky">
-                    <label for="submit"></label>
                     <input type="button" id="back" value="<?php echo $lang["back"]; ?>"  onClick="CentralSpaceLoad('<?php echo generateURL($_SERVER["SCRIPT_NAME"],array("csvstep"=>$csvstep-1)); ?>',true);return false;" > 
                     <input type="submit" id="submit" value="<?php echo $lang["next"]; ?>">
                 <div class="clearerleft"> </div>
@@ -438,7 +449,7 @@ switch($csvstep)
                 <div class="Question">
                     <label for="csv_update_col"><?php echo $lang["csv_upload_update_existing_collection"] ?></label>
                     <input id="csv_update_col" name="csv_update_col" type=hidden value="<?php echo $csv_set_options["csv_update_col"]; ?>">
-                    <input type="checkbox" name="csv_update_col_select" onchange="if(this.checked) { jQuery('#csv_update_col_id_select').show(); jQuery('#csv_update_col').val('1');} else { jQuery('#csv_update_col_id_select').hide(); jQuery('#csv_update_col').val('0'); }" <?php if($csv_set_options["csv_update_col"]){echo " checked"; }; ?>>	
+                    <input type="checkbox" name="csv_update_col_select" onchange="if(this.checked) { jQuery('#csv_update_col_id_select').show(); jQuery('#csv_update_col').val('1');} else { jQuery('#csv_update_col_id_select').hide(); jQuery('#csv_update_col').val('0'); }" <?php if($csv_set_options["csv_update_col"]){echo " checked"; } ?>>	
                     
                     <div class="clearerleft"> </div>
                     
@@ -521,7 +532,6 @@ switch($csvstep)
                 </div>   
 
                 <div class="QuestionSubmit NoPaddingSaveClear QuestionSticky">
-                    <label for="submit"></label>
                     <input type="button" id="back" value="<?php echo $lang["back"]; ?>"  onClick="CentralSpaceLoad('<?php echo generateURL($_SERVER["SCRIPT_NAME"],array("csvstep"=>$csvstep-1)); ?>',true);return false;" > 
                     <input type="submit" id="submit" value="<?php echo $lang["next"]; ?>">
                     <div class="clearerleft"> </div>
@@ -577,12 +587,30 @@ switch($csvstep)
                                 echo " selected ";
                                 $csv_set_options_found=true;
                                 }
-                            else if(!$csv_set_options_found && (in_array(mb_strtolower($csv_field_data["header"]), array(mb_strtolower($field["name"]),mb_strtolower($field["title"]))) &&
+                            else if(!$csv_set_options_found && (in_array(mb_strtolower($csv_field_data["header"]), array(mb_strtolower((string) $field["name"]),mb_strtolower($field["title"]))) &&
                                     !(isset($csv_set_options["fieldmapping"][$csv_column]) && $csv_set_options["fieldmapping"][$csv_column] == -1)))
                                 {
                                     echo " selected ";
                                 }
-                            echo  ">" . htmlspecialchars($field["title"]) . ($field["resource_type"] != 0 && isset($resource_types[$field["resource_type"]]) ? (" (" . $resource_types[$field["resource_type"]]["name"]  . ")"): "") . "</option>\n";
+                            echo  ">" . htmlspecialchars(i18n_get_translated($field["title"]));
+                            if((int)$field["global"] !== 1)
+                                {
+                                $fieldrestypes = explode(",",(string)$field["resource_types"]);
+                                $fieldrestypenames = [];
+                                foreach($fieldrestypes as $fieldrestype)
+                                    {
+                                    if (in_array($fieldrestype, array_keys($resource_types)))
+                                        {
+                                        $fieldrestypenames[] = $resource_types[$fieldrestype]["name"];
+                                        }
+                                    }
+                                if(count($fieldrestypes) < count($restypearr)-1)
+                                    {
+                                    // Don't show this if they are linked to all but one resource types
+                                    echo " (" .  implode(",",$fieldrestypenames) . ")";
+                                    }
+                                }
+                            echo "</option>\n";
                             }
                         echo "</select></td>";
                         echo "<td>";
@@ -609,14 +637,13 @@ switch($csvstep)
                     <?php
                     }?>                
                 <div class="Question">
-                    <label for="submit"></label>
                     <input type="button" id="back" value="<?php echo $lang["back"]; ?>"  onClick="CentralSpaceLoad('<?php echo generateURL($_SERVER["SCRIPT_NAME"],array("csvstep"=>$csvstep-1)); ?>',true);return false;" > 
                     <input type="submit" id="submit" value="<?php echo $lang["next"]; ?>">
                     <div class="clearerleft"> </div>
                 </div>    
             </form>
             </div>
-            <?php
+<?php
             }
         else
             {
@@ -629,8 +656,9 @@ switch($csvstep)
         set_time_limit(0);
         $meta=meta_get_map();
         $messages=array();
-        $prelog_file = get_temp_dir(false,'user_downloads') . "/" . $userref . "_" . md5($username . md5($csv_set_options["csvchecksum"]) . $scramble_key) . ".log";
-        $prelog_url = $baseurl . "/pages/download.php?userfile=" . $userref . "_" . md5($csv_set_options["csvchecksum"]) . ".log&filename=csv_upload_" . date("Ymd-H:i",time());
+        $log_time = date("Ymd-H:i:s",time());
+        $prelog_file = get_temp_dir(false,'user_downloads') . "/" . $userref . "_" . md5($username . md5($csv_set_options["csvchecksum"] . $log_time) . $scramble_key) . ".log";
+        $prelog_url = $baseurl . "/pages/download.php?userfile=" . $userref . "_" . md5($csv_set_options["csvchecksum"] . $log_time) . ".log&filename=csv_upload_" . $log_time;
         $csv_set_options["log_file"] = $prelog_file;
         $valid_csv = csv_upload_process($csvfile,$meta,$resource_types,$messages,$csv_set_options);
         if($offline_limit)
@@ -680,7 +708,6 @@ switch($csvstep)
                 <input type="hidden" id="csvstep" name="csvstep" value="5" > 
 
                 <div class="QuestionSubmit NoPaddingSaveClear QuestionSticky">
-                    <label for="submit"></label>
                     <input type="button" id="back" value="<?php echo $lang["back"]; ?>"  onClick="CentralSpaceLoad('<?php echo generateURL($_SERVER["SCRIPT_NAME"],array("csvstep"=>$csvstep-1)); ?>',true);return false;" > 
                     <input type="submit" id="submit" value="<?php echo $lang["csv_upload_process"]; ?>" <?php if (!$valid_csv){echo "onclick=\"return confirm('" . $lang["csv_upload_ignore_errors"] . "');\"";} ?>>
                     <div class="clearerleft"> </div>
@@ -698,7 +725,7 @@ switch($csvstep)
         if($csv_set_options["process_offline"])
             {            
             // Move the CSV to a new location so that it doesn't get overwritten
-            $csvdir     = get_temp_dir() . DIRECTORY_SEPARATOR . "csv_upload" . DIRECTORY_SEPARATOR . $session_hash;
+            $csvdir     = get_temp_dir() . DIRECTORY_SEPARATOR . "csv_upload" . DIRECTORY_SEPARATOR . ($usehash);
             if(!file_exists($csvdir))
                 {
                 mkdir($csvdir,0777,true);
@@ -735,8 +762,9 @@ switch($csvstep)
             $messages=array();
             // Processing immediately. Ensure connection does not get dropped
             set_time_limit(0);
-            $log_file = get_temp_dir(false,'user_downloads') . "/" . $userref . "_" . md5($username . md5($csv_set_options["csvchecksum"]) . $scramble_key) . ".log";
-            $log_url = $baseurl . "/pages/download.php?userfile=" . $userref . "_" . md5($csv_set_options["csvchecksum"]) . ".log&filename=csv_upload_" . date("Ymd-H:i",time());
+            $log_time = date("Ymd-H:i:s",time());
+            $log_file = get_temp_dir(false,'user_downloads') . "/" . $userref . "_" . md5($username . md5($csv_set_options["csvchecksum"] . $log_time) . $scramble_key) . ".log";
+            $log_url = $baseurl . "/pages/download.php?userfile=" . $userref . "_" . md5($csv_set_options["csvchecksum"] . $log_time) . ".log&filename=csv_upload_" . $log_time;
             $csv_set_options["log_file"] = $log_file;
             csv_upload_process($csvfile,$meta,$resource_types,$messages,$csv_set_options,0,true);
             }

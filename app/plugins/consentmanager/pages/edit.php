@@ -3,20 +3,20 @@ include "../../../include/db.php";
 include_once "../../../include/authenticate.php";
 include "../include/file_functions.php";
 
-$ref=getvalescaped("ref","");if (!is_numeric($ref)) {$ref="new";} // force to either a number or "new"
-$resource=getvalescaped("resource","",true);
+$ref=getval("ref","");if (!is_numeric($ref)) {$ref="new";} // force to either a number or "new"
+$resource=getval("resource","",true);
 $file_path=get_consent_file_path($ref);
 
 # Check access
 if ($resource!="")
     {
     $edit_access=get_edit_access($resource);
-    if (!$edit_access) {exit("Access denied");} # Should never arrive at this page without edit access
+    if (!$edit_access && !checkperm("cm")) {exit("Access denied");} # Should never arrive at this page without edit access
     }
 else
     {
     # Editing all consents via Manage Consents - admin only
-    if (!checkperm("a")) {exit("Access denied");} 
+    if (!checkperm("a") && !checkperm("cm")) {exit("Access denied");} 
     }
 
 $url_params = array(
@@ -43,37 +43,48 @@ if (getval("submitted","")!="")
     # Save consent data
     
     # Construct expiry date
-    $expires="'" . getvalescaped("expires_year","") . "-" . getvalescaped("expires_month","") . "-" . getvalescaped("expires_day","") . "'";
+    $expires= getval("expires_year","") . "-" . getval("expires_month","") . "-" . getval("expires_day","");
     
 
     # Construct usage
     $consent_usage="";
-    if (isset($_POST["consent_usage"])) {$consent_usage=escape_check(join(", ",$_POST["consent_usage"]));}
+    if (isset($_POST["consent_usage"])) {$consent_usage=join(", ",$_POST["consent_usage"]);}
 
     # No expiry date ticked? Insert null
     if (getval("no_expiry_date","")=="yes")
         {
-        $expires="null";
+        $expires=null;
         }
 
    
     if ($ref=="new")
         {
         # New record 
-        sql_query("insert into consent (name,email,telephone,consent_usage,notes,expires) values ('" . getvalescaped("name","") . "', '" . getvalescaped("email","") . "', '" . getvalescaped("telephone","") . "', '" . $consent_usage . "', '" . getvalescaped("notes","") . "', $expires)");	
+        ps_query(
+            "insert into consent (name,email,telephone,consent_usage,notes,expires) values ( ?, ?, ?, ?, ?, ?)",
+            [
+                's', getval('name', ''),
+                's', getval('email', ''),
+                's', getval('telephone', ''),
+                's', $consent_usage,
+                's', getval('notes', ''),
+                's', $expires
+            ]
+            
+        );	
         $ref=sql_insert_id();
         $file_path=get_consent_file_path($ref); // get updated path
 
         # Add to all the selected resources
-        if (getvalescaped("resources","")!="")
+        if (getval("resources","")!="")
             {
-            $resources=explode(", ",getvalescaped("resources",""));
+            $resources=explode(", ",getval("resources",""));
             foreach ($resources as $r)
                 {
                 $r=trim($r);
                 if (is_numeric($r))
                     {
-                    sql_query("insert into resource_consent(resource,consent) values ('" . escape_check($r) . "','" . escape_check($ref) . "')");
+                    ps_query("insert into resource_consent(resource,consent) values (?, ?)", ['i', $r, 'i', $ref]);
                     resource_log($r,"","",$lang["new_consent"] . " " . $ref);
                     }
                 }
@@ -82,20 +93,31 @@ if (getval("submitted","")!="")
     else
         {
         # Existing record	
-        sql_query("update consent set name='" . getvalescaped("name","") . "',email='" . getvalescaped("email","") . "', telephone='" . getvalescaped("telephone","") . "',consent_usage='" . $consent_usage . "',notes='" . getvalescaped("notes","") . "',expires=$expires where ref='$ref'");
+        ps_query(
+            "update consent set name= ?,email= ?, telephone= ?,consent_usage= ?,notes= ?,expires= ? where ref= ?",
+            [
+                's', getval('name', ''),
+                's', getval('email', ''),
+                's', getval('telephone', ''),
+                's', $consent_usage,
+                's', getval('notes', ''),
+                's', $expires,
+                'i', $ref
+            ]
+        );
 
         # Add all the selected resources
-        sql_query("delete from resource_consent where consent='$ref'");
-        $resources=explode(",",getvalescaped("resources",""));
+        ps_query("delete from resource_consent where consent= ?",['i', $ref]);
+        $resources=explode(",",getval("resources",""));
 
-        if (getvalescaped("resources","")!="")
+        if (getval("resources","")!="")
             {
             foreach ($resources as $r)
                 {
                 $r=trim($r);
                 if (is_numeric($r))
                     {
-                    sql_query("insert into resource_consent(resource,consent) values ('" . escape_check($r) . "','" . escape_check($ref) . "')");
+                    ps_query("insert into resource_consent(resource,consent) values (?, ?)", ['i', $r, 'i', $ref]);
                     resource_log($r,"","",$lang["new_consent"] . " " . $ref);
                     }
                 }
@@ -103,17 +125,32 @@ if (getval("submitted","")!="")
         }
 
     # Handle file upload
+    global $banned_extensions;
     if (isset($_FILES["file"]) && $_FILES["file"]["tmp_name"]!="")
         {
-        move_uploaded_file($_FILES["file"]["tmp_name"],$file_path);  
-        sql_query("update consent set file='" . escape_check($_FILES["file"]["name"]) . "' where ref='$ref'");
+        # Work out the extension
+        $uploadfileparts=explode(".",$_FILES["file"]["name"]);
+        $uploadfileextension=trim($uploadfileparts[count($uploadfileparts)-1]);
+        $uploadfileextension=strtolower($uploadfileextension);
+
+        if (in_array($uploadfileextension,$banned_extensions))
+            {
+            $error_extension = str_replace("%%FILETYPE%%",$uploadfileextension,$lang["error_upload_invalid_file"]);
+            error_alert($error_extension, true);
+            exit();
+            }
+        else
+            {
+            move_uploaded_file($_FILES["file"]["tmp_name"],$file_path);  
+            ps_query("UPDATE consent set file= ? where ref= ?", ['s', $_FILES["file"]["name"], 'i', $ref]);
+            }
         }
 
     # Handle file clear
     if (getval("clear_file","")!="")
         {
         if (file_exists($file_path)) {unlink($file_path);}  
-        sql_query("update consent set file='' where ref='$ref'");
+        ps_query("UPDATE consent set file='' where ref= ?", ['i', $ref]);
         }
 
     redirect($redirect_url);
@@ -137,10 +174,10 @@ if ($ref=="new")
     }
 else
     {
-    $consent=sql_query("select name,email,telephone,consent_usage,notes,expires,file from consent where ref='$ref'");
+    $consent=ps_query("select name,email,telephone,consent_usage,notes,expires,file from consent where ref= ?", ['i', $ref]);
     if (count($consent)==0) {exit("Consent not found.");}
     $consent=$consent[0];
-    $resources=sql_array("select distinct resource value from resource_consent where consent='$ref' order by resource");
+    $resources=ps_array("select distinct resource value from resource_consent where consent= ? order by resource", ['i', $ref]);
     }
         
 include "../../../include/header.php";
@@ -211,7 +248,7 @@ onChange="jQuery('.consent_usage').attr('checked',this.checked);" <?php if ($all
       for ($n=1;$n<=31;$n++)
         {
         $m=str_pad($n,2,"0",STR_PAD_LEFT);
-        ?><option <?php if ($n==substr($consent["expires"],8,2)) { ?>selected<?php } ?> value="<?php echo $m?>"><?php echo $m?></option><?php
+        ?><option <?php if ($n==substr((string) $consent["expires"],8,2)) { ?>selected<?php } ?> value="<?php echo $m?>"><?php echo $m?></option><?php
         }
       ?>
     </select>
@@ -221,7 +258,7 @@ onChange="jQuery('.consent_usage').attr('checked',this.checked);" <?php if ($all
       for ($n=1;$n<=12;$n++)
         {
         $m=str_pad($n,2,"0",STR_PAD_LEFT);
-        ?><option <?php if ($n==substr($consent["expires"],5,2)) { ?>selected<?php } ?> value="<?php echo $m?>"><?php echo $lang["months"][$n-1]?></option><?php
+        ?><option <?php if ($n==substr((string) $consent["expires"],5,2)) { ?>selected<?php } ?> value="<?php echo $m?>"><?php echo $lang["months"][$n-1]?></option><?php
         }
       ?>
     </select>
@@ -231,7 +268,7 @@ onChange="jQuery('.consent_usage').attr('checked',this.checked);" <?php if ($all
       $y=date("Y")+30;
       for ($n=$minyear;$n<=$y;$n++)
         {
-        ?><option <?php if ($n==substr($consent["expires"],0,4)) { ?>selected<?php } ?>><?php echo $n?></option><?php
+        ?><option <?php if ($n==substr((string) $consent["expires"],0,4)) { ?>selected<?php } ?>><?php echo $n?></option><?php
         }
       ?>
     </select>
@@ -281,8 +318,7 @@ onChange="jQuery('.consent_usage').attr('checked',this.checked);" <?php if ($all
 
 
 
-<div class="QuestionSubmit">
-<label for="buttons"> </label>			
+<div class="QuestionSubmit">		
 <input name="save" type="submit" value="&nbsp;&nbsp;<?php echo $lang["save"]?>&nbsp;&nbsp;" />
 </div>
 </form>

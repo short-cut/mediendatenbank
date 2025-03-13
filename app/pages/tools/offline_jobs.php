@@ -1,11 +1,7 @@
 <?php
 include_once dirname(__FILE__) . "/../../include/db.php";
+command_line_only();
 
-// This MUST only be done by having access to the server
-if(PHP_SAPI != 'cli')
-    {
-    exit("This script cannot be run from a browser");
-    }
 
 set_time_limit(0);
 
@@ -22,7 +18,7 @@ $jobs = array();
 $max_jobs = 10;
 
 $help_text = "NAME
-    offline_jobs.php - 
+    offline_jobs.php - Process offline jobs
 
 SYNOPSIS
     php /path/to/pages/tools/tools/offline_jobs.php [OPTIONS...]
@@ -92,7 +88,7 @@ if($offline_job_queue)
             $process_locks_max_seconds = 9999999;
             if(is_process_lock("job_" . $runningjob["ref"]))
                 {
-                echo "Job is in progress but has exceeded maximum lock time - marking as failed\n";
+                echo "Job is in progress (ID: " . $runningjob["ref"] . ") but has exceeded maximum lock time - marking as failed\n";
                 job_queue_update($runningjob["ref"],$runningjob_data,STATUS_ERROR);
                 clear_process_lock("job_" . $runningjob["ref"]);
                 }

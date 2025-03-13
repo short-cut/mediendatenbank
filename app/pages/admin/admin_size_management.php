@@ -14,17 +14,30 @@ include "../../include/header.php";
 $find=getval("find","");
 $order_by=getval("orderby","width");
 
-$sizes=sql_query("select ref, id, internal, width, height, name from preview_size" . ($find=="" ? "" :
-		" where id like '%{$find}%' or name like '%{$find}%' or width like '%{$find}%' or height like '%{$find}%'") .
-	" order by {$order_by}");
+// Construct the search query.
+$sql="select ref, id, internal, width, height, name from preview_size";
+$params=array();
+if ($find!="")
+	{
+	$sql.=" where id like ? or name like ? or width like ? or height like ?";
+	$params[]="s";$params[]="%{$find}%";
+	$params[]="s";$params[]="%{$find}%";
+	$params[]="s";$params[]="%{$find}%";
+	$params[]="s";$params[]="%{$find}%";
+	}
+$order_by=in_array($order_by,array("width","height","id","name"))?$order_by:"width"; // Force $order_by to something we expect so it's SQL safe.
+$sql.=" order by {$order_by}";
+
+$sizes=ps_query($sql,$params);
 
 ?><div class="BasicsBox"> 
-	
+	<h1><?php echo $lang["page-title_size_management"]; ?></h1>
 	<?php
     $links_trail = array(
 	    array(
 	        'title' => $lang["systemsetup"],
-	        'href'  => $baseurl_short . "pages/admin/admin_home.php"
+	        'href'  => $baseurl_short . "pages/admin/admin_home.php",
+			'menu' =>  true
 	    ),
 	    array(
 	        'title' => $lang["page-title_size_management"]
@@ -49,7 +62,7 @@ function addColumnHeader($orderName, $labelKey)
 
 	?><td>
 	<a href="<?php echo $baseurl ?>/pages/admin/admin_size_management.php?<?php
-	if ($find!="") { ?>&find=<?php echo $find; }
+	if ($find!="") { ?>&find=<?php echo escape($find); }
 	?>&orderby=<?php echo $orderName . ($order_by==$orderName ? '+desc' : ''); ?>"
 	   onClick="return CentralSpaceLoad(this);"><?php echo $lang[$labelKey] . $image ?></a>
 	</td>
@@ -79,22 +92,22 @@ function addColumnHeader($orderName, $labelKey)
 				}
 ?>			<tr>
 				<td>
-					<?php if($edit_url != "") { ?><a href="<?php echo $edit_url; ?>" onClick="return CentralSpaceLoad(this,true);"><?php } ?>
+					<?php if($edit_url != "") { ?><a href="<?php echo escape($edit_url); ?>" onClick="return CentralSpaceLoad(this,true);"><?php } ?>
 						<?php echo str_highlight ($size["id"],$find,STR_HIGHLIGHT_SIMPLE); ?>
 					<?php if($edit_url != "") { ?></a><?php } ?>
 				</td>					
 				<td>
-					<?php if($edit_url != "") { ?><a href="<?php echo $edit_url; ?>" onClick="return CentralSpaceLoad(this,true);"><?php } ?>
+					<?php if($edit_url != "") { ?><a href="<?php echo escape($edit_url); ?>" onClick="return CentralSpaceLoad(this,true);"><?php } ?>
 						<?php echo str_highlight ($size["name"],$find,STR_HIGHLIGHT_SIMPLE); ?>
 					<?php if($edit_url != "") { ?></a><?php } ?>
 				</td>
 				<td>
-					<?php if($edit_url != "") { ?><a href="<?php echo $edit_url; ?>" onClick="return CentralSpaceLoad(this,true);"><?php } ?>
+					<?php if($edit_url != "") { ?><a href="<?php echo escape($edit_url); ?>" onClick="return CentralSpaceLoad(this,true);"><?php } ?>
 						<?php echo str_highlight ($size["width"],$find,STR_HIGHLIGHT_SIMPLE); ?>
 					<?php if($edit_url != "") { ?></a><?php } ?>
 				</td>
 				<td>
-					<?php if($edit_url != "") { ?><a href="<?php echo $edit_url; ?>" onClick="return CentralSpaceLoad(this,true);"><?php } ?>
+					<?php if($edit_url != "") { ?><a href="<?php echo escape($edit_url); ?>" onClick="return CentralSpaceLoad(this,true);"><?php } ?>
 						<?php echo str_highlight ($size["height"],$find,STR_HIGHLIGHT_SIMPLE); ?>
 					<?php if($edit_url != "") { ?></a><?php } ?>
 				</td>
@@ -103,7 +116,7 @@ function addColumnHeader($orderName, $labelKey)
 	if ($edit_url != "")
 	{
 ?>					<div class="ListTools">
-						<?php echo LINK_CARET ?><a href="<?php echo $edit_url; ?>" onClick="return CentralSpaceLoad(this,true);"><?php echo $lang["action-edit"]?></a>
+						<a href="<?php echo $edit_url; ?>" onClick="return CentralSpaceLoad(this,true);"><i class="fa fa-edit"></i>&nbsp;<?php echo $lang["action-edit"]?></a>
 					</div>
 <?php
 	}
@@ -120,7 +133,7 @@ function addColumnHeader($orderName, $labelKey)
         <?php generateFormToken("admin_size_management"); ?>
 		<div class="Question">
 			<label for="find"><?php echo $lang["property-search_filter"] ?></label>
-			<input name="find" type="text" class="medwidth" value="<?php echo $find; ?>">
+			<input name="find" type="text" class="medwidth" value="<?php echo escape($find); ?>">
 			<input name="save" type="submit" value="&nbsp;&nbsp;<?php echo $lang["searchbutton"]; ?>&nbsp;&nbsp;">
 			<div class="clearerleft"></div>
 		</div>
@@ -128,7 +141,6 @@ function addColumnHeader($orderName, $labelKey)
 	if ($find!="") {
 		?>
 		<div class="QuestionSubmit">
-			<label for="buttonsave"></label>
 			<input name="buttonsave" type="button" onclick="CentralSpaceLoad('admin_size_management.php',false);"
 				   value="&nbsp;&nbsp;<?php echo $lang["clearbutton"]; ?>&nbsp;&nbsp;">
 		</div>
@@ -160,7 +172,7 @@ function addColumnHeader($orderName, $labelKey)
 			}
 		if ($find)
 			{
-			?><input type="hidden" name="find" value="<?php echo $find; ?>">
+			?><input type="hidden" name="find" value="<?php echo escape($find); ?>">
 			<?php
 			}
 		?>

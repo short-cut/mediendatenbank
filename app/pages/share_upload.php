@@ -149,6 +149,10 @@ if($submitted)
                     array_unshift($messages,$lang["upload_shares_emailed"]); 
                     }
                 }
+            elseif (is_string($result))
+                {
+                $messages[]=$result; // An error message was returned.
+                }
             }
         }
     }
@@ -209,8 +213,7 @@ include "../include/header.php";
 
             if($editing)
                 {?>
-                <div class="QuestionSubmit">
-                    <label for="buttons"> </label>			
+                <div class="QuestionSubmit">		
                     <input name="submit" type="submit" value="&nbsp;&nbsp;<?php {echo $lang["save"] ;}?>&nbsp;&nbsp;" onclick="return CentralSpacePost(this.form,true);" />
                 </div><?php
                 }
@@ -230,8 +233,7 @@ include "../include/header.php";
                         <div class="clearerleft"> </div>
                     </div>
                 </div>
-                <div class="QuestionSubmit">
-                    <label for="buttons"> </label>			
+                <div class="QuestionSubmit">		
                     <input name="submit" type="submit" value="&nbsp;&nbsp;<?php {echo $lang["button-upload-link-create"] ;}?>&nbsp;&nbsp;" onclick="return CentralSpacePost(this.form,true);" />
                 </div><?php
                 }

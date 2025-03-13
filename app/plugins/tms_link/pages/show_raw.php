@@ -7,14 +7,14 @@ if(!checkperm("a")){exit ("Access denied"); }
 include_once "../include/tms_link_functions.php";
 
 
-$tmsid=getvalescaped("tmsid",0,true);
+$tmsid=getval("tmsid",0,true);
 
 $conn = odbc_connect($tms_link_dsn_name, $tms_link_user,$tms_link_password);
 if(!$conn)
-        {
-        $error = odbc_errormsg();
-        exit($error);
-        }
+    {
+    $error = odbc_errormsg();
+    exit($error);
+    }
 
 $modules_mappings = tms_link_get_modules_mappings();
 
@@ -77,4 +77,6 @@ if($tmsid != 0)
         }
     echo "</div>";
     }
+
+odbc_close($conn);
 include "../../../include/footer.php";

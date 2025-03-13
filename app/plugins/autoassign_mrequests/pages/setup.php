@@ -105,6 +105,7 @@ $rows = ps_query("SELECT id, user_id, user_group_id, field_id, field_value
                         </td>
                         <td>
                             <select name="user_id_row" for="form<?php echo $row['id']; ?>" id="user_id_row" style="width:300px">
+                            <option value="" selected=""></option>
                                 <?php
                                 foreach($users as $user)
                                 {
@@ -134,7 +135,7 @@ $rows = ps_query("SELECT id, user_id, user_group_id, field_id, field_value
                                         $selected = true;
                                     }
                                 ?>
-                                <option value="<?php echo $field['ref']; ?>"<?php if($selected) { ?> selected=""<?php } ?>><?php echo $field['title']; ?></option>
+                                <option value="<?php echo escape($field['ref']); ?>"<?php if($selected) { ?> selected=""<?php } ?>><?php echo htmlspecialchars(i18n_get_translated($field['title'])); ?></option>
                                 <?php
                                 }
                                 ?>

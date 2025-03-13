@@ -1,135 +1,174 @@
 <?php
-if('cli' !== php_sapi_name())
+command_line_only();
+
+$use_cases = [
+    /*
+    Example of a full use case structure. The tags & attributes keys are optional
+    [
+        'name' => '',
+        'input' => [
+            'html' => '',
+            'tags' => [],
+            'attributes' => [],
+        ],
+        'expected' => '',
+    ],
+    */
+    [
+        'name' => 'Empty string',
+        'input' => [
+            'html' => '',
+        ],
+        'expected' => '',
+    ],
+    [
+        'name' => 'Text (ie. no HTML present)',
+        'input' => [
+            'html' => 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.',
+        ],
+        'expected' => 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.',
+    ],
+    [
+        'name' => 'Text (ie. no HTML present) with new line feeds at the end',
+        'input' => [
+            'html' => 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.' . PHP_EOL,
+        ],
+        'expected' => 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.' . PHP_EOL,
+    ],
+    [
+        'name' => 'Text with a tag allowed by default requires post processing',
+        'input' => [
+            'html' => 'Lorem ipsum <strong>dolor</strong> sit amet, consectetur adipiscing elit.',
+        ],
+        'post-process' => 'strip_paragraph_tags',
+        'expected' => 'Lorem ipsum <strong>dolor</strong> sit amet, consectetur adipiscing elit.',
+    ],
+    [
+        'name' => 'Text with a <script> (not allowed by default) tag in',
+        'input' => [
+            'html' => 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. <script>alert("XSS test")</script>',
+        ],
+        'expected' => '<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. </p>',
+    ],
+    [
+        'name' => 'Tag (header) not allowed by default',
+        'input' => [
+            'html' => '<header>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</header>',
+        ],
+        'expected' => '',
+    ],
+    [
+        'name' => 'Default configuration - allowed tag (p)',
+        'input' => [
+            'html' => '<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>'
+        ],
+        'expected' => '<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>',
+    ],
+    [
+        'name' => 'Default configuration - allowed attribute (id)',
+        'input' => [
+            'html' => '<p id="testID">Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>',
+        ],
+        'expected' => '<p id="testID">Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>',
+    ],
+    [
+        'name' => 'Stripping code based on default configuration',
+        'input' => [
+            'html' => '<p id="testID" data-test="testData" onmousedown="this.style.color=\'#FF0000\';" onmouseup="this.style.color=\'#000000\';">Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>',
+        ],
+        'expected' => '<p id="testID">Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>',
+    ],
+    [
+        'name' => 'Default configuration - remove <script> tags',
+        'input' => [
+            'html' => '<p id="testID" onmousedown="this.style.color=\'#FF0000\';" onmouseup="this.style.color=\'#000000\';">Lorem ipsum dolor sit amet, consectetur adipiscing elit.<script>console.log(true);</script></p>',
+        ],
+        'expected' => '<p id="testID">Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>',
+    ],
+    [
+        'name' => 'Default configuration - remove onmouse* attributes',
+        'input' => [
+            'html' => '<p onmousedown="this.style.color=\'#FF0000\';" onmouseup="this.style.color=\'#000000\';">Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>',
+        ],
+        'expected' => '<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>',
+    ],
+    [
+        'name' => 'Allow extra attributes',
+        'input' => [
+            'html' => '<p id="testID" data-test="testData" onmousedown="this.style.color=\'#FF0000\';" onmouseup="this.style.color=\'#000000\';">Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>',
+            'attributes' => ['data-test'],
+        ],
+        'expected' => '<p id="testID" data-test="testData">Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>',
+    ],
+    [
+        'name' => 'Allow extra tags',
+        'input' => [
+            'html' => '<p id="testID" onmousedown="this.style.color=\'#FF0000\';">Lorem ipsum dolor sit amet, consectetur adipiscing elit.<script>console.log(true);</script></p>',
+            'tags' => ['script'],
+        ],
+        'expected' => '<p id="testID">Lorem ipsum dolor sit amet, consectetur adipiscing elit.<script>console.log(true);</script></p>',
+    ],
+    [
+        'name' => 'Poorly formated tags (e.g. missing closing tags)',
+        'input' => [
+            'html' => '<p onmousedown="this.style.color=\'#FF0000\';">Lorem ipsum dolor sit amet, consectetur adipiscing elit.',
+        ],
+        'expected' => '<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>',
+    ],
+    [
+        'name' => 'Non standard tags',
+        'input' => [
+            'html' => '<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit,<invalid tag>sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>'
+        ],
+        'expected' => '<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit,</p>'
+    ],
+    [
+        'name' => 'HTML with new line feeds at the end',
+        'input' => [
+            'html' => '<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>' . PHP_EOL,
+        ],
+        'expected' => '<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>',
+    ],    
+    [
+        'name' => 'HTML which has been through htmlspecialchars()',
+        'input' => [
+            'html' => htmlspecialchars('<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. <script>alert("XSS test")</script></p>'),
+        ],
+        'expected' => '<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. </p>',
+    ],
+    [
+        'name' => 'Multi byte characters',
+        'input' => [
+            'html' => 'Multi byte characters: © è å 泉',
+        ],
+        'expected' => 'Multi byte characters: © è å 泉',
+    ],
+];
+
+foreach($use_cases as $use_case)
     {
-    exit('This utility is command line only.');
+    $html = $use_case['input']['html'];
+    $tags = $use_case['input']['tags'] ?? [];
+    $attributes = $use_case['input']['attributes'] ?? [];
+
+    $processed = strip_tags_and_attributes($html, $tags, $attributes);
+    if (isset($use_case['post-process']) && is_callable($use_case['post-process']))
+        {
+        $processed = $use_case['post-process']($processed);
+        }
+
+    if ($processed !== $use_case['expected'])
+        {
+        echo "Use case: {$use_case['name']} - ";
+        // printf('%s html = %s',  PHP_EOL, $html);
+        // printf('%s processed = %s',  PHP_EOL, $processed);
+        return false;
+        }
     }
 
-// Case 1: 
-if('' !== strip_tags_and_attributes(''))
-    {
-    return false;
-    }
 
 
-// Case 2: Tag not allowed by default
-$html_input  = '<header>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</header>';
-$html_output = '';
-
-if($html_output !== strip_tags_and_attributes($html_input))
-    {
-    return false;
-    }
-
-
-// Case 3: 
-$html_input  = '<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>';
-$html_output = '<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>';
-
-if($html_output !== strip_tags_and_attributes($html_input))
-    {
-    return false;
-    }
-
-
-// Case 4: 
-$html_input  = '<p id="testID">Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>';
-$html_output = '<p id="testID">Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>';
-
-if($html_output !== strip_tags_and_attributes($html_input))
-    {
-    return false;
-    }
-
-
-// Case 5: 
-$html_input  = '<p id="testID" data-test="testData" onmousedown="this.style.color=\'#FF0000\';" onmouseup="this.style.color=\'#000000\';">Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>';
-$html_output = '<p id="testID">Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>';
-
-if($html_output !== strip_tags_and_attributes($html_input))
-    {
-    return false;
-    }
-
-
-// Case 5.1: 
-$html_input  = '<p id="testID" onmousedown="this.style.color=\'#FF0000\';" onmouseup="this.style.color=\'#000000\';">Lorem ipsum dolor sit amet, consectetur adipiscing elit.<script>console.log(true);</script></p>';
-$html_output = '<p id="testID">Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>';
-
-if($html_output !== strip_tags_and_attributes($html_input))
-    {
-    return false;
-    }
-
-
-// Case 5.2: 
-$html_input  = '<p id="testID" data-test="testData" onmousedown="this.style.color=\'#FF0000\';" onmouseup="this.style.color=\'#000000\';">Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>';
-$html_output = '<p id="testID" data-test="testData">Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>';
-$allow_attrs = array('data-test');
-
-if($html_output !== strip_tags_and_attributes($html_input, array(), $allow_attrs))
-    {
-    return false;
-    }
-
-
-// Case 5.3: 
-$html_input  = '<p id="testID" onmousedown="this.style.color=\'#FF0000\';">Lorem ipsum dolor sit amet, consectetur adipiscing elit.<script>console.log(true);</script></p>';
-$html_output = '<p id="testID">Lorem ipsum dolor sit amet, consectetur adipiscing elit.<script>console.log(true);</script></p>';
-$allow_tags  = array('script');
-
-if($html_output !== strip_tags_and_attributes($html_input, $allow_tags))
-    {
-    return false;
-    }
-
-
-// Case 6: 
-$html_input  = '<p onmousedown="this.style.color=\'#FF0000\';" onmouseup="this.style.color=\'#000000\';">Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>';
-$html_output = '<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>';
-
-if($html_output !== strip_tags_and_attributes($html_input))
-    {
-    return false;
-    }
-
-
-// Case 7: 
-$html_input  = '<p onmousedown="this.style.color=\'#FF0000\';" onmouseup="this.style.color=\'#000000\';">Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>';
-$html_output = '<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>';
-
-if($html_output !== strip_tags_and_attributes($html_input))
-    {
-    return false;
-    }
-
-
-// Case 8: Poorly formated tags (e.g. missing closing tags)
-$html_input  = '<p onmousedown="this.style.color=\'#FF0000\';">Lorem ipsum dolor sit amet, consectetur adipiscing elit.';
-$html_output = '<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>';
-
-if($html_output !== strip_tags_and_attributes($html_input))
-    {
-    return false;
-    }
-
-
-// Case 9: Text with new line feeds at the end
-$html_input  = '<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>' . PHP_EOL;
-$html_output = '<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>';
-
-if($html_output !== strip_tags_and_attributes($html_input))
-    {
-    return false;
-    }
-
-
-// Case: Normal text (ie. no HTML present)
-$html_input  = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.';
-$html_output = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.';
-
-if($html_output !== strip_tags_and_attributes($html_input))
-    {
-    return false;
-    }
+// Tear down
+unset($use_cases, $html, $tags, $attributes);
 
 return true;

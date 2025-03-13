@@ -10,16 +10,16 @@ include "../../include/db.php";
 include "../../include/authenticate.php"; if (!checkperm("o")) {exit ("Permission denied.");}
 include "../../include/research_functions.php";
 
-$offset        = getvalescaped('offset', 0);
-$page          = getvalescaped('page', '');
-$name          = getvalescaped('name', '');
-$findpage      = getvalescaped('findpage', '');
-$findname      = getvalescaped('findname', '');
-$findtext      = getvalescaped('findtext', '');
-$newhelp       = getvalescaped('newhelp', '');
-$editlanguage  = getvalescaped('editlanguage', $language);
-$editgroup     = getvalescaped('editgroup', '');
-$save          = getvalescaped('save', '');
+$offset        = getval('offset', 0);
+$page          = getval('page', '');
+$name          = getval('name', '');
+$findpage      = getval('findpage', '');
+$findname      = getval('findname', '');
+$findtext      = getval('findtext', '');
+$newhelp       = getval('newhelp', '');
+$editlanguage  = getval('editlanguage', $language);
+$editgroup     = getval('editgroup', '');
+$save          = getval('save', '');
 $text          = getval('text', '');
 
 // Validate HTML
@@ -82,12 +82,13 @@ $language=$languagesaved;
 include "../../include/header.php";
 ?>
 <div class="BasicsBox">
-
+<h1><?php echo $lang["editcontent"]; ?></h1>
 <?php
 $links_trail = array(
     array(
         'title' => $lang["systemsetup"],
-        'href'  => $baseurl_short . "pages/admin/admin_home.php"
+        'href'  => $baseurl_short . "pages/admin/admin_home.php",
+		'menu' =>  true
     ),
     array(
         'title' => $lang["managecontent"],
@@ -110,15 +111,15 @@ if($html_validation !== true && $html_validation !== '')
 
     <form method="post" id="mainform" action="<?php echo $baseurl_short; ?>pages/admin/admin_content_edit.php?page=<?php echo urlencode($page);?>&name=<?php echo urlencode($name);?>&editlanguage=<?php echo urlencode($editlanguage);?>&editgroup=<?php echo urlencode($editgroup);?>&findpage=<?php echo urlencode($findpage)?>&findname=<?php echo urlencode($findname)?>&findtext=<?php echo urlencode($findtext)?>&offset=<?php echo urlencode($offset)?>">
         <?php generateFormToken("mainform"); ?>
-        <input type=hidden name=page value="<?php echo $page?>">
-        <input type=hidden name=name value="<?php echo $name?>">
+        <input type=hidden name=page value="<?php echo escape($page)?>">
+        <input type=hidden name=name value="<?php echo escape($name)?>">
         <input type=hidden name=copyme id="copyme" value="">
         <input type=hidden name=langswitch id="langswitch" value="">
         <input type=hidden name=groupswitch id="groupswitch" value="">
         <input type="hidden" name="custom" value="<?php echo getval('custom', 0, true)?>">
         <div class="Question">
             <label><?php echo $lang["page"]?></label>
-            <div class="Fixed"><?php echo ($page==""?$lang["all"]:$page) ?></div>
+            <div class="Fixed"><?php echo htmlspecialchars(($page==""?$lang["all"]:$page)) ?></div>
             <div class="clearerleft"></div>
         </div>
 
@@ -312,5 +313,3 @@ jQuery('#checkhtml').click(function(e) {
 </script>
 <?php		
 include "../../include/footer.php";
-?>
-

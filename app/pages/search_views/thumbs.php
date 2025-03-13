@@ -1,26 +1,30 @@
 <?php 
 if (!hook("renderresultthumb")) 
     {
+    $resource_view_title = i18n_get_translated($result[$n]["field" . $view_title_field]);
+
     # Establish various metrics for use in thumbnail rendering
     $resolved_title_trim=0; 
-    $field_height = 31;
+    $field_height = 24;
     $resource_id_height = 21;
+    $workflow_state_height = 31;
 
     hook("thumbstextheight");
 
     if ($display == "xlthumbs")
         {
         $resolved_title_trim = $xl_search_results_title_trim;
-        $resource_panel_height = 375;
+        $resource_panel_height = 351;
         }
     else
         {
         $resolved_title_trim = $search_results_title_trim;
-        $resource_panel_height = 228;
+        $resource_panel_height = 231;
         }
 
-    $thumbs_displayed_fields_height = $resource_panel_height + ($field_height * count($thumbs_display_fields));
+    $thumbs_displayed_fields_height = $resource_panel_height + ($field_height * (count($thumbs_display_fields))) + 2;
 
+    # Add space for number of annotations
     if($annotate_enabled || (isset($annotate_enabled_adjust_size_all) && $annotate_enabled_adjust_size_all == true))
         {
         $thumbs_displayed_fields_height += $field_height;
@@ -33,18 +37,27 @@ if (!hook("renderresultthumb"))
             {
             if(in_array($df[$i]['ref'],$thumbs_display_fields) && in_array($df[$i]['ref'],$thumbs_display_extended_fields))
                 {
-                $thumbs_displayed_fields_height += ($search_result_title_height - 18);
+                if ($df[$i]['ref'] == $thumbs_display_fields[0])
+                    {
+                    # If extending the taller first field take off more height
+                    $thumbs_displayed_fields_height -= 2;
+                    }
+                $thumbs_displayed_fields_height += ($search_result_title_height - 19);
                 }
             }
         }
 
     hook('thumbs_resourceshell_height');
-    
+
     if($display_resource_id_in_thumbnail)
         { 
         $thumbs_displayed_fields_height += $resource_id_height;
         $br = '<br />';
-        }; 
+        }
+    if($thumbs_display_archive_state)
+        { 
+        $thumbs_displayed_fields_height += $workflow_state_height;
+        }
 
     $class = array();
     if($use_selection_collection && in_array($ref, $selection_collection_resources))
@@ -57,14 +70,14 @@ if (!hook("renderresultthumb"))
 
     <!--Resource Panel -->    
     <div class="ResourcePanel <?php echo implode(" ", $class); ?> <?php echo ($display == 'xlthumbs' ? 'ResourcePanelLarge' : '') ?> ArchiveState<?php echo $result[$n]['archive'];?> <?php hook('thumbsviewpanelstyle'); ?> ResourceType<?php echo $result[$n]['resource_type']; ?>" id="ResourceShell<?php echo htmlspecialchars($ref)?>" <?php echo hook('resourcepanelshell_attributes')?>
-    style="height: <?php echo $thumbs_displayed_fields_height; ?>px;"
+    style="height: <?php echo (int)$thumbs_displayed_fields_height; ?>px;"
     <?php hook('renderadditionalthumbattributes', '', [$result[$n]]);?>
     >
         <div class="ResourcePanelTop">
             <?php
             if (isset($result[$n]['file_extension']) && $result[$n]['file_extension'] != "")
                 { ?>
-                <span class="thumbs-file-extension"><?php echo strtoupper(htmlspecialchars($result[$n]['file_extension'])) ?></span>
+                <div class="thumbs-file-extension"><?php echo strtoupper(htmlspecialchars($result[$n]['file_extension'])) ?></div>
                 <?php
                 }
 
@@ -72,7 +85,7 @@ if (!hook("renderresultthumb"))
                 {
                 foreach ($types as $type)
                     {
-                    if (($type["ref"] == $result[$n]['resource_type']) && isset($type["icon"]))
+                    if (($type["ref"] == $result[$n]['resource_type']) && isset($type["icon"]) && $type["icon"] != "")
                         {
                         echo '<div class="ResourceTypeIcon fa-fw ' . htmlspecialchars($type["icon"]) . '" title="' . htmlspecialchars($type["name"]) . '"></div>';  
                         }
@@ -85,7 +98,7 @@ if (!hook("renderresultthumb"))
         if (!hook("renderimagethumb")) 
             {
             # Work out image to use.
-            if(isset($watermark))
+            if($watermark !== '')
                 {
                 $use_watermark=check_use_watermark();
                 }
@@ -123,7 +136,7 @@ if (!hook("renderresultthumb"))
                 }
 
             $thm_url=get_resource_path($ref,false,$image_size ,false,$result[$n]['preview_extension'],true,1,$use_watermark,$result[$n]['file_modified']);
-                
+
             if(isset($result[$n]['thm_url']))
                 {
                 $thm_url = $result[$n]['thm_url'];
@@ -134,24 +147,24 @@ if (!hook("renderresultthumb"))
                     class="<?php echo ($display == 'xlthumbs' ? 'ImageWrapperLarge' : 'ImageWrapper') ?>"
                     href="<?php echo $url?>"  
                     onClick="return <?php echo ($resource_view_modal?"Modal":"CentralSpace") ?>Load(this,true);" 
-                    title="<?php echo str_replace(array("\"","'"),"",htmlspecialchars(i18n_get_translated($result[$n]["field".$view_title_field])))?>"
+                    title="<?php echo str_replace(array("\"","'"),"",htmlspecialchars($resource_view_title))?>"
                 >
                         <?php 
-                        if(1 == $result[$n]['has_image'])
+                        if($result[$n]['has_image'] == 1 && !resource_has_access_denied_by_RT_size($result[$n]['resource_type'], $image_size))
                         {
                         render_resource_image($result[$n],$thm_url,$display);
                         // For videos ($ffmpeg_supported_extensions), if we have snapshots set, add code to fetch them from the server
                         // when user hovers over the preview thumbnail
-                        if(1 < $ffmpeg_snapshot_frames && in_array($result[$n]['file_extension'], $ffmpeg_supported_extensions) && 0 < get_video_snapshots($ref, false, true))
+                        if(1 < $ffmpeg_snapshot_frames && (in_array($result[$n]['file_extension'], $ffmpeg_supported_extensions) || ($result[$n]['file_extension'] == 'gif' && $ffmpeg_preview_gif)) && 0 < get_video_snapshots($ref, false, true))
                             {
                             ?>
                             <script>
                             jQuery('#CentralSpace #ResourceShell<?php echo $ref; ?> a img').mousemove(function(event)
                                 {
                                 var x_coord             = event.pageX - jQuery(this).offset().left;
-                                var video_snapshots     = <?php echo json_encode(get_video_snapshots($ref)); ?>;
+                                var video_snapshots     = <?php echo json_encode(get_video_snapshots($ref, false, false, true)); ?>;
                                 var snapshot_segment_px = Math.ceil(jQuery(this).width() / Object.keys(video_snapshots).length);
-                                var snapshot_number     = Math.ceil(x_coord / snapshot_segment_px);
+                                var snapshot_number     = x_coord == 0 ? 1 : Math.ceil(x_coord / snapshot_segment_px);
                                 if(typeof(ss_img_<?php echo $ref; ?>) === "undefined")
                                     {
                                     ss_img_<?php echo $ref; ?> = new Array();
@@ -173,7 +186,7 @@ if (!hook("renderresultthumb"))
                         { ?>
                         <img 
                             border=0 
-                            src="<?php echo $baseurl_short?>gfx/<?php echo get_nopreview_icon($result[$n]["resource_type"],$result[$n]["file_extension"],false) ?>" style="margin-top:<?php echo ($display == "xlthumbs" ? "90px" : "10px")?>;"
+                            src="<?php echo $baseurl_short?>gfx/<?php echo get_nopreview_icon($result[$n]["resource_type"],$result[$n]["file_extension"],false) ?>" style="margin-top:<?php echo ($display == "xlthumbs" ? "90px" : "35px")?>;"
 
                         />
                         <?php 
@@ -181,7 +194,7 @@ if (!hook("renderresultthumb"))
                    hook("aftersearchimg","",array($result[$n], $thm_url, $display))
                    ?>
                 </a>
-            <?php 
+<?php 
             } ?> 
         <!-- END HOOK Renderimagethumb-->
 
@@ -194,7 +207,19 @@ if (!hook("renderresultthumb"))
         if (!hook("rendertitlethumb")) {} ?> <!-- END HOOK Rendertitlethumb -->
         <?php
 
-        if($annotate_enabled)
+        if($thumbs_display_archive_state)
+            {
+            $workflow_html = "<div class='ResourcePanelInfo WorkflowState'>";
+            // Add icon
+            $icon = $workflowicons[$result[$n]['archive']] ?? (WORKFLOW_DEFAULT_ICONS[$result[$n]['archive']] ?? WORKFLOW_DEFAULT_ICON);
+            $workflow_html .= "<i class='" . escape($icon) . "'></i>&nbsp;";
+            // Add text for workflow state
+            $workflow_html .= isset($lang["status" . $result[$n]['archive']]) ? (htmlspecialchars($lang["status" . $result[$n]['archive']])) : ($lang["status"] . "&nbsp;" . $result[$n]['archive']);
+            $workflow_html .= "</div>";
+            echo $workflow_html;
+            }
+
+        if(count(canSeeAnnotationsFields()) > 0)
             {
             $annotations_count = getResourceAnnotationsCount($ref);
             $message           = '';
@@ -231,12 +256,12 @@ if (!hook("renderresultthumb"))
             {
             if(!in_array($df[$x]['ref'],$thumbs_display_fields))
                 {continue;}
-            
+
             #value filter plugin -tbd   
-            $value=@$result[$n]['field'.$df[$x]['ref']];
+            $value=$result[$n]['field'.$df[$x]['ref']] ?? "";
             $plugin="../plugins/value_filter_" . $df[$x]['name'] . ".php";
             if ($df[$x]['value_filter']!="")
-                {eval($df[$x]['value_filter']);}
+                {eval(eval_check_signed($df[$x]['value_filter']));}
             else if (file_exists($plugin)) 
                 {include $plugin;}
 
@@ -254,7 +279,7 @@ if (!hook("renderresultthumb"))
                 {
                 if (!hook("replaceresourcepanelinfo"))
                     { ?>
-                    <div class="ResourcePanelInfo ResourceTypeField<?php echo $df[$x]['ref']?>"
+                    <div class="ResourcePanelInfo ResourceTypeField<?php echo $df[$x]['ref']; echo $x == 0 ? ' ResourcePanelTitle' : ''?>"
                     title="<?php echo str_replace(array("\"","'"),"",htmlspecialchars(i18n_get_translated($value)))?>"
                     >
                         <div class="extended">
@@ -265,7 +290,7 @@ if (!hook("renderresultthumb"))
                                 href="<?php echo $url?>"  
                                 onClick="return <?php echo ($resource_view_modal?"Modal":"CentralSpace") ?>Load(this,true);" 
                             >
-                            <?php 
+<?php 
                             } //end link
                         echo format_display_field($value);
                         if ($show_extension_in_search) 
@@ -275,12 +300,12 @@ if (!hook("renderresultthumb"))
                         if ($x==0)
                             { // add link if necessary ?>
                             </a>
-                            <?php 
+<?php 
                             } //end link?> 
                         &nbsp;
                         </div>
                     </div>
-                    <?php 
+<?php 
                     } /* end hook replaceresourcepanelinfo */ ?>
                 <?php 
                 // normal behavior
@@ -289,7 +314,7 @@ if (!hook("renderresultthumb"))
                 {
                 if (!hook("replaceresourcepanelinfonormal"))
                     { ?>
-                    <div class="ResourcePanelInfo  ResourceTypeField<?php echo $df[$x]['ref']?>"
+                    <div class="ResourcePanelInfo  ResourceTypeField<?php echo $df[$x]['ref']; echo $x == 0 ? ' ResourcePanelTitle' : ''?>"
                     title="<?php echo str_replace(array("\"","'"),"",htmlspecialchars(i18n_get_translated($value))); ?>"
                     >
                         <?php 
@@ -299,18 +324,18 @@ if (!hook("renderresultthumb"))
                                 href="<?php echo $url?>"  
                                 onClick="return <?php echo ($resource_view_modal?"Modal":"CentralSpace") ?>Load(this,true);" 
                             >
-                            <?php 
+<?php 
                             } //end link
                         echo highlightkeywords(htmlspecialchars(tidy_trim(TidyList(i18n_get_translated($value)),$resolved_title_trim)),$search,$df[$x]['partial_index'],$df[$x]['name'],$df[$x]['indexed']);
                         if ($x==0)
                             { // add link if necessary ?>
                             </a>
-                            <?php 
+<?php 
                             } //end link ?>
                         &nbsp;
                     </div>
                     <div class="clearer"></div>
-                    <?php 
+<?php 
                     }
                 } /* end hook replaceresourcepanelinfonormal */
                 hook("processthumbsfields");
@@ -332,8 +357,10 @@ if (!hook("renderresultthumb"))
                     <input 
                         type="checkbox" 
                         id="check<?php echo htmlspecialchars($ref)?>" 
-                        class="checkselect" 
+                        class="checkselect"
+                        title="<?php echo escape($lang['action-select'] . (($resource_view_title != "") ? " - " . $resource_view_title : "")) ?>"
                         data-resource="<?php echo htmlspecialchars($result[$n]["ref"]); ?>"
+                        aria-label="<?php echo escape($lang["action-select"])?>"
                         <?php echo render_csrf_data_attributes("ToggleCollectionResourceSelection_{$result[$n]["ref"]}"); ?>
                         <?php 
                         if (in_array($ref, $selection_collection_resources))
@@ -367,7 +394,7 @@ if (!hook("renderresultthumb"))
 
     </div>
 </div>
-    <?php 
+<?php 
     } # end hook renderresultthumb
 
 

@@ -3,7 +3,7 @@ include "../include/db.php";
 
 include "../include/authenticate.php"; 
 
-$collection=getvalescaped("collection","",true);
+$collection=getval("collection","",true);
 
 # Reload collection frame to show new (empty) basket
 refresh_collection_frame($usercollection);
@@ -30,12 +30,12 @@ if (!$valid)
 	# ------------------- Notification not yet received. Show a please wait message. -----------------------
 	?>
     <p><?php echo $lang["waitingforpaymentauthorisation"] ?></p>
-	   
+
 	<form method="get" action="<?php echo $baseurl_short?>pages/purchase_download.php">
 	<input type="submit" name="reload" value="&nbsp;&nbsp;&nbsp;<?php echo $lang["reload"] ?>&nbsp;&nbsp;&nbsp;">
 	<input type="hidden" name="collection" value="<?php echo $usercollection ?>">
 	</form>
-	<?php
+<?php
 	}
 else
 	{
@@ -53,6 +53,10 @@ else
 		<?php
 		$size=$resource["purchase_size"];
 		$title=get_data_by_field($resource["ref"],$view_title_field);
+        if(trim($title)=="")
+            {
+            $title = $lang["resourceid"] . "&nbsp;" . $resource["ref"];
+            }
 		?>
 		<td><h2><?php echo i18n_get_translated($title) ?></h2></td>
 		<td class="DownloadButton">
@@ -73,10 +77,10 @@ else
 		</tr>
 	<?php } ?>
 	</table>
-	
+
 	</div>
 	</div>
-	<?php
+<?php
 	}
 ?>
 </div>

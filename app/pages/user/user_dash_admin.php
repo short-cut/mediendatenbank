@@ -10,9 +10,9 @@ if(!hook("replace_dash_admin_permission_relocate")){
 	if(!($home_dash && checkPermission_dashmanage()))
 		{header("location: ".$baseurl_short."pages/user/user_home.php");exit;}
 	}
-if(getvalescaped("quicksave",FALSE) && enforcePostRequest(false))
+if(getval("quicksave",FALSE) && enforcePostRequest(false))
 	{
-	$tile = getvalescaped("tile","");
+	$tile = getval("tile","");
 	#If a valid tile value supplied
 	if(!empty($tile) && is_numeric($tile))
 		{
@@ -41,9 +41,9 @@ if(getvalescaped("quicksave",FALSE) && enforcePostRequest(false))
 	exit("Save Failed");
 	}
 
-if(getvalescaped("submit",FALSE) && enforcePostRequest(false))
+if(getval("submit",FALSE) && enforcePostRequest(false))
 	{
-	$tiles = getvalescaped("tiles","");
+	$tiles = getval("tiles","");
 	if(empty($tiles))
 		{
 		empty_user_dash($userref);
@@ -65,13 +65,13 @@ if(getvalescaped("submit",FALSE) && enforcePostRequest(false))
 include "../../include/header.php";
 ?>
 <div class="BasicsBox"> 
-	<h1><?php echo $lang["manage_own_dash"];?></h1>
+	<h1><?php echo $lang["manage_dash_tiles"];?></h1>
 	<p>
 		<?php echo $lang["manageowndashinto"];render_help_link('user/create-dash-tile');?>
 	</p>
 	<form class="Listview">
 	<input type="hidden" name="submit" value="true" />
-	<table class="ListviewStyle">
+	<table border="0" cellspacing="0" cellpadding="0" class="ListviewStyle">
 		<thead>
 			<tr class="ListviewTitleStyle">
 				<td><?php echo $lang["dashtileshow"];?></td>
@@ -112,8 +112,15 @@ include "../../include/header.php";
 				function(data){
 					jQuery("#tile"+tile).removeClass("positiveglow");
 					jQuery("#tile"+tile).removeClass("negativeglow");
-					jQuery("#tile"+tile).addClass(data);
-					window.setTimeout(function(){jQuery("#tile"+tile).removeClass(data);},2000);
+                    if(data == 'positiveglow')
+                        {
+                        jQuery("#tile"+tile).addClass(data);
+					    window.setTimeout(function(){jQuery("#tile"+tile).removeClass(data);},2000);
+                        }
+                    else
+                        {
+                        CentralSpaceLoad("<?php echo $baseurl . '/pages/user/user_dash_admin.php'; ?>");
+                        }
 				}
 			);
 		}
@@ -140,7 +147,7 @@ include "../../include/header.php";
 		if($home_dash && checkPermission_dashcreate())
 			{ ?>
 			<p>
-				<a href="<?php echo $baseurl."/pages/dash_tile.php?create=true&tltype=ftxt&modifylink=true&freetext=Helpful%20tips%20here&nostyleoptions=true&all_users=0&link=http://resourcespace.org/knowledge-base/&title=Knowledge%20Base";?>"><?php echo LINK_CARET ?><?php echo $lang["createdashtilefreetext"]?></a>
+				<a href="<?php echo $baseurl."/pages/dash_tile.php?create=true&tltype=ftxt&modifylink=true&freetext=Helpful%20tips%20here&nostyleoptions=true&all_users=0&link=https://resourcespace.com/knowledge-base/&title=Knowledge%20Base";?>"><?php echo LINK_CARET ?><?php echo $lang["createdashtilefreetext"]?></a>
 			</p>
 			<?php
 			} 

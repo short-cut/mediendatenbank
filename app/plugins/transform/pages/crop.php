@@ -6,7 +6,8 @@ include_once "../../../include/image_processing.php";
 include_once "../../../include/slideshow_functions.php";
 include_once "../include/transform_functions.php";
 
-global $cropper_allowed_extensions, $custom_cropper_preset_sizes;
+global $cropper_allowed_extensions, $custom_cropper_preset_sizes, $cropper_use_filename_as_title;
+global $replace_resource_preserve_option, $replace_resource_preserve_default;
 
 $ref        = getval("ref",0,true);
 $search     = getval("search","");
@@ -95,6 +96,11 @@ $imversion = get_imagemagick_version();
 $orig_ext = $resource["file_extension"];
 hook('transformcropbeforegetsize');
 $originalpath = get_resource_path($ref,true,'',false,$orig_ext);
+debug(sprintf('[transform][pages/crop][line@%d] $originalpath = %s ', __LINE__, $originalpath));
+
+$usesize    = "scr";
+$useext     = "jpg";
+
 if(file_exists($originalpath))
     {
     // For SVGs it is hard to determine the size (at the moment (PHP7 - 29/12/2017) getimagesize does not support it)
@@ -108,28 +114,62 @@ if(file_exists($originalpath))
         }
     else
         {
-        $origsizes  = getimagesize($originalpath);        
+        $origsizes  = getimagesize($originalpath);
+        if ($origsizes === false)
+            {
+            $identify_path = get_utility_path('im-identify');
+            $command = $identify_path . " -format '%w,%h' " . $originalpath;
+            $identify_results = run_command($command);
+            if(preg_match("~\d+,\d+~",$identify_results))
+                {
+                $origsizes = explode(',',$identify_results);
+                }
+            else
+                {
+                $errors[] = "Unable to get image resolution";
+                $origsizes = [0,0];
+                }
+            }
         $origwidth  = $origsizes[0];
         $origheight = $origsizes[1];
-        $usesize    = "scr";
-        $useext     = "jpg";
         }
     }
 else
     {
     $errors[] = "Unable to find original file";
     }
-    
-$previewsourcepath = get_resource_path($ref,true,$usesize,false,$useext);
-if(!file_exists($previewsourcepath))
+
+// Check if an uncropped preview exists
+$previewsourcepath = $org = get_resource_path($ref,true,"original_copy",false,$useext);
+debug(sprintf('[transform][pages/crop][line@%d] $org = %s ', __LINE__, $org));
+
+if(!file_exists($org))
     {
-    $previewsourcepath=get_preview_source_file($ref, $orig_ext, false, true,-1,trim($resource["file_path"]) != "");
+    $previewsourcepath = get_resource_path($ref,true,$usesize,false,$useext);
+    debug(sprintf('[transform][pages/crop][line@%d] $previewsourcepath = %s ', __LINE__, $previewsourcepath));
+    if(!file_exists($previewsourcepath))
+        {
+        $previewsourcepath=get_preview_source_file($ref, $orig_ext, false, true,-1,!is_null($resource["file_path"]));
+        debug(sprintf('[transform][pages/crop][line@%d] $previewsourcepath = %s ', __LINE__, $previewsourcepath));
+        }
+    }
+
+// Check if preview is same aspect ratio as original
+$predims = getimagesize($previewsourcepath);
+$preratio = round($predims[0]/$predims[1],1);
+$origratio = round($origwidth/$origheight,1);
+if($preratio !== $origratio)
+    {
+    // The preview source file has been altered relative to the original. Use the original
+    // instead because the final transform will use the original and any transformations will otherwise be incorrect
+    $org = $previewsourcepath = $originalpath;
     }
 
 // Get the actions that have been requested
 $imgactions = array();
 // Transformations must be carried out in the order the user performed them
 $tfactions = getval("tfactions","");
+debug(sprintf('[transform][pages/crop] $tfactions = %s ', $tfactions));
 $imgactions["tfactions"] = explode(",",$tfactions);
 
 $imgactions["quality"] = getval("quality",100,TRUE);
@@ -146,6 +186,8 @@ $preview_actions["new_width"] = 600;
 $preview_actions["new_height"] = 600;
 $preview_actions["preview"] = true;
 
+debug(sprintf('[transform][pages/crop][line@%d] $previewsourcepath = %s ', __LINE__, $previewsourcepath));
+debug(sprintf('[transform][pages/crop][line@%d] $crop_pre_file = %s ', __LINE__, $crop_pre_file));
 $generated = transform_file($previewsourcepath,$crop_pre_file, $preview_actions);
 
 if($reload_image)
@@ -187,25 +229,26 @@ if ($cropwidth == 0 || $cropheight == 0)
 
 
 // Get parameters from Manage slideshow page
-$manage_slideshow_action = getvalescaped('manage_slideshow_action', '');
-$manage_slideshow_id = getvalescaped('manage_slideshow_id', '');
+$manage_slideshow_action = getval('manage_slideshow_action', '');
+$manage_slideshow_id = getval('manage_slideshow_id', '');
 
-$return_to_url = getvalescaped('return_to_url', '');
+$return_to_url = getval('return_to_url', '');
 
 $terms_url = $baseurl_short."pages/terms.php?ref=".$ref;
 
 if ($saveaction != '' && enforcePostRequest(false))
     {
+    debug("[transform][pages/crop] save action triggered - $saveaction");
     $imgactions["repage"] = $cropper_use_repage;
 
     // Get values from jcrop selection
-    $width       = getvalescaped('width',0,true);
-    $height      = getvalescaped('height',0,true);
-    $xcoord      = getvalescaped('xcoord',0,true);
-    $ycoord      = getvalescaped('ycoord',0,true);
+    $width       = getval('width',0,true);
+    $height      = getval('height',0,true);
+    $xcoord      = getval('xcoord',0,true);
+    $ycoord      = getval('ycoord',0,true);
     // Get required size
-    $new_width   = getvalescaped('new_width',0,true);
-    $new_height  = getvalescaped('new_height',0,true);
+    $new_width   = getval('new_width',0,true);
+    $new_height  = getval('new_height',0,true);
 
     if ($width == 0 && $height == 0)
         {
@@ -240,7 +283,7 @@ if ($saveaction != '' && enforcePostRequest(false))
 
     // Determine output format
     // prefer what the user requested. If nothing, look for configured default. If nothing, use same as original
-    $new_ext = getval("new_ext","");
+    $new_ext = strtolower(getval("new_ext",""));
     if ($saveaction == "slideshow" || $saveaction == "preview")
         {
         $new_ext = "jpg";
@@ -278,6 +321,12 @@ if ($saveaction != '' && enforcePostRequest(false))
     
     $newpath = "$tmpdir/transform_plugin/download_" . $ref . uniqid() . "." . $new_ext;
 
+    // Preserve original file preview (source) in case transforms are used for previews
+    if(!file_exists($org))
+        {
+        debug("[transform][pages/crop] copy($previewsourcepath, $org)");
+        copy($previewsourcepath, $org);
+        }
 
     // Perform the actual transformation
     $transformed = transform_file($originalpath, $newpath, $imgactions);
@@ -292,11 +341,27 @@ if ($saveaction != '' && enforcePostRequest(false))
 
         $name       = getval("filename","");
         $filename   = safe_file_name($name);
-        if (trim($filename) == "")
+
+        if ($cropper_use_filename_as_title) 
             {
-            $filename = $ref . "_" . strtolower($lang['transformed']);
+            if(trim((string)$filename) == "")
+                {
+                // Compute a file name using file naming configuration
+                $filename = get_download_filename($ref, "", "", $new_ext);
+                }
+            else
+                {
+                $filename .= "." . $new_ext;                    
+                }
             }
-        $filename .= "." . $new_ext;
+        else
+            {
+            if (trim((string)$filename) == "")
+                {
+                $filename = $ref . "_" . strtolower($lang['transformed']);
+                }
+            $filename .= "." . $new_ext;
+            }
 
         // Use the resultant file as requested
         if ($saveaction == "alternative" && $cropper_enable_alternative_files)
@@ -318,7 +383,8 @@ if ($saveaction != '' && enforcePostRequest(false))
             }
         elseif ($saveaction == "original" && $cropper_transform_original && $edit_access && !$cropperestricted)
             {
-            // Replace the original file
+            // Replace the original file with the cropped file in newpath
+            // If keep_original is selected then save the original as an additional file
             $keep_original = getval("keep_original", "") != "";
             $success = replace_resource_file($ref,$newpath,true,false,$keep_original);
             if (!$success)
@@ -353,7 +419,7 @@ if ($saveaction != '' && enforcePostRequest(false))
             if(file_exists(dirname(__FILE__) . '/../../../' . $homeanim_folder . '/' . $sequence . '.jpg') &&
                 !is_writable(dirname(__FILE__) . '/../../../' . $homeanim_folder . '/' . $sequence . '.jpg'))
                 {
-                error_alert(str_replace("%PATH%",realpath(dirname(__FILE__) . '/../../../' . $homeanim_folder)), $lang['error-file-permissions']);
+                error_alert(str_replace("%PATH%",realpath(dirname(__FILE__) . '/../../../' . $homeanim_folder), $lang['error-file-permissions']));
                 exit();
                 }
             rename($newpath,dirname(__FILE__) . "/../../../".$homeanim_folder."/" . $sequence . ".jpg");
@@ -435,6 +501,12 @@ else
 
 include "../../../include/header.php";
 
+?>
+
+<div class="BasicsBox">
+<h1><?php echo $saveaction == "original" ? $lang['imagetoolstransformoriginal'] : $lang['imagetoolstransform']; ?></h1>
+
+<?php
 # slider, sound, controls
 
 if (strpos($return_to_url, "pages/admin/admin_manage_slideshow.php") !== false)
@@ -444,6 +516,7 @@ if (strpos($return_to_url, "pages/admin/admin_manage_slideshow.php") !== false)
         array(
             'title' => $lang["systemsetup"],
             'href'  => $baseurl_short . "pages/admin/admin_home.php",
+            'menu' =>  true
         ),
         array(
             'title' => $lang["manage_slideshow"],
@@ -635,7 +708,7 @@ renderBreadcrumbs($links_trail);
                 var curCoords = jcrop_api.tellSelect();
                 if(curCoords.w === 0 && curCoords.h === 0)
                     {
-                    styledalert('<?php echo $lang['error'] ?>','<?php echo $lang['error_crop_invalid'] ?>');
+                    styledalert('<?php echo escape($lang['error']) ?>','<?php echo escape($lang['error_crop_invalid']) ?>');
                     return false;
                     }
                 }
@@ -744,6 +817,7 @@ renderBreadcrumbs($links_trail);
                     flippedy = true;
                     }
                 }
+
             // Update form input
             jQuery("#tfactions").val(tfactions.join());
             var crop_data = {
@@ -890,6 +964,7 @@ renderBreadcrumbs($links_trail);
         <?php 
         if('' === trim($manage_slideshow_action))
             {?>
+            keep_original_available = <?php if($replace_resource_preserve_option) {echo "true";} else {echo "false";}?>;
             slideshow_edit  = false;
             cropper_always  = false;
             jQuery(document).ready(function ()
@@ -928,6 +1003,14 @@ renderBreadcrumbs($links_trail);
                     else if(this.value=='original')
                         {
                         slideshow_edit=false;
+                        if(keep_original_available) 
+                            {
+                            jQuery('#keep_original_question').show();
+                            }
+                        else 
+                            {
+                            jQuery('#keep_original_question').hide();
+                            }
                         jQuery('#imagetools_original_actions').show();
                         evaluate_values();
                         cropper_always=false;
@@ -1025,12 +1108,18 @@ renderBreadcrumbs($links_trail);
         <?php
         foreach($imagetools as $imagetool)
             {
-            echo "<tr class='toolbar-icon'>";
-            echo "<td>";
-            echo "<a href=\"#\" onclick=\"" . htmlspecialchars($imagetool["action"]) . "\" title=\"" . htmlspecialchars($imagetool["name"]) . "\">";
-            echo "<span class=\"" . htmlspecialchars($imagetool["icon"]) . "\"></span>";
-            echo "</a></td>";
-            echo "</tr>";
+            ?>
+            <tr class="toolbar-icon">
+                <td>
+                    <a
+                        href="#"
+                        onclick="<?php echo escape($imagetool["action"]); ?>"
+                        title="<?php echo escape($imagetool["name"]); ?>">
+                        <span class="<?php echo escape($imagetool["icon"]); ?>"></span>
+                    </a>
+                </td>
+            </tr>
+            <?php
             }
             ?>            
         </table>
@@ -1068,7 +1157,7 @@ renderBreadcrumbs($links_trail);
         <input type='hidden' name='origwidth' id='origwidth'  value='<?php echo $origwidth ?>' />
         <input type='hidden' name='origheight' id='origheight'  value='<?php echo $origheight ?>' />
         <input type='hidden' name='tfactions' id='tfactions'  value='<?php echo $tfactions ?>' />
-        <?php echo generateFormToken("imagetools_form"); ?>
+        <?php generateFormToken("imagetools_form"); ?>
 
     <div class="FloatingOptions">
         <?php
@@ -1112,7 +1201,6 @@ renderBreadcrumbs($links_trail);
                         }
                     ?>
                     <div class="QuestionSubmit">
-                        <label for="submit">&nbsp;</label>
                         <input type='submit' name='savealternative' value="<?php echo $lang['savealternative']; ?>"  onclick="postCrop();return false;" />
                         <div class="clearerleft"></div>
                     </div>
@@ -1126,7 +1214,6 @@ renderBreadcrumbs($links_trail);
                 render_dropdown_question($lang["format"],"new_ext",array_combine($cropper_formatarray , $cropper_formatarray),strtoupper($orig_ext));
                 ?>
                 <div class="QuestionSubmit">
-                    <label for="submit">&nbsp;</label>
                     <input type='submit' name='download' value="<?php echo $lang["action-download"]; ?>" onclick="postCrop(true);return false;" />
                 
                     <div class="clearerleft"></div>
@@ -1137,13 +1224,22 @@ renderBreadcrumbs($links_trail);
             if($cropper_transform_original)
                 {?>
                 <div class="imagetools_save_action" id="imagetools_original_actions" style="display:none;">
-                    <div class="Question">
+                    <div class="Question" id="keep_original_question">
                         <label for="keep_original"><?php echo $lang["replace_resource_preserve_original"]; ?></label>
+            <?php
+            if($replace_resource_preserve_option && $replace_resource_preserve_default)
+            {?>
                         <input type='checkbox' name='keep_original' value="1" checked />
+            <?php
+            } else {
+            ?>
+                        <input type='checkbox' name='keep_original' value="0" />
+            <?php    
+            }
+            ?>
                         <div class="clearerleft"></div>
                     </div>
                     <div class="Question">
-                        <label for="submit">&nbsp;</label>
                         <input type='submit' name='replace' value="<?php echo $lang['transform_original']; ?>"  onclick="postCrop();return false;" />
                         <div class="clearerleft"></div>
                     </div>
@@ -1153,7 +1249,6 @@ renderBreadcrumbs($links_trail);
 
             <div class="imagetools_save_action" id="imagetools_preview_actions" style="display:none;">
                 <div class="QuestionSubmit">
-                    <label for="submit">&nbsp;</label>
                     <input type='submit' name='preview' value="<?php echo $lang['useaspreviewimage']; ?>"   onclick="postCrop();return false;"/>
                     <div class="clearerleft"></div>
                 </div>
@@ -1172,7 +1267,7 @@ renderBreadcrumbs($links_trail);
                 render_text_question($lang["slideshowsequencenumber"],"sequence",'',true,'',$manage_slideshow_id);
                 ?>
                 <div class="QuestionSubmit">
-                    <label></label>
+
                     <input type="submit"
                         name="submitTransformAction"
                         value="<?php echo $lang['replaceslideshowimage']; ?>" onclick="postCrop();return false;" >
@@ -1280,7 +1375,6 @@ renderBreadcrumbs($links_trail);
                 }
             ?>
             <div class="QuestionSubmit">
-                <label for="submit">&nbsp;</label>
                 <input type='submit' name='updatepreview' onclick="cropReload();return false;" value="<?php echo $lang['transform_update_preview']; ?>" />
                 <div class="clearerleft"></div>
             </div>
@@ -1289,6 +1383,8 @@ renderBreadcrumbs($links_trail);
 
              
 </form>
+
+</div>
 
 <?php  
 

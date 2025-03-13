@@ -114,7 +114,7 @@ function HookResourceConnectSearchReplacesearchresults()
 
 function HookResourceConnectSearchThumblistextras()
     {
-        
+
     global $baseurl_short, $baseurl, $result, $n, $lang, $url, $usercollection;
 
     $resource = $result[$n]; // record for resource
@@ -130,15 +130,15 @@ function HookResourceConnectSearchThumblistextras()
     $title = $resource["field8"]; // image title
     ?>
     <!-- Full screen preview -->
-    <a aria-hidden="true" class="fa fa-expand" id="previewlinkcollection<?php echo $ref ?>" href="<?php echo $pre_url ?>" title="Full screen preview" data-title="<?php echo $lang["fullscreenpreview"] ?>" data-lightbox="lightboxcollection"></a>
-    
+    <a class="fa fa-expand" id="previewlinkcollection<?php echo $ref ?>" href="<?php echo $pre_url ?>" title="Full screen preview" data-title="<?php echo $lang["fullscreenpreview"] ?>" data-lightbox="lightboxcollection"></a>
+
     <!-- Share resource -->
-    <a aria-hidden="true" class="fa fa-share-alt"
+    <a class="fa fa-share-alt"
                                 href="<?php echo $baseurl_short?>plugins/resourceconnect/pages/resource_share.php?url=<?php echo urlencode($url) ?>"  
                                 onClick="return CentralSpaceLoad(this,true);"  
                                 title="<?php echo $lang["share-resource"]?>"
                         ></a>
-    
+
     <!-- Remove from collection -->
     <a class="removeFromCollection fa fa-minus-circle" href="<?php echo generateURL("$baseurl/pages/collections.php", ['resourceconnect_remove_ref' => $ref, 'resourceconnect_remove' => $source_ref, 'resourceconnect_remove_col' => $usercollection, 'nc' => time()]); ?>" onClick="return CollectionDivLoad(this,false);"> </a>
     <?php
@@ -158,29 +158,38 @@ function HookResourceConnectSearchThumblistextras()
     );
     ?>
     <a class="addToCollection fa fa-plus-circle DisplayNone" href="<?php echo $add_url; ?>" onClick="return CollectionDivLoad(this,false);"> </a>
-    <?php
+<?php
     } 
 
 
 function HookResourceConnectSearchProcess_search_results($result,$search)
     {
-    global $baseurl,$k;
+    global $baseurl,$k, $resourceconnect_affiliates;
     if (substr($search,0,11)!="!collection") {return false;} # Not a collection. Exit.
     $collection=substr($search,11);
-    $affiliate_resources=sql_query("select * from resourceconnect_collection_resources where collection='" . escape_check($collection) . "'");
+    $affiliate_resources=ps_query("select ref,collection,date_added,title,thumb,large_thumb,xl_thumb,url,source_ref from resourceconnect_collection_resources where collection=?",array("i",$collection));
     if (count($affiliate_resources)==0) {return false;} # No affiliate resources. Exit.
-
-    #echo "<pre>";
-    #print_r($result);
-    #print_r($affiliate_resources);
-    #echo "</pre>";
 
     # Append the affiliate resources to the collection display
     foreach ($affiliate_resources as $resource)
         {
+        $source_affiliate = [];
         $urlparams = array("k"=>$k,"col"=>$collection,"url"=>$resource["url"]);
         $url = generateURL("{$baseurl}/plugins/resourceconnect/pages/view.php",$urlparams);
-        $result[]=array
+        if (trim($resource['large_thumb']) !== '' && strpos($resource['large_thumb'], 'download.php') === false){
+            foreach ($resourceconnect_affiliates as $rc_affiliate){
+                if (strpos($resource['large_thumb'], $rc_affiliate['baseurl']) !== false){
+                    $source_affiliate = $rc_affiliate;
+                    break;
+                }
+            }
+            if (count($source_affiliate) > 0){
+                $resource['large_thumb'] = generateURL($source_affiliate['baseurl'] . '/pages/download.php', ['ref' => $resource['source_ref'], 'size' => 'thm', 'k' => substr(md5($source_affiliate['accesskey'] . $resource['source_ref']), 0, 10)]);
+                $resource['thumb'] = generateURL($source_affiliate['baseurl'] . '/pages/download.php', ['ref' => $resource['source_ref'], 'size' => 'col', 'k' => substr(md5($source_affiliate['accesskey'] . $resource['source_ref']), 0, 10)]);
+                $resource['xl_thumb'] = generateURL($source_affiliate['baseurl'] . '/pages/download.php', ['ref' => $resource['source_ref'], 'size' => 'pre', 'k' => substr(md5($source_affiliate['accesskey'] . $resource['source_ref']), 0, 10)]);
+            }
+        }
+        $result["data"][]=array
             (
             "ref"=>-87412,
             "ref_tab"=>$resource["ref"],
@@ -201,6 +210,7 @@ function HookResourceConnectSearchProcess_search_results($result,$search)
             "pre_url"=>$resource["xl_thumb"],
             "user_rating"=>''
             );
+        $result["total"]++;
         }
     return $result;
     }

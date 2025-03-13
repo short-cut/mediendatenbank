@@ -12,7 +12,7 @@
  */
 function lang_or_i18n_get_translated($text, $mixedprefix, $suffix = "")
     {
-    $text=trim($text);
+    $text=trim((string) $text);
     global $lang;
 
     if (is_array($mixedprefix)) {$prefix = $mixedprefix;}
@@ -34,12 +34,12 @@ function lang_or_i18n_get_translated($text, $mixedprefix, $suffix = "")
 /**
  * For field names / values using the i18n syntax, return the version in the current user's language. Format is ~en:Somename~es:Someothername
  *
- * @param  string $text
+ * @param  string|null $text
  * @return string
  */
 function i18n_get_translated($text)
     {
-    $text=trim($text);
+    $text ??= ''; 
         
     global $language,$defaultlanguage;
 	$asdefaultlanguage=$defaultlanguage;
@@ -140,7 +140,7 @@ function i18n_get_collection_name($mixedcollection, $index="name")
         }
 
     # Ordinary collection - translate with i18n_get_translated
-    return htmlspecialchars(i18n_get_translated($name_untranslated, false));
+    return htmlspecialchars(i18n_get_translated($name_untranslated));
     }
 
 /**
@@ -573,7 +573,7 @@ function http_get_preferred_language($strict_mode=false)
  */
 function setLanguage()
 	{
-	global $browser_language,$disable_languages,$defaultlanguage,$languages,$global_cookies,$baseurl_short;
+	global $browser_language,$disable_languages,$defaultlanguage,$languages,$baseurl_short;
 	$language="";
 	if (isset($_GET["language_set"]))
 	    {
@@ -581,27 +581,19 @@ function setLanguage()
 	    if(array_key_exists($language,$languages)) 
 			{
 		    # Cannot use the general.php: rs_setcookie() here since general may not have been included.
-		    if ($global_cookies)
-		        {
-		        # Remove previously set cookies to avoid clashes
-		        setcookie("language", "", time() - 3600, $baseurl_short . "pages/", '', false, true);
-		        setcookie("language", "", time() - 3600, $baseurl_short, '', false, true);
-		        # Set new cookie
-		        setcookie("language", $language, time() + (3600*24*1000), "/", '', false, true);
-		        }
-		    else
-		        {
-		        # Set new cookie
-		        setcookie("language", $language, time() + (3600*24*1000));
-		        setcookie("language", $language, time() + (3600*24*1000), $baseurl_short . "pages/", '', false, true);
-		        }
+            # Set new cookie
+            setcookie("language", $language, time() + (3600*24*1000));
+            setcookie("language", $language, time() + (3600*24*1000), $baseurl_short . "pages/", '', false, true);		    
 		    return $language;
 		    }
-		    else{$language="";}
+		else
+            {
+            $language="";
+            }
 	    }
-	if (isset($_GET["language"]) && array_key_exists($_GET["language"],$languages)) {return $_GET["language"];}	
-	if (isset($_POST["language"]) && array_key_exists($_POST["language"],$languages)) {return $_POST["language"];}
-	if (isset($_COOKIE["language"]) && array_key_exists($_COOKIE["language"],$languages)) {return $_COOKIE["language"];}
+    if (isset($_GET["language"]) && array_key_exists((string)$_GET["language"],$languages)) {return $_GET["language"];}	
+    if (isset($_POST["language"]) && array_key_exists((string)$_POST["language"],$languages)) {return $_POST["language"];}
+    if (isset($_COOKIE["language"]) && array_key_exists((string)$_COOKIE["language"],$languages)) {return $_COOKIE["language"];}
 
 	if(!$disable_languages && $browser_language && isset($_SERVER['HTTP_ACCEPT_LANGUAGE']))
 		{
@@ -611,4 +603,111 @@ function setLanguage()
 	if(($disable_languages || $language ==="") && isset($defaultlanguage)) {return $defaultlanguage;}
 	# Final case.
 	return 'en';
+    }
+
+
+/**
+ * Load all site text for the given page and language into the global $lang array
+ *
+ * @param  array $lang          Passed by reference
+ * @param  string $pagename     Pagename
+ * @param  string $language     Language  
+ * @return void
+ */
+function lang_load_site_text(&$lang,$pagename,$language = "")
+    {
+    global $defaultlanguage, $site_text;
+
+    $site_text=array();
+    $results=ps_query("SELECT language,name,text FROM site_text WHERE (page=? OR page='all' OR page='') AND (specific_to_group IS NULL OR specific_to_group=0)",array("s",$pagename),"sitetext");
+
+    for ($n=0;$n<count($results);$n++)
+        {
+        $site_text[$results[$n]["language"] . "-" . $results[$n]["name"]]=$results[$n]["text"];
+        }
+
+    $query = " SELECT `name`,
+                `text`,
+                `page`,
+                `language`, specific_to_group 
+            FROM site_text
+            WHERE (`language` = ? OR `language` = ?)
+            AND (specific_to_group IS NULL OR specific_to_group = 0)
+        ";
+    $parameters=array("s",$language,"s",$defaultlanguage);
+
+    if ($pagename!="admin_content")
+        {
+        // Load all content on the admin_content page to allow management.
+        $query.="AND (page = ? OR page = 'all' OR page = '' " .  (($pagename=="dash_tile")?" OR page = 'home'":"") . ")";
+        $parameters[]="s";$parameters[]=$pagename;
+        }
+
+    $results=ps_query($query,$parameters,"sitetext");
+
+    // Create a new array to hold customised text at any stage, may be overwritten in authenticate.php. Needed so plugin lang file can be overidden if plugin only enabled for specific groups
+    $GLOBALS['customsitetext'] = array();
+
+    // Set the default language first, user language second so we can override the default with any language specific entries
+    foreach([$defaultlanguage, $language] as $check_lang)
+        {
+        foreach($results as $result)
+            {
+             if($result['language'] != $check_lang)
+                 {
+                 continue;
+                 }
+
+             if($result['page'] == '')
+                 {
+                 $lang[$result['name']] = $result['text'];
+                 $GLOBALS['customsitetext'][$result['name']] = $result['text'];
+                 } 
+             else 
+                 {
+                 $lang["{$result['page']}__{$result['name']}"] = $result['text'];
+                 }
+             }
+         }
+    }
+
+/**
+ * Return an array of all available language strings for the given id, with the language code as the key
+ *
+ * @param string $langid    The identifier of the lang string
+ * 
+ * @return array
+ * 
+ */
+function i18n_get_all_translations(string $langid): array
+    {
+    global $lang;
+    $savedlang = $lang;
+    $alltranslations = [];
+    foreach($GLOBALS["languages"] as $langcode=>$availlanguage)
+        {
+        if ($langcode!="en")
+            {
+            if (substr($langcode, 2, 1)!='-')
+                {
+                $langcode = substr($langcode, 0, 2);
+                }
+            
+            $use_error_exception_cache = $GLOBALS["use_error_exception"]??false;
+            $GLOBALS["use_error_exception"] = true;
+            try
+                {
+                include dirname(__FILE__)."/../languages/" . safe_file_name($langcode) . ".php";
+                }
+            catch (Exception $e)
+                {
+                debug("Unable to include language file $langcode.php" . $e->getMessage());
+                }
+            $GLOBALS["use_error_exception"] = $use_error_exception_cache;
+            }
+        $alltranslations[$langcode] =$lang[$langid];
+        }
+    // Revert to original
+    $lang = $savedlang;
+    return $alltranslations;
     }

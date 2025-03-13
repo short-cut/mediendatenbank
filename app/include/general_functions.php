@@ -24,39 +24,8 @@ function getval($val,$default,$force_numeric=false)
     }
 
 /**
-* Return a value from get/post/cookie, escaped and SQL-safe
-* 
-* It should not be relied upon for XSS. Sanitising output should be done when needed by developer
-* 
-* @param string        $val
-* @param string|array  $default        The fallback value if not found
-* @param boolean       $force_numeric  Set to TRUE if we want only numeric values. If returned value is not numeric
-*                                      the function will return the default value
-* 
-* @return string|array
-*/
-function getvalescaped($val, $default, $force_numeric = false)
-    {
-    $value = getval($val, $default, $force_numeric);
-
-    if(is_array($value))
-        {
-        foreach($value as &$item)
-            {
-            $item = escape_check($item);
-            }
-        }
-    else
-        {
-        $value = escape_check($value);
-        }
-
-    return $value;
-    }
-
-/**
- * Escape a value prior to using it in SQL. Only escape a string if we need to,
- * to prevent escaping an already escaped string.
+ * Escape a value prior to using it in SQL.
+ * IMPORTANT! NO LONGER NEEDED with prepared statements. This is only used when exporting SQL scripts.
  *
  * @param  string $text
  * @return string  
@@ -72,7 +41,7 @@ function escape_check($text)
         db_clear_connection_mode();
         }
 
-    $text = mysqli_real_escape_string($db_connection, $text);
+    $text = mysqli_real_escape_string($db_connection, (string) $text);
 
     # turn all \\' into \'
     while (!(strpos($text,"\\\\'")===false))
@@ -89,11 +58,11 @@ function escape_check($text)
 		{
 		$text=str_replace("\\","",$text);
 		}
-		
+
     $text=str_replace("{bs}'","\\'",$text);            
     $text=str_replace("{bs}n","\\n",$text);            
     $text=str_replace("{bs}r","\\r",$text);  
-                      
+
     return $text;
     }
 
@@ -114,32 +83,6 @@ function unescape($text)
     return $text;
     }
 
-/**
-* Escape each elements' value of an array to safely use any of the values in SQL statements
-* 
-* @uses escape_check()
-* 
-* @param array $unsafe_array Array of values that should be escaped
-* 
-* @return array Returns an array with its values escaped for SQLi
-*/
-function escape_check_array_values(array $unsafe_array)
-    {
-    $escape_array_element = function($value)
-        {
-        if(is_array($value))
-            {
-            return escape_check_array_values($value);
-            }
-
-        return escape_check($value);
-        };
-
-    $escaped_array = array_map($escape_array_element, $unsafe_array);
-
-    return $escaped_array;
-    }
-
 
 /**
 * Formats a MySQL ISO date
@@ -148,9 +91,9 @@ function escape_check_array_values(array $unsafe_array)
 * 
 * @uses offset_user_local_timezone()
 * 
-* @var  string   $date
-* @var  boolean  $time
-* @var  boolean  $wordy
+* @var  string   $date       ISO format date which can be a BCE date (ie. with negative year -yyyy)
+* @var  boolean  $time       When TRUE and full date is present then append the hh:mm time part if present 
+* @var  boolean  $wordy      When TRUE return month name, otherwise return month number
 * @var  boolean  $offset_tz  Set to TRUE to offset based on time zone, FALSE otherwise
 * 
 * @return string Returns an empty string if date not set/invalid
@@ -159,42 +102,53 @@ function nicedate($date, $time = false, $wordy = true, $offset_tz = false)
     {
     global $lang, $date_d_m_y, $date_yyyy;
 
-    if($date == '' || strtotime($date) === false)
-        {
-        return '';
-        }
+    $date=trim((string)$date);
+    if($date == '') return '';
 
-    $original_time_part = substr($date, 11, 5);
+    $date_timestamp = strtotime($date); 
+    if($date_timestamp === false) return '';
+
+    // Check whether unix timestamp is a BCE date
+    $year_zero = PHP_INT_MIN === (int)-2147483648 ? PHP_INT_MIN : strtotime("0000-00-00");
+    $bce_offset = ($date_timestamp < $year_zero) ? 1 : 0;
+    // BCE dates cannot return year in truncated form
+    if($bce_offset == 1 && !$date_yyyy) return '';
+
+    $original_time_part = substr($date, $bce_offset + 11, 5);
     if($offset_tz && ($original_time_part !== false || $original_time_part != ''))
         {
         $date = offset_user_local_timezone($date, 'Y-m-d H:i');
         }
 
-    $y = substr($date, 0, 4);
+    $y = substr($date, 0, $bce_offset + 4);
     if(!$date_yyyy)
         {
-        $y = substr($y, 2, 2);
+        $y = substr($y, 2, 2);  // Only truncate year for non-BCE dates
         }
 
     if($y == "")
         {
         return "-";
-        };
+        }
 
-    $month_part = substr($date, 5, 2);
-    $m = $wordy ? (@$lang["months"][$month_part - 1]) : $month_part;
+    $month_part = substr($date, $bce_offset + 5, 2);
+    if(!is_numeric($month_part))
+        {
+        return $y;
+        }
+    $m = $wordy ? ($lang["months"][$month_part - 1]??"") : $month_part;
     if($m == "")
         {
         return $y;
         }
 
-    $d = substr($date, 8, 2);    
+    $d = substr($date, $bce_offset + 8, 2);    
     if($d == "" || $d == "00")
         {
         return "{$m} {$y}";
         }
 
-    $t = $time ? " @ " . substr($date, 11, 5) : "";
+    $t = $time ? " @ " . substr($date, $bce_offset + 11, 5) : "";
 
     if($date_d_m_y)
         {
@@ -211,11 +165,15 @@ function nicedate($date, $time = false, $wordy = true, $offset_tz = false)
  * Redirect to the provided URL using a HTTP header Location directive. Exits after redirect
  *
  * @param  string $url  URL to redirect to
- * @return void
+ * @return never
  */
-function redirect($url)
+function redirect(string $url)
 	{
 	global $baseurl,$baseurl_short;
+
+    // Header may not contain NUL bytes
+    $url = str_replace("\0", '', $url);
+
 	if (getval("ajax","")!="")
 		{
 		# When redirecting from an AJAX loaded page, forward the AJAX parameter automatically so headers and footers are removed.	
@@ -228,7 +186,7 @@ function redirect($url)
 			$url.="?ajax=true";
 			}
 		}
-	
+
 	if (substr($url,0,1)=="/")
 		{
 		# redirect to an absolute URL
@@ -236,9 +194,8 @@ function redirect($url)
 		}
 	else
 		{	
-		if(strpos($url,$baseurl)!==false)
+		if(strpos($url,$baseurl)===0)
 			{
-			// exit($url);	
 			// Base url has already been added
 			header ("Location: " . $url);	
 			exit();
@@ -266,7 +223,7 @@ function trim_spaces($text)
         }
     return trim($text);
     }   
-        
+
 
 /**
  *  Removes whitespace from the beginning/end of all elements in an array
@@ -281,7 +238,7 @@ function trim_array($array,$trimchars='')
     $array = array_filter($array,'emptyiszero');
     $array_trimmed=array();
     $index=0;
-    
+
     foreach($array as $el)
         {
         $el=trim($el);
@@ -311,7 +268,7 @@ function trim_array($array,$trimchars='')
  */
 function tidylist($list)
     {
-    $list=trim($list);
+    $list=trim((string) $list);
     if (strpos($list,",")===false) {return $list;}
     $list=explode(",",$list);
     if (trim($list[0])=="") {array_shift($list);} # remove initial comma used to identify item is a list
@@ -345,7 +302,7 @@ function tidy_trim($text,$length)
         }
     return $text;
     }
-    
+
 /**
  * Returns the average length of the strings in an array
  *
@@ -362,7 +319,7 @@ function average_length($array)
         }
     return ($total/count($array));
     }
-    
+
 
 
 /**
@@ -372,7 +329,7 @@ function average_length($array)
  */
 function get_stats_activity_types()
     {
-    return sql_array("SELECT DISTINCT activity_type `value` FROM daily_stat ORDER BY activity_type");
+    return ps_array("SELECT DISTINCT activity_type `value` FROM daily_stat ORDER BY activity_type", array());
     }
 
 /**
@@ -425,7 +382,7 @@ function get_all_site_text($findpage="",$findname="",$findtext="")
         global $language, $lang; // Need to save these for later so we can revert after search
         $languagesaved=$language;
         $langsaved=$lang;
-        
+
         foreach ($search_languages as $search_language)
             {
             # Reset $lang and include the appropriate file to search.
@@ -438,7 +395,7 @@ function get_all_site_text($findpage="",$findname="",$findtext="")
                 include $searchlangfile;
                 }
             include dirname(__FILE__)."/../languages/" . safe_file_name($search_language) . ".php";
-            
+
             # Include plugin languages in reverse order as per db.php
             global $plugins;
             $language = $search_language;
@@ -447,7 +404,7 @@ function get_all_site_text($findpage="",$findname="",$findtext="")
                 if (!isset($plugins[$n])) { continue; }       
                 register_plugin_language($plugins[$n]);
                 }       
-            
+
             # Find language strings.
             ksort($lang);
             foreach ($lang as $key=>$text)
@@ -455,7 +412,7 @@ function get_all_site_text($findpage="",$findname="",$findtext="")
                 $pagename="";
                 $s=explode("__",$key);
                 if (count($s)>1) {$pagename=$s[0];$key=$s[1];}
-                
+
                 if
                     (
                     !is_array($text) # Do not support overrides for array values (used for months)... complex UI needed and very unlikely to need overrides.
@@ -490,16 +447,30 @@ function get_all_site_text($findpage="",$findname="",$findtext="")
         // Need to revert to saved values
         $language=$languagesaved;
         $lang=$langsaved;
-        
+
         # If searching, also search overridden text in site_text and return that also.
         if ($findtext!="" || $findpage!="" || $findname!="")
             {
-            if ($findtext!="") {$search="text like '%" . escape_check($findtext) . "%'";}
-            if ($findpage!="") {$search="page like '%" . escape_check($findpage) . "%'";}         
-            if ($findname!="") {$search="name like '%" . escape_check($findname) . "%'";}          
-            
-            $site_text=sql_query ("select * from site_text where $search");
-            
+            if ($findtext!="")
+                {
+                $search="text LIKE ? HAVING language = ? OR language = ? ORDER BY (CASE WHEN language = ? THEN 3 WHEN language = ? THEN 2 ELSE 1 END)";
+                $search_param = array("s", '%' . $findtext . '%', "s", $language, "s", $defaultlanguage, "s", $language, "s", $defaultlanguage);
+                }
+
+            if ($findpage!="")
+                {
+                $search="page LIKE ? HAVING language = ? OR language = ? ORDER BY (CASE WHEN language = ? THEN 2 ELSE 1 END)";
+                $search_param = array("s", '%' . $findpage . '%', "s", $language, "s", $defaultlanguage, "s", $language);
+                }
+
+            if ($findname!="")
+                {
+                $search="name LIKE ? HAVING language = ? OR language = ? ORDER BY (CASE WHEN language = ? THEN 2 ELSE 1 END)";
+                $search_param = array("s", '%' . $findname . '%', "s", $language, "s", $defaultlanguage, "s", $language);
+                }
+
+            $site_text = ps_query ("select `page`, `name`, `text`, ref, `language`, specific_to_group, custom from site_text where $search", $search_param);
+
             foreach ($site_text as $text)
                 {
                 $row["page"]=$text["page"];
@@ -555,30 +526,41 @@ function get_site_text($page,$name,$getlanguage,$group)
     {
     global $defaultlanguage, $lang, $language; // Registering plugin text uses $language and $lang  
     global $applicationname, $storagedir, $homeanim_folder; // These are needed as they are referenced in lang files
-    if ($group=="") {$g="null";$gc="is";} else {$g="'" . $group . "'";$gc="=";}
-    
-    $text=sql_query ("select * from site_text where page='$page' and name='$name' and language='$getlanguage' and specific_to_group $gc $g");
+
+    $params = array("s", $page, "s", $name, "s", $getlanguage);
+    if ($group == "")
+        {
+        $stg_sql_cond = ' is null';
+        }
+    else
+        {
+        $stg_sql_cond = ' = ?';
+        $params = array_merge($params, array("i", $group));
+        }
+
+
+    $text = ps_query("select `page`, `name`, `text`, ref, `language`, specific_to_group, custom from site_text where page = ? and name = ? and language = ? and specific_to_group $stg_sql_cond", $params);
     if (count($text)>0)
         {
                 return $text[0]["text"];
                 }
         # Fall back to default language.
-    $text=sql_query ("select * from site_text where page='$page' and name='$name' and language='$defaultlanguage' and specific_to_group $gc $g");
+    $text = ps_query("select `page`, `name`, `text`, ref, `language`, specific_to_group, custom from site_text where page = ? and name = ? and language = ? and specific_to_group $stg_sql_cond", $params);
     if (count($text)>0)
         {
                 return $text[0]["text"];
                 }
-                
+
         # Fall back to default group.
-    $text=sql_query ("select * from site_text where page='$page' and name='$name' and language='$defaultlanguage' and specific_to_group is null");
+    $text = ps_query("select `page`, `name`, `text`, ref, `language`, specific_to_group, custom from site_text where page = ? and name = ? and language = ? and specific_to_group is null", array("s", $page, "s", $name, "s", $defaultlanguage));
     if (count($text)>0)
         {
         return $text[0]["text"];
         }
-        
+
     # Fall back to language strings.
     if ($page=="") {$key=$name;} else {$key=$page . "__" . $name;}
-    
+
     # Include specific language(s)
     $defaultlangfile = dirname(__FILE__)."/../languages/" . safe_file_name($defaultlanguage) . ".php";
     if(file_exists($defaultlangfile))
@@ -590,7 +572,7 @@ function get_site_text($page,$name,$getlanguage,$group)
         {
         include $getlangfile;
         }
-        
+
     # Include plugin languages in reverse order as per db.php
     global $plugins;    
     $language = $defaultlanguage;
@@ -606,7 +588,7 @@ function get_site_text($page,$name,$getlanguage,$group)
         if (!isset($plugins[$n])) { continue; }             
         register_plugin_language($plugins[$n]);
         }
-            
+
     if (array_key_exists($key,$lang))
         {
         return $lang[$key];
@@ -626,12 +608,12 @@ function get_site_text($page,$name,$getlanguage,$group)
  *
  * @param  mixed $page
  * @param  mixed $name
- * @return void
  */
-function check_site_text_custom($page,$name)
+function check_site_text_custom($page,$name): bool
     {    
-    $check=sql_query ("select custom from site_text where page='$page' and name='$name'");
-    if (isset($check[0]["custom"])){return $check[0]["custom"];}
+    $check = ps_query("select custom from site_text where page = ? and name = ?", array("s", $page, "s", $name));
+
+    return $check[0]["custom"] ?? false;
     }
 
 /**
@@ -646,7 +628,7 @@ function check_site_text_custom($page,$name)
 function save_site_text($page,$name,$language,$group)
     {
     global $lang,$custom,$newcustom,$defaultlanguage,$newhelp;
-    
+
     if(!is_int_loose($group))
         {
         $group = NULL;
@@ -661,7 +643,7 @@ function save_site_text($page,$name,$language,$group)
             return true;
             }
         }
-    if (trim($custom)=="")
+        if (is_null($custom) || trim($custom)=="")
         {
         $custom=0;
         }
@@ -732,7 +714,7 @@ function formatfilesize($bytes)
     {
     # Binary mode
     $multiple=1024;$lang_suffix="-binary";
-    
+
     # Decimal mode, if configured
     global $byte_prefix_mode_decimal;
     if ($byte_prefix_mode_decimal)
@@ -740,27 +722,27 @@ function formatfilesize($bytes)
         $multiple=1000;
         $lang_suffix="";
         }
-    
+
     global $lang;
     if ($bytes<$multiple)
         {
-        return number_format((double)$bytes) . "&nbsp;".$lang["byte-symbol"];
+        return number_format((double)$bytes) . "&nbsp;" . escape($lang["byte-symbol"]);
         }
     elseif ($bytes<pow($multiple,2))
         {
-        return number_format((double)ceil($bytes/$multiple)) . "&nbsp;".$lang["kilobyte-symbol" . $lang_suffix];
+        return number_format((double)ceil($bytes/$multiple)) . "&nbsp;" . escape($lang["kilobyte-symbol" . $lang_suffix]);
         }
     elseif ($bytes<pow($multiple,3))
         {
-        return number_format((double)$bytes/pow($multiple,2),1) . "&nbsp;".$lang["megabyte-symbol" . $lang_suffix];
+        return number_format((double)$bytes/pow($multiple,2),1) . "&nbsp;" . escape($lang["megabyte-symbol" . $lang_suffix]);
         }
     elseif ($bytes<pow($multiple,4))
         {
-        return number_format((double)$bytes/pow($multiple,3),1) . "&nbsp;".$lang["gigabyte-symbol" . $lang_suffix];
+        return number_format((double)$bytes/pow($multiple,3),1) . "&nbsp;" . escape($lang["gigabyte-symbol" . $lang_suffix]);
         }
     else
         {
-        return number_format((double)$bytes/pow($multiple,4),1) . "&nbsp;".$lang["terabyte-symbol" . $lang_suffix];
+        return number_format((double)$bytes/pow($multiple,4),1) . "&nbsp;" . escape($lang["terabyte-symbol" . $lang_suffix]);
         }
     }
 
@@ -792,7 +774,7 @@ function filesize2bytes($str)
     }
 
     $bytes = intval(round($bytes, 2));
-    
+
     #add leading zeroes (as this can be used to format filesize data in resource_data for sorting)
     return sprintf("%010d",$bytes);
     } 
@@ -847,7 +829,7 @@ function allowed_type_mime($allowedtype)
         return $allowedtype;
         }
     }
-    
+
 /**
  * Send a mail - but correctly encode the message/subject in quoted-printable UTF-8.
  * 
@@ -862,30 +844,23 @@ function allowed_type_mime($allowedtype)
  * @param  string $email            Email address to send to 
  * @param  string $subject          Email subject
  * @param  string $message          Message text
- * @param  string $from             From address - defaults to $email_from or user's email if $always_email_from_user enabled
- * @param  string $reply_to         Reply to address - defaults to $email_from or user's email if $always_email_from_user enabled
+ * @param  string $from             From address - defaults to $email_from
+ * @param  string $reply_to         Reply to address - defaults to $email_from 
  * @param  string $html_template    Optional template (this is a $lang entry with placeholders)
  * @param  string $templatevars     Used to populate email template placeholders
  * @param  string $from_name        Email from name
  * @param  string $cc               Optional CC addresses
  * @param  string $bcc              Optional BCC addresses
  * @param  array $files             Optional array of file paths to attach in the format [filename.txt => /path/to/file.txt]
- * @return void
  */
 function send_mail($email,$subject,$message,$from="",$reply_to="",$html_template="",$templatevars=null,$from_name="",$cc="",$bcc="",$files = array())
-    {
-    global $applicationname, $use_phpmailer, $email_from, $email_notify, $always_email_copy_admin, $username, $useremail, $userfullname;
-    global $email_footer, $always_email_from_user, $disable_quoted_printable_enc, $header_colour_style_override;
-    if($always_email_from_user)
-        {
-        $from_name=($userfullname!="")?$userfullname:$username;
-        $from=$useremail;
-        $reply_to=$useremail;
-        }
+    { 
+    global $applicationname, $use_phpmailer, $email_from, $email_notify, $always_email_copy_admin, $baseurl, $userfullname;
+    global $email_footer, $disable_quoted_printable_enc, $header_colour_style_override, $userref, $email_rate_limit, $lang, $useremail_rate_limit_active;
 
-    if($always_email_copy_admin)
+    if(defined("RS_TEST_MODE"))
         {
-        $bcc.="," . $email_notify;
+        return false;
         }
 
     /*
@@ -899,7 +874,7 @@ function send_mail($email,$subject,$message,$from="",$reply_to="",$html_template
     $valid_emails = array();
     foreach($check_emails as $check_email)
         {
-        if(!filter_var($check_email, FILTER_VALIDATE_EMAIL))
+        if(!filter_var($check_email, FILTER_VALIDATE_EMAIL) || check_email_invalid($check_email))
             {
             debug("send_mail: Invalid e-mail address - '{$check_email}'");
             continue;
@@ -915,7 +890,43 @@ function send_mail($email,$subject,$message,$from="",$reply_to="",$html_template
         }
     // Valid emails? then make it back into an RFC 2822 compliant string
     $email = implode(', ', $valid_emails);
-    
+
+    if (isset($email_rate_limit))
+        {
+        // Limit the number of e-mails sent across the system per hour.
+        $count=ps_value("select count(*) value from mail_log where date >= DATE_SUB(now(),interval 1 hour)",[],0);
+        if (($count + count($valid_emails))>$email_rate_limit)
+            {
+            if (isset($userref) && ($useremail_rate_limit_active ?? false) == false)
+                {
+                // Rate limit not previously active, activate and warn them.
+                ps_query("update user set email_rate_limit_active=1 where ref=?",["i",$userref]);
+                // MESSAGE_ENUM_NOTIFICATION_TYPE_EMAIL to prevent sending email via message_add() as this will cause loop.
+                message_add([$userref],$lang["email_rate_limit_active"], '', null, MESSAGE_ENUM_NOTIFICATION_TYPE_EMAIL);
+                }
+            debug("E-mail not sent due to email_rate_limit being exceeded");
+            return $lang["email_rate_limit_active"]; // Don't send the e-mail and return the error.
+            }
+        else    
+            {
+            // It's OK to send mail, if rate limit was previously active, reset it
+            if ($useremail_rate_limit_active ?? false)
+                {
+                ps_query("update user set email_rate_limit_active=0 where ref=?",["i",$userref]);
+                // Send them a message
+                // MESSAGE_ENUM_NOTIFICATION_TYPE_EMAIL to prevent sending email via message_add() as this will cause loop.
+                message_add([$userref],$lang["email_rate_limit_inactive"], '', null, MESSAGE_ENUM_NOTIFICATION_TYPE_EMAIL);
+                }
+            }
+        }
+
+    if($always_email_copy_admin)
+        {
+        $bcc.="," . $email_notify;
+        }
+
+
+
     // Validate all files to attach are valid and copy any that are URLs locally
     $attachfiles = array();
     $deletefiles = array();
@@ -943,7 +954,6 @@ function send_mail($email,$subject,$message,$from="",$reply_to="",$html_template
         $attachfiles[$filename] = $file;
         }
 
-            //exit($message);
     # Send a mail - but correctly encode the message/subject in quoted-printable UTF-8.
     if ($use_phpmailer)
         {
@@ -951,9 +961,9 @@ function send_mail($email,$subject,$message,$from="",$reply_to="",$html_template
         cleanup_files($deletefiles);
         return true;
         }
-    
+
     # Include footer
-    
+
     # Work out correct EOL to use for mails (should use the system EOL).
     if (defined("PHP_EOL")) {$eol=PHP_EOL;} else {$eol="\r\n";}
 
@@ -964,7 +974,7 @@ function send_mail($email,$subject,$message,$from="",$reply_to="",$html_template
         //add boundary string and mime type specification
         $random_hash = md5(date('r', time()));
         $headers .= "Content-Type: multipart/mixed; boundary=\"PHP-mixed-".$random_hash."\"" . $eol;
-        
+
         $body="This is a multi-part message in MIME format." . $eol . "--PHP-mixed-" . $random_hash . $eol;
         $body.="Content-Type: text/plain; charset=\"utf-8\"" . $eol . "Content-Transfer-Encoding: 8bit" . $eol . $eol;
         $body.=$message. $eol . $eol . $eol;        
@@ -976,7 +986,7 @@ function send_mail($email,$subject,$message,$from="",$reply_to="",$html_template
             $body.="--PHP-mixed-" . $random_hash . $eol;
             $body.="Content-Type: application/octet-stream; name=\"" . $filename . "\"" . $eol; 
             $body.="Content-Transfer-Encoding: base64" . $eol;
-            $body.="Content-Disposition: attachment; filename=\"" . $filename . "\"'" . $eol . $eol;
+            $body.="Content-Disposition: attachment; filename=\"" . $filename . "\"" . $eol . $eol;
             $body.=$attachment;
             }
         $body.="--PHP-mixed-" . $random_hash . "--" . $eol; # Final terminating boundary.
@@ -985,21 +995,21 @@ function send_mail($email,$subject,$message,$from="",$reply_to="",$html_template
         $disable_quoted_printable_enc = true; // If false then attachment names and utf8 text get corrupted
         }
 
-    
+
     $message.=$eol.$eol.$eol . $email_footer;
-    
+
     if (!$disable_quoted_printable_enc)
         {
         $message=rs_quoted_printable_encode($message);
         $subject=rs_quoted_printable_encode_subject($subject);
         }
-   
+
     if ($from=="") {$from=$email_from;}
     if ($reply_to=="") {$reply_to=$email_from;}
     if ($from_name==""){$from_name=$applicationname;}
-    
+
     if (substr($reply_to,-1)==","){$reply_to=substr($reply_to,0,-1);}
-    
+
     $reply_tos=explode(",",$reply_to);
 
     $headers .= "From: ";
@@ -1017,7 +1027,7 @@ function send_mail($email,$subject,$message,$from="",$reply_to="",$html_template
     }
     $headers.=$eol;
     $headers .= "Reply-To: $reply_to" . $eol;
-    
+
     if ($cc!=""){
         #allow multiple emails, and fix for long format emails
         $ccs=explode(",",$cc);
@@ -1035,7 +1045,7 @@ function send_mail($email,$subject,$message,$from="",$reply_to="",$html_template
         }
         $headers.=$eol;
     }
-    
+
     if ($bcc!=""){
         #add bcc 
         $bccs=explode(",",$bcc);
@@ -1053,7 +1063,7 @@ function send_mail($email,$subject,$message,$from="",$reply_to="",$html_template
         }
         $headers.=$eol;
     }
-    
+
     $headers .= "Date: " . date("r") .  $eol;
     $headers .= "Message-ID: <" . date("YmdHis") . $from . ">" . $eol;
     $headers .= "MIME-Version: 1.0" . $eol;
@@ -1065,11 +1075,17 @@ function send_mail($email,$subject,$message,$from="",$reply_to="",$html_template
     else
         {
         $headers .= "Content-Type: text/html; charset=\"UTF-8\"" . $eol;
+        // Add CSS links so email can use the styles
+        $messageprefix = '<link href="' . $baseurl . '/css/global.css" rel="stylesheet" type="text/css" media="screen,projection,print" />';
+        $messageprefix .= '<link href="' . $baseurl . '/css/colour.css" rel="stylesheet" type="text/css" media="screen,projection,print" />';
+        $messageprefix .= '<link href="' . $baseurl . '/css/css_override.php" rel="stylesheet" type="text/css" media="screen,projection,print" />';
+        $message = $messageprefix . $message;
         }
     $headers .= "Content-Transfer-Encoding: quoted-printable" . $eol;
     log_mail($email,$subject,$reply_to);
     mail ($email,$subject,$message,$headers);
     cleanup_files($deletefiles);
+    return true;
     }
 
 /**
@@ -1087,8 +1103,8 @@ function send_mail($email,$subject,$message,$from="",$reply_to="",$html_template
  * @param  string $email           Email address to send to 
  * @param  string $subject          Email subject
  * @param  string $message          Message text
- * @param  string $from             From address - defaults to $email_from or user's email if $always_email_from_user enabled
- * @param  string $reply_to         Reply to address - defaults to $email_from or user's email if $always_email_from_user enabled
+ * @param  string $from             From address - defaults to $email_from 
+ * @param  string $reply_to         Reply to address - defaults to $email_from
  * @param  string $html_template    Optional template (this is a $lang entry with placeholders)
  * @param  string $templatevars     Used to populate email template placeholders
  * @param  string $from_name        Email from name
@@ -1101,12 +1117,13 @@ function send_mail($email,$subject,$message,$from="",$reply_to="",$html_template
 function send_mail_phpmailer($email,$subject,$message="",$from="",$reply_to="",$html_template="",$templatevars=null,$from_name="",$cc="",$bcc="", $files=array())
     {
     # Include footer
-    global $email_footer, $storagedir, $mime_type_by_extension;
+    global $header_colour_style_override, $mime_type_by_extension, $email_from;
     include_once(__DIR__ . '/../lib/PHPMailer/PHPMailer.php');
     include_once(__DIR__ . '/../lib/PHPMailer/Exception.php');
     include_once(__DIR__ . '/../lib/PHPMailer/SMTP.php');
+
+    if (check_email_invalid($email)){return false;}
     
-    global $email_from;
     $from_system = false;
     if ($from=="")
         {
@@ -1116,13 +1133,13 @@ function send_mail_phpmailer($email,$subject,$message="",$from="",$reply_to="",$
     if ($reply_to=="") {$reply_to=$email_from;}
     global $applicationname;
     if ($from_name==""){$from_name=$applicationname;}
-    
+
     #check for html template. If exists, attempt to include vars into message
     if ($html_template!="")
         {
         # Attempt to verify users by email, which allows us to get the email template by lang and usergroup
-        $to_usergroup=sql_query("select lang,usergroup from user where email ='" . escape_check($email) . "'","");
-        
+        $to_usergroup = ps_query("select lang, usergroup from user where email = ?", array("s", $email), "");
+
         if (count($to_usergroup)!=0)
             {
             $to_usergroupref=$to_usergroup[0]['usergroup'];
@@ -1132,25 +1149,25 @@ function send_mail_phpmailer($email,$subject,$message="",$from="",$reply_to="",$
             {
             $to_usergrouplang="";   
             }
-            
+
         if ($to_usergrouplang==""){global $defaultlanguage; $to_usergrouplang=$defaultlanguage;}
-            
+
         if (isset($to_usergroupref))
-            {   
+            {
             $modified_to_usergroupref=hook("modifytousergroup","",$to_usergroupref);
             if (is_int($modified_to_usergroupref)){$to_usergroupref=$modified_to_usergroupref;}
-            $results=sql_query("select language,name,text from site_text where page='all' and name='$html_template' and specific_to_group='$to_usergroupref'");
+            $results = ps_query("SELECT `language`, `name`, `text` FROM site_text WHERE (`page` = 'all' OR `page` = '') AND `name` = ? AND specific_to_group = ?;", array("s", $html_template, "i", $to_usergroupref));
             }
-        else 
-            {   
-            $results=sql_query("select language,name,text from site_text where page='all' and name='$html_template' and specific_to_group is null");
+        else
+            {
+            $results = ps_query("SELECT `language`, `name`, `text` FROM site_text WHERE (`page` = 'all' OR `page` = '') AND `name` = ? AND specific_to_group IS NULL;", array("s", $html_template));
             }
-            
+
         global $site_text;
         for ($n=0;$n<count($results);$n++) {$site_text[$results[$n]["language"] . "-" . $results[$n]["name"]]=$results[$n]["text"];} 
-                
+
         $language=$to_usergrouplang;
-                                
+
         if (array_key_exists($language . "-" . $html_template,$site_text)) 
             {
             $template=$site_text[$language . "-" .$html_template];
@@ -1187,8 +1204,19 @@ function send_mail_phpmailer($email,$subject,$message="",$from="",$reply_to="",$
                     {
                     // Get lang variables (ex. [lang_mycollections])
                     global $lang;
-                    $setvalues[$placeholder] = $lang[substr($placeholder,5)];
-                    }           
+                    switch(substr($placeholder,5))
+                        {
+                        case "emailcollectionmessageexternal":
+                            $setvalues[$placeholder] = str_replace('%applicationname%', $applicationname, $lang["emailcollectionmessageexternal"]);
+                            break;
+                        case "emailcollectionmessage":
+                            $setvalues[$placeholder] = str_replace('%applicationname%', $applicationname, $lang["emailcollectionmessage"]);
+                            break;
+                        default:
+                            $setvalues[$placeholder] = $lang[substr($placeholder,5)];
+                            break;
+                        }
+                    }
                 else if (substr($placeholder,0,5)=="text_")
                     {
                     // Get text string (legacy)
@@ -1201,8 +1229,11 @@ function send_mail_phpmailer($email,$subject,$message="",$from="",$reply_to="",$
                     }         
                 else if($placeholder == 'img_headerlogo')
                     {
+                    // Add header image to email if not using template
                     $img_url = get_header_image(true);
-                    $setvalues[$placeholder]  = '<img src="' . $img_url . '"/>';
+                    $img_div_style = "max-height:50px;padding: 5px;";
+                    $img_div_style .= "background: " . ((isset($header_colour_style_override) && $header_colour_style_override != '') ? $header_colour_style_override : "rgba(0, 0, 0, 0.6)") . ";";
+                    $setvalues[$placeholder] = '<div style="' . $img_div_style . '"><img src="' . $img_url . '" style="max-height:50px;"  /></div><br /><br />';
                     }
                 else if ($placeholder=="embed_thumbnail")
                     {                    
@@ -1223,6 +1254,7 @@ function send_mail_phpmailer($email,$subject,$message="",$from="",$reply_to="",$
                     $templatevars[$placeholder]=$setvalues[$placeholder];
                     }
                 }
+
 
             if (isset($templatevars))
                 {
@@ -1273,7 +1305,7 @@ function send_mail_phpmailer($email,$subject,$message="",$from="",$reply_to="",$
         $mail->From = $from;
         $mail->FromName = $from_name;
         }
-    
+
     // if there are multiple addresses, that's what replyto handles.
     for ($n=0;$n<count($reply_tos);$n++){
         if (strstr($reply_tos[$n],"<")){
@@ -1284,7 +1316,7 @@ function send_mail_phpmailer($email,$subject,$message="",$from="",$reply_to="",$
             $mail->AddReplyto($reply_tos[$n],$from_name);
         }
     }
-    
+
     # modification to handle multiple comma delimited emails
     # such as for a multiple $email_notify
     $emails = $email;
@@ -1299,7 +1331,7 @@ function send_mail_phpmailer($email,$subject,$message="",$from="",$reply_to="",$
             $mail->AddAddress($email);
         }
     }
-    
+
     if ($cc!=""){
         # modification for multiple is also necessary here, though a broken cc seems to be simply removed by phpmailer rather than breaking it.
         $ccs = $cc;
@@ -1334,8 +1366,23 @@ function send_mail_phpmailer($email,$subject,$message="",$from="",$reply_to="",$
     }    
     
     $mail->CharSet = "utf-8"; 
-    
-    if (is_html($body)) {$mail->IsHTML(true);}
+
+    if (is_html($body))
+        {
+        $mail->IsHTML(true);
+        
+        // Standardise line breaks
+        $body = str_replace(["\r\n","\r","\n","<br/>","<br>"],"<br />",$body);
+
+        // Remove any sequences of three or more line breaks with doubles   
+        while(strpos($body,"<br /><br /><br />") !== false)
+            {
+            $body = str_replace("<br /><br /><br />","<br /><br />",$body);
+            }
+
+        // Also remove any unnecessary line breaks that were already formatted by HTML paragraphs
+        $body = str_replace(["</p><br /><br />","</p><br />"],"</p>",$body);
+        }      
     else {$mail->IsHTML(false);}
 
     $mail->Subject = $subject;
@@ -1367,7 +1414,7 @@ function send_mail_phpmailer($email,$subject,$message="",$from="",$reply_to="",$
         foreach ($attachments as $attachment){
         $mail->AddAttachment($attachment,basename($attachment));}
         }
-        
+
     if (count($files)>0)
         {
         # Attach all the files
@@ -1389,7 +1436,7 @@ function send_mail_phpmailer($email,$subject,$message="",$from="",$reply_to="",$
                 debug("file missing: " . $file);
                 continue;
                 }
-            
+
             $mail->AddAttachment($file,$filename);
             }
         }
@@ -1398,7 +1445,7 @@ function send_mail_phpmailer($email,$subject,$message="",$from="",$reply_to="",$
         {
         $mail->AltBody = $mail->html2text($body); 
         }
-        
+
     log_mail($email,$subject,$reply_to);
 
     $GLOBALS["use_error_exception"] = true;
@@ -1407,12 +1454,6 @@ function send_mail_phpmailer($email,$subject,$message="",$from="",$reply_to="",$
         $mail->Send();
         }
     catch (Exception $e)
-        {
-        echo "Message could not be sent. <p>";
-        debug("PHPMailer Error: email: " . $email . " - " . $e->errorMessage());
-        exit;
-        }
-    catch (\Exception $e)
         {
         echo "Message could not be sent. <p>";
         debug("PHPMailer Error: email: " . $email . " - " . $e->errorMessage());
@@ -1440,7 +1481,6 @@ function send_mail_phpmailer($email,$subject,$message="",$from="",$reply_to="",$
 function log_mail($email,$subject,$sender)
     {
     global $userref;
-    $to = escape_check($email);
     if (isset($userref))
         {
         $from = $userref;
@@ -1449,28 +1489,21 @@ function log_mail($email,$subject,$sender)
         {
         $from = 0;
         }
-    $sub = escape_check(mb_substr($subject,0,100));
+    $sub = mb_strcut($subject,0,100);
+
+    // Record a separate log entry for each email recipient
+    $email_recipients = explode(', ', $email);
+    $sql = array();
+    $params= array();
+    foreach ($email_recipients as $email_recipient)
+        {
+        $sql[] = '(NOW(), ?, ?, ?, ?)';
+        $params = array_merge($params, array("s", $email_recipient, "i", $from, "s", $sub, "s", $sender));
+        }
 
     // Write log to database
-    sql_query("
-        INSERT into
-            mail_log (
-                date,
-                mail_to,
-                mail_from,
-                subject,
-                sender_email
-                )
-            VALUES (
-                NOW(),
-                '" . $to . "',
-                '" . $from . "',
-                '" . $sub . "',
-                '" . $sender . "'
-        );
-        ");
+    ps_query("INSERT into mail_log (`date`, mail_to, mail_from, `subject`, sender_email) VALUES " . implode(", ", $sql) . ";", $params);
     }
-
 
 /**
  * Quoted printable encoding is rather simple.
@@ -1559,7 +1592,7 @@ function rs_quoted_printable_encode_subject($string, $encoding='UTF-8')
  */
 function pager($break=true,$scrolltotop=true,$options=array())
     {
-    global $curpage,$url,$totalpages,$offset,$per_page,$lang,$jumpcount,$pager_dropdown,$pagename;
+    global $curpage,$url,$totalpages,$offset,$per_page,$lang,$jumpcount,$pagename;
     $validoptions = array(
         "curpage",
         "url",
@@ -1568,7 +1601,6 @@ function pager($break=true,$scrolltotop=true,$options=array())
         "offset",
         "per_page",
         "jumpcount",
-        "pager_dropdown",
         "confirm_page_change"
     );
     foreach($validoptions as $validoption)
@@ -1595,64 +1627,24 @@ function pager($break=true,$scrolltotop=true,$options=array())
     if(!hook("replace_pager")){
         unset($url_params["offset"]);
         if ($totalpages!=0 && $totalpages!=1){?>     
-            <span class="TopInpageNavRight"><?php if ($break) { ?>&nbsp;<br /><?php } hook("custompagerstyle"); if ($curpage>1) { ?><a class="prevPageLink" title="<?php echo $lang["previous"]?>" href="<?php echo generateURL($url, (isset($url_params) ? $url_params : array()), array("go"=>"prev","offset"=> ($offset-$per_page)));?>" <?php if(!hook("replacepageronclick_prev")){?>onClick="<?php echo $confirm_page_change;?> return <?php echo $modal ? 'Modal' : 'CentralSpace'; ?>Load(this, <?php echo $scroll; ?>);" <?php } ?>><?php } ?><i aria-hidden="true" class="fa fa-arrow-left"></i><?php if ($curpage>1) { ?></a><?php } ?>&nbsp;&nbsp;
+            <span class="TopInpageNavRight"><?php if ($break) { ?>&nbsp;<br /><?php } hook("custompagerstyle"); if ($curpage>1) { ?><a class="prevPageLink" title="<?php echo escape($lang["previous"]) ?>" href="<?php echo generateURL($url, (isset($url_params) ? $url_params : array()), array("go"=>"prev","offset"=> ($offset-$per_page)));?>" <?php if(!hook("replacepageronclick_prev")){?>onClick="<?php echo $confirm_page_change;?> return <?php echo $modal ? 'Modal' : 'CentralSpace'; ?>Load(this, <?php echo $scroll; ?>);" <?php } ?>><?php } ?><i aria-hidden="true" class="fa fa-arrow-left"></i><?php if ($curpage>1) { ?></a><?php } ?>&nbsp;&nbsp;
 
-            <?php if ($pager_dropdown)
-                {
-                $id=rand();?>
-                <select id="pager<?php echo $id;?>" class="ListDropdown" style="width:50px;" <?php if(!hook("replacepageronchange_drop","",array($id))){?>onChange="var jumpto=document.getElementById('pager<?php echo $id?>').value;if ((jumpto>0) && (jumpto<=<?php echo $totalpages?>)) {return <?php echo $modal ? 'Modal' : 'CentralSpace'; ?>Load('<?php echo generateURL($url, (isset($url_params) ? $url_params : array()), array("go"=>"page")); ?>&amp;offset=' + ((jumpto-1) * <?php echo urlencode($per_page) ?>), <?php echo $scroll; ?>);}" <?php } ?>>
-                <?php for ($n=1;$n<$totalpages+1;$n++){?>
-                    <option value='<?php echo $n?>' <?php if ($n==$curpage){?>selected<?php } ?>><?php echo $n?></option>
-                <?php } ?>
-                </select><?php
-                }
-            else
-                {?>
-                <div class="JumpPanel" id="jumppanel<?php echo $jumpcount?>" style="display:none;"><?php echo $lang["jumptopage"]?>: <input type="text" size="1" id="jumpto<?php echo $jumpcount?>" onkeydown="var evt = event || window.event;if (evt.keyCode == 13) {var jumpto=document.getElementById('jumpto<?php echo $jumpcount?>').value;if (jumpto<1){jumpto=1;};if (jumpto><?php echo $totalpages?>){jumpto=<?php echo $totalpages?>;};<?php echo $modal ? 'Modal' : 'CentralSpace'; ?>Load('<?php echo generateURL($url, (isset($url_params) ? $url_params : array()), array("go"=>"page")); ?>&amp;offset=' + ((jumpto-1) * <?php echo urlencode($per_page) ?>), <?php echo $scroll; ?>);}">
+            <div class="JumpPanel" id="jumppanel<?php echo $jumpcount?>" style="display:none;"><?php echo htmlspecialchars($lang["jumptopage"]) ?>: <input type="text" size="1" id="jumpto<?php echo $jumpcount?>" onkeydown="var evt = event || window.event;if (evt.keyCode == 13) {var jumpto=document.getElementById('jumpto<?php echo $jumpcount?>').value;if (jumpto<1){jumpto=1;};if (jumpto><?php echo $totalpages?>){jumpto=<?php echo $totalpages?>;};<?php echo $modal ? 'Modal' : 'CentralSpace'; ?>Load('<?php echo generateURL($url, (isset($url_params) ? $url_params : array()), array("go"=>"page")); ?>&amp;offset=' + ((jumpto-1) * <?php echo urlencode($per_page) ?>), <?php echo $scroll; ?>);}">
             &nbsp;<a aria-hidden="true" class="fa fa-times-circle" href="#" onClick="document.getElementById('jumppanel<?php echo $jumpcount?>').style.display='none';document.getElementById('jumplink<?php echo $jumpcount?>').style.display='inline';"></a></div>
-            
-                <a href="#" id="jumplink<?php echo $jumpcount?>" title="<?php echo $lang["jumptopage"]?>" onClick="document.getElementById('jumppanel<?php echo $jumpcount?>').style.display='inline';document.getElementById('jumplink<?php echo $jumpcount?>').style.display='none';document.getElementById('jumpto<?php echo $jumpcount?>').focus(); return false;"><?php echo $lang["page"]?>&nbsp;<?php echo htmlspecialchars($curpage) ?>&nbsp;<?php echo $lang["of"]?>&nbsp;<?php echo $totalpages?></a><?php
-                } ?>
-
+            <a href="#" id="jumplink<?php echo $jumpcount?>" title="<?php echo escape($lang["jumptopage"]) ?>" onClick="document.getElementById('jumppanel<?php echo $jumpcount?>').style.display='inline';document.getElementById('jumplink<?php echo $jumpcount?>').style.display='none';document.getElementById('jumpto<?php echo $jumpcount?>').focus(); return false;"><?php echo htmlspecialchars($lang["page"]) ?>&nbsp;<?php echo htmlspecialchars($curpage) ?>&nbsp;<?php echo htmlspecialchars($lang["of"]) ?>&nbsp;<?php echo $totalpages?></a>
             &nbsp;&nbsp;<?php
             if ($curpage<$totalpages)
                 {
-                ?><a class="nextPageLink" title="<?php echo $lang["next"]?>" href="<?php echo generateURL($url, (isset($url_params) ? $url_params : array()), array("go"=>"next","offset"=> ($offset+$per_page)));?>" <?php if(!hook("replacepageronclick_next")){?>onClick="<?php echo $confirm_page_change;?> return <?php echo $modal ? 'Modal' : 'CentralSpace'; ?>Load(this, <?php echo $scroll; ?>);" <?php } ?>><?php
+                ?><a class="nextPageLink" title="<?php echo escape($lang["next"]) ?>" href="<?php echo generateURL($url, (isset($url_params) ? $url_params : array()), array("go"=>"next","offset"=> ($offset+$per_page)));?>" <?php if(!hook("replacepageronclick_next")){?>onClick="<?php echo $confirm_page_change;?> return <?php echo $modal ? 'Modal' : 'CentralSpace'; ?>Load(this, <?php echo $scroll; ?>);" <?php } ?>><?php
                 }?><i aria-hidden="true" class="fa fa-arrow-right"></i>
             <?php if ($curpage<$totalpages) { ?></a><?php } hook("custompagerstyleend"); ?>
             </span>
-            
+
         <?php } else { ?><span class="HorizontalWhiteNav">&nbsp;</span><div <?php if ($pagename=="search"){?>style="display:block;"<?php } else { ?>style="display:inline;"<?php }?>>&nbsp;</div><?php } ?>
         <?php
         }
     }
-    
 
-/**
- * If configured, send two metrics to Montala to get an idea of general software usage.
- *
- * @return void
- */
-function send_statistics()
-    {
-    $last_sent_stats  = get_sysvar('last_sent_stats', '1970-01-01');
-    
-    # No need to send stats if already sent in last week.
-    if (time()-strtotime($last_sent_stats) < 7*24*60*60)
-        {
-        return false;
-        }
-    
-    # Gather stats
-    $total_users=sql_value("select count(*) value from user",0);
-    $total_resources=sql_value("select count(*) value from resource",0);
-    
-    # Send stats
-    @file("https://www.montala.com/rs_stats.php?users=" . $total_users . "&resources=" . $total_resources);
-    
-    # Update last sent date/time.
-    set_sysvar("last_sent_stats",date("Y-m-d H:i:s")); 
-    }
 
 /**
  * Remove the extension part of a filename
@@ -1670,7 +1662,7 @@ function remove_extension($strName)
     return $strName;
     }
 
-    
+
 /**
  * Retrieve a list of permitted extensions for the given resource type.
  *
@@ -1679,7 +1671,7 @@ function remove_extension($strName)
  */
 function get_allowed_extensions_by_type($resource_type)
     {
-    $allowed_extensions=sql_value("select allowed_extensions value from resource_type where ref='$resource_type'","", "schema");
+    $allowed_extensions = ps_value("select allowed_extensions value from resource_type where ref = ?", array("i", $resource_type), "", "schema");
     return $allowed_extensions;
     }
 
@@ -1832,15 +1824,15 @@ function strip_extension($name,$use_ext_list=false)
 function is_process_lock($name)
     { 
     global $storagedir,$process_locks_max_seconds;
-    
+
     # Check that tmp/process_locks exists, create if not.
     # Since the get_temp_dir() method does this checking, omit: if(!is_dir($storagedir . "/tmp")){mkdir($storagedir . "/tmp",0777);}
     if(!is_dir(get_temp_dir() . "/process_locks")){mkdir(get_temp_dir() . "/process_locks",0777);}
-    
+
     # No lock file? return false
     if (!file_exists(get_temp_dir() . "/process_locks/" . $name)) {return false;}
     if (!is_readable(get_temp_dir() . "/process_locks/" . $name)) {return true;} // Lock exists and cannot read it so must assume it's still valid
-    
+
     $GLOBALS["use_error_exception"] = true;
     try {
         $time=trim(file_get_contents(get_temp_dir() . "/process_locks/" . $name));
@@ -1850,10 +1842,10 @@ function is_process_lock($name)
         debug("is_process_lock: Attempt to get file contents '$result' failed. Reason: {$e->getMessage()}");
         }
     unset($GLOBALS["use_error_exception"]);
-    
+
     return true; # Lock is valid
     }
-    
+
 /**
  * Set a process lock
  *
@@ -1867,7 +1859,7 @@ function set_process_lock($name)
     chmod(get_temp_dir() . "/process_locks/" . $name,0777);
     return true;
     }
-    
+
 /**
  * Clear a process lock
  *
@@ -1885,7 +1877,7 @@ function clear_process_lock($name)
  * Custom function for retrieving a file size. A resolution for PHP's issue with large files and filesize(). 
  *
  * @param  string $path
- * @return integer  The file size in bytes
+ * @return integer|bool  The file size in bytes
  */
 function filesize_unlimited($path)
     {
@@ -1919,9 +1911,18 @@ function filesize_unlimited($path)
         $bytesize = exec("stat -c '%s' " . escapeshellarg($path));
         }
 
-    if(!is_int($bytesize))
+    if(!is_int_loose($bytesize))
         {
-        $bytesize = @filesize($path); # Bomb out, the output wasn't as we expected. Return the filesize() output.
+        $GLOBALS["use_error_exception"] = true;
+        try
+            {
+            $bytesize = filesize($path); # Bomb out, the output wasn't as we expected. Return the filesize() output.
+            }
+        catch (Throwable $e)
+            {
+            return false;
+            }
+        unset($GLOBALS["use_error_exception"]);
         }
 
     hook('afterfilesize_unlimited', '', array($path));
@@ -1937,7 +1938,7 @@ function filesize_unlimited($path)
  */
 function strip_leading_comma($val)
     {
-    return preg_replace('/^\,/','',$val);
+    return preg_replace('/^\,/', '', (string) $val);
     }
 
 
@@ -1956,7 +1957,7 @@ function get_temp_dir($asUrl = false,$uniqid="")
     global $storagedir, $tempdir;
     // Set up the default.
     $result = dirname(dirname(__FILE__)) . "/filestore/tmp";
-    
+
     // if $tempdir is explicity set, use it.
     if(isset($tempdir))
     {
@@ -1988,7 +1989,7 @@ function get_temp_dir($asUrl = false,$uniqid="")
             mkdir($result, 0777);
         }
     }
-    
+
     if ($uniqid!="")
         {
         $uniqid = md5($uniqid);
@@ -1998,7 +1999,7 @@ function get_temp_dir($asUrl = false,$uniqid="")
             mkdir($result, 0777, true);
             }
         }
-    
+
     // return the result.
     if($asUrl==true)
     {
@@ -2070,7 +2071,7 @@ function escape_command_args($cmd, array $args)
 */
 function run_command($command, $geterrors = false, array $params = array())
     {
-    global $debug_log;
+    global $debug_log,$config_windows;
 
     $command = escape_command_args($command, $params);
     debug("CLI command: $command");
@@ -2080,7 +2081,16 @@ function run_command($command, $geterrors = false, array $params = array())
     );
     if($debug_log || $geterrors) 
         {
-        $descriptorspec[2] = array("pipe", "w"); // stderr is a file to write to
+        if($config_windows)
+            {
+            $pid = getmypid();
+            $log_location = get_temp_dir()."/error_".md5($command . serialize($params). $pid).".txt";
+            $descriptorspec[2] = array("file", $log_location, "w"); // stderr is a file that the child will write to
+            }
+        else
+            {
+            $descriptorspec[2] = array("pipe", "w"); // stderr is a pipe that the child will write to
+            }
         }
     $process = @proc_open($command, $descriptorspec, $pipe, NULL, NULL, array('bypass_shell' => true));
 
@@ -2089,13 +2099,14 @@ function run_command($command, $geterrors = false, array $params = array())
     $output = trim(stream_get_contents($pipe[1]));
     if($geterrors)
         {
-        $output .= trim(stream_get_contents($pipe[2]));
+        $output .= trim($config_windows?file_get_contents($log_location):stream_get_contents($pipe[2]));
         }
     if ($debug_log)
         {
         debug("CLI output: $output");
-        debug("CLI errors: " . trim(stream_get_contents($pipe[2])));
+        debug("CLI errors: " . trim($config_windows?file_get_contents($log_location):stream_get_contents($pipe[2])));
         }
+    if($config_windows && isset($log_location)){unlink($log_location);}
     proc_close($process);
     return $output;
     }
@@ -2111,7 +2122,7 @@ function run_command($command, $geterrors = false, array $params = array())
 function run_external($command)
     {
     global $debug_log;
-    
+
     $pipes = array();
     $output = array();
     # Pipes for stdin, stdout and stderr
@@ -2127,10 +2138,10 @@ function run_external($command)
         {
         return false;
         }
-    
+
     # Immediately close the input pipe
     fclose($pipes[0]);
-    
+
     # Set both output streams to non-blocking mode
     stream_set_blocking($pipes[1], false);
     stream_set_blocking($pipes[2], false);
@@ -2148,21 +2159,21 @@ function run_external($command)
             {
             $read[] = $pipes[2];
             }
- 
+
         if (!$read)
             {
             break;
             }
- 
+
         $write = NULL;
         $except = NULL;
         $ready = stream_select($read, $write, $except, 2);
- 
+
         if ($ready === false)
             {
             break;
             }
- 
+
         foreach ($read as $r)
             {
             # Read a line and strip newline and carriage return from the end
@@ -2170,15 +2181,15 @@ function run_external($command)
             $output[] = $line;
             }
         }
- 
+
     # Close the output pipes
     fclose($pipes[1]);
     fclose($pipes[2]);
-    
+
     debug("CLI output: ". implode("\n", $output));
- 
+
     proc_close($process);
- 
+
     return $output;
     }
 
@@ -2209,7 +2220,7 @@ function error_alert($error, $back = true, $code = 403)
         jQuery(document).ready(function()
             {
             ModalClose();
-            styledalert('" . $lang["error"] . "', '" . htmlspecialchars($error, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML401) . "');
+            styledalert('" . $lang["error"] . "', '" . escape($error) . "');
             " . ($back ? "window.setTimeout(function(){history.go(-1);},2000);" : "") ."
             });
         </script>";
@@ -2234,7 +2245,7 @@ function format_display_field($value)
 
     $string=i18n_get_translated($value);
     $string=TidyList($string);
-    
+
     if(isset($df[$x]['type']) && $df[$x]['type'] == FIELD_TYPE_TEXT_BOX_FORMATTED_AND_CKEDITOR)
         {
         $string = strip_tags_and_attributes($string); // This will allow permitted tags and attributes
@@ -2245,7 +2256,7 @@ function format_display_field($value)
         }
 
     $string=highlightkeywords($string,$search,$df[$x]['partial_index'],$df[$x]['name'],$df[$x]['indexed']);
-    
+
     return $string;
     }
 
@@ -2256,13 +2267,9 @@ function format_display_field($value)
  * @param  integer $max_words_before_more
  * @return string
  */
-function format_string_more_link($string,$max_words_before_more=-1)
+function format_string_more_link($string,$max_words_before_more=30)
     {
     $words=preg_split('/[\t\f ]/',$string);
-    if ($max_words_before_more==-1)
-        {
-        global $max_words_before_more;
-        }
     if (count($words) < $max_words_before_more)
         {
         return $string;
@@ -2303,7 +2310,7 @@ function draw_performance_footer()
     <?php if ($pagename=="collections"){?><br/><br/><br/><br/><br/><br/><br/>
     <br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><div style="float:left;"><?php } else { ?><div style="float:right; margin-right: 10px;"><?php } ?>
     <table class="InfoTable" style="float: right;margin-right: 10px;">
-    <tr><td>Page Load</td><td><?php show_pagetime();?></td></tr>
+    <tr><td>Page Load</td><td><?php echo show_pagetime();?></td></tr>
     <?php 
         if(isset($hook_cache_hits) && isset($hook_cache)) {         
         ?>
@@ -2329,10 +2336,10 @@ function draw_performance_footer()
     </table>
     </div>
     </div>
-    <?php
+<?php
     }
     }
-    
+
 
 /**
  * Abstracted mysqli_affected_rows()
@@ -2520,9 +2527,49 @@ function get_utility_path($utilityname, &$checked_path = null)
                 $checked_path) . " {$exiftool_global_options} ";
 
         case 'antiword':
+            if(!isset($antiword_path) || $antiword_path === '')
+                {
+                return false;
+                }
+
+            return get_executable_path(
+                $antiword_path,
+                [
+                    'unix' => 'antiword',
+                    'win'  => 'antiword.exe'
+                ],
+                $checked_path
+            );
+
         case 'pdftotext':
+            if(!isset($pdftotext_path) || $pdftotext_path === '')
+                {
+                return false;
+                }
+
+            return get_executable_path(
+                $pdftotext_path,
+                [
+                    'unix' => 'pdftotext',
+                    'win'  => 'pdftotext.exe'
+                ],
+                $checked_path
+            );
+
         case 'blender':
-            break;
+            if(!isset($GLOBALS['blender_path']) || $GLOBALS['blender_path'] === '')
+                {
+                return false;
+                }
+
+            return get_executable_path(
+                $GLOBALS['blender_path'],
+                [
+                    'unix' => 'blender',
+                    'win'  => 'blender.exe'
+                ],
+                $checked_path
+            );
 
         case 'archiver':
             // Archiver path not configured
@@ -2546,20 +2593,32 @@ function get_utility_path($utilityname, &$checked_path = null)
                 $checked_path);
 
         case 'python':
+        case 'opencv':
             // Python path not configured
             if(!isset($python_path) || '' == $python_path)
                 {
                 return false;
                 }
 
-            return get_executable_path(
+            $python3 = get_executable_path(
                 $python_path,
-                array(
-                    'unix' => 'python',
+                [
+                    'unix' => 'python3',
                     'win'  => 'python.exe'
-                ),
+                ],
                 $checked_path,
                 true);
+
+            return $python3 ?: get_executable_path(
+                $python_path,
+                [
+                    'unix' => 'python',
+                    'win'  => 'python.exe'
+                ],
+                $checked_path,
+                true);
+
+
 
         case 'fits':
             // FITS path not configured
@@ -2590,6 +2649,41 @@ function get_utility_path($utilityname, &$checked_path = null)
             );
 
             return get_executable_path($php_path, $executable, $checked_path);
+
+        case 'unoconv':
+            if(
+                // On Windows, the utility is available only via Python's package
+                ($GLOBALS['config_windows'] && (!isset($GLOBALS['unoconv_python_path']) || $GLOBALS['unoconv_python_path'] === ''))
+                || (!isset($GLOBALS['unoconv_path']) || $GLOBALS['unoconv_path'] === '')
+                
+            )
+                {
+                return false;
+                }
+
+            return get_executable_path(
+                $GLOBALS['config_windows'] ? $GLOBALS['unoconv_python_path'] : $GLOBALS['unoconv_path'],
+                [
+                    'unix' => 'unoconv',
+                    'win'  => 'python.exe'
+                ],
+                $checked_path
+            );
+
+        case 'calibre':
+            if(!isset($GLOBALS['calibre_path']) || $GLOBALS['calibre_path'] === '')
+                {
+                return false;
+                }
+
+            return get_executable_path(
+                $GLOBALS['calibre_path'],
+                [
+                    'unix' => 'ebook-convert',
+                    'win'  => 'ebook-convert.exe'
+                ],
+                $checked_path
+            );
         }
 
     // No utility path found
@@ -2687,7 +2781,6 @@ function is_html($string)
  * Set a cookie.
  * 
  * Note: The argument $daysexpire is not the same as the argument $expire in the PHP internal function setcookie.
- * Note: The $path argument is not used if $global_cookies = true
  *
  * @param  string $name
  * @param  string $value
@@ -2700,16 +2793,14 @@ function is_html($string)
  */
 function rs_setcookie($name, $value, $daysexpire = 0, $path = "", $domain = "", $secure = false, $httponly = true)
     {
-    global $baseurl_short;
-    
+    global $baseurl_short, $baseurl_short;
     if($path == "")
         {
-        $path =  $baseurl_short;     
+        $path =  $baseurl_short;
         }
-        
+
     if (php_sapi_name()=="cli") {return true;} # Bypass when running from the command line (e.g. for the test scripts).
-    
-    global $baseurl_short, $global_cookies;
+
     if ($daysexpire==0) {$expire = 0;}
     else {$expire = time() + (3600*24*$daysexpire);}
 
@@ -2717,18 +2808,10 @@ function rs_setcookie($name, $value, $daysexpire = 0, $path = "", $domain = "", 
         {
         $secure=true;
         }
-        
+
     // Set new cookie, first remove any old previously set pages cookies to avoid clashes;           
-    if ($global_cookies)
-        {
-        setcookie($name, "", time() - 3600, "/pages", $domain, $secure, $httponly);
-        setcookie($name, $value, (int) $expire, "/", $domain, $secure, $httponly);
-        }
-    else
-        {
-        setcookie($name, "", time() - 3600, $path . "pages", $domain, $secure, $httponly);
-        setcookie($name, $value, (int) $expire, $path, $domain, $secure, $httponly);
-        }
+    setcookie($name, "", time() - 3600, $path . "pages", $domain, $secure, $httponly);
+    setcookie($name, (string) $value, (int) $expire, $path, $domain, $secure, $httponly);
     }
 
 /**
@@ -2753,12 +2836,12 @@ function get_editable_states($userref)
         }
     return $editable_states;
     }
-        
+
 /**
  * Returns true if $html is valid HTML, otherwise an error string describing the problem.
  *
  * @param  mixed $html
- * @return void
+ * @return bool|string
  */
 function validate_html($html)
     {
@@ -2768,7 +2851,7 @@ function validate_html($html)
     if ($errcode!==0)
     {
     $line=xml_get_current_line_number($parser);
-        
+
     $error=htmlspecialchars(xml_error_string($errcode)) . "<br />Line: " . $line . "<br /><br />";
     $s=explode("\n",$html);
     $error .= "<pre>" ;
@@ -2809,105 +2892,15 @@ function generateURL($url, array $parameters = array(), array $set_params = arra
 
     foreach($parameters as $parameter => $parameter_value)
         {
-        $query_string_params[] = $parameter . '=' . urlencode($parameter_value);
+        $query_string_params[] = $parameter . '=' . urlencode((string) $parameter_value);
         }
 
     # Ability to hook in and change the URL.
     $hookurl=hook("generateurl","",array($url));
     if ($hookurl!==false) {$url=$hookurl;}
-    
+
     return $url . '?' . implode ('&', $query_string_params);
     }
-
-
-
-/**
- * Tails a file using native PHP functions.
- * 
- * First introduced with system console.
- * Credit to:
- * http://www.geekality.net/2011/05/28/php-tail-tackling-large-files
- * 
- * As of 2020-06-29 the website is showing that all contents/code are CC BY 3.0
- * https://creativecommons.org/licenses/by/3.0/
- * 
- * Example:
- *   tail($file_path, 10, 4096, [
- *       'name' => 'resourcespace.tail_search',
- *       'params' => ['search_terms' => ['term1', 'term2']]
- *   ]);
- *
- * @param  string $filename
- * @param  integer $lines
- * @param  integer $buffer
- * @param  array   $filters  List of stream filters. Each value is an array containing the "name" and "params" keys. These
- *                           represent the filter name and its params.
- * @return string
- */
-function tail($filename, $lines = 10, $buffer = 4096, array $filters = [])
-    {
-    $f = fopen($filename, "rb");
-
-    // Jump to the last character, read it and adjust line number if necessary
-    // (Otherwise the result would be wrong if file doesn't end with a blank line)
-    fseek($f, -1, SEEK_END);
-    if(fread($f, 1) != "\n")
-        {
-        $lines -= 1;
-        }
-
-    // Create a temp output file resource so we can attach stream filters for whatever reason the calling code needs to
-    $output_fp = fopen('php://temp','r+');
-    foreach($filters as $filter)
-        {
-        if(isset($filter['name'], $filter['params']) && trim($filter['name']) !== '' && is_array($filter['params']))
-            {
-            stream_filter_append($output_fp, $filter['name'], STREAM_FILTER_READ , $filter['params']);
-            }
-        }
-
-    // Start reading
-    $output = '';
-    $chunk = '';
-    $lines_pre_filtering = $lines;
-
-    // While we would like more
-    while(ftell($f) > 0 && $lines >= 0)
-        {
-        // Figure out how far back we should jump
-        $seek = min(ftell($f), $buffer);
-
-        // Do the jump (backwards, relative to where we are)
-        fseek($f, -$seek, SEEK_CUR);
-
-        // Read a chunk and prepend it to our output
-        $chunk = fread($f, $seek);
-        ftruncate($output_fp, 0);
-        rewind($output_fp);
-        fwrite($output_fp, $chunk);
-        fwrite($output_fp, $output);
-        rewind($output_fp);
-        $output = stream_get_contents($output_fp);
-
-        // Jump back to where we started reading
-        fseek($f, -mb_strlen($chunk, '8bit'), SEEK_CUR);
-
-        $lines = $lines_pre_filtering - substr_count($output, "\n");
-        }
-
-    // While we have too many lines
-    // (Because of buffer size we might have read too many)
-    while($lines++ < 0)
-        {
-        // Find first newline and remove all text before that
-        $output = substr($output, strpos($output, "\n") + 1);
-        }
-
-    fclose($f);
-    fclose($output_fp);
-    return $output;
-    }   
-    
 
 
 /**
@@ -2928,7 +2921,7 @@ function move_array_element(array &$array, $from_index, $to_index)
 
     return;
     }
-    
+
 /**
  * Check if a value that may equate to false in PHP is actually a zero
  *
@@ -2979,8 +2972,7 @@ function get_slideshow_files_data()
 
     $homeanim_folder_path = dirname(__DIR__) . "/{$homeanim_folder}";
 
-    $query = "SELECT ref, resource_ref, homepage_show, featured_collections_show, login_show FROM slideshow";
-    $slideshow_records = sql_query($query, "slideshow");
+    $slideshow_records = ps_query("SELECT ref, resource_ref, homepage_show, featured_collections_show, login_show FROM slideshow", array(), "slideshow");
 
     $slideshow_files = array();
 
@@ -2989,8 +2981,7 @@ function get_slideshow_files_data()
         $slideshow_file = $slideshow;
 
         $image_file_path = "{$homeanim_folder_path}/{$slideshow['ref']}.jpg";
-
-        if(!file_exists($image_file_path) || !is_readable($image_file_path))
+        if (!file_exists($image_file_path) || !is_readable($image_file_path))
             {
             continue;
             }
@@ -3004,7 +2995,7 @@ function get_slideshow_files_data()
                 'nc' => $slideshow_file['checksum'],
             ));
 
-        if((int) $slideshow['resource_ref'] > 0)
+        if ((int) $slideshow['resource_ref'] > 0)
             {
             $slideshow_file['link'] = generateURL($baseurl, array('r' => $slideshow['resource_ref']));
             }
@@ -3014,7 +3005,7 @@ function get_slideshow_files_data()
 
     return $slideshow_files;
     }
-        
+
 /**
  * Returns a sanitised row from the table in a safe form for use in a form value, 
  * suitable overwritten by POSTed data if it has been supplied.
@@ -3028,7 +3019,7 @@ function form_value_display($row,$name,$default="")
     {
     if (!is_array($row)) {return false;}
     if (array_key_exists($name,$row)) {$default=$row[$name];}
-    return htmlspecialchars(getval($name,$default));
+    return htmlspecialchars((string) getval($name,$default));
     }
 
 /**
@@ -3040,7 +3031,7 @@ function form_value_display($row,$name,$default="")
  */
 function user_set_usergroup($user,$usergroup)
     {
-    sql_query("update user set usergroup='" . escape_check($usergroup) . "' where ref='" . escape_check($user) . "'");
+    ps_query("update user set usergroup = ? where ref = ?", array("i", $usergroup, "i", $user));
     }
 
 
@@ -3049,15 +3040,12 @@ function user_set_usergroup($user,$usergroup)
  * 
  * Used to generate initial spider and scramble keys.
  * 
- * @param  int    $length Lenght of desired string of bytes
+ * @param  int    $length Length of desired string of bytes
  * @return string         Random character string
  */
-function generateSecureKey($length = 64)
+function generateSecureKey(int $length = 64): string
     {
-    $bytes = openssl_random_pseudo_bytes($length / 2);
-    $hex   = substr(bin2hex($bytes), 0, 64); 
-
-    return $hex;
+    return bin2hex(openssl_random_pseudo_bytes($length / 2));
     }
 
 /**
@@ -3103,9 +3091,9 @@ function generateCSRFToken($session_id, $form_id)
 /**
 * Checks if CSRF Token is valid
 * 
-* @uses rsDecrypt()
+* @uses rs_validate_token()
 * 
-* @return boolean  Returns TRUE if token has been decrypted or CSRF is not enabled, FALSE otherwise
+* @return boolean  Returns TRUE if token is valid or CSRF is not enabled, FALSE otherwise
 */
 function isValidCSRFToken($token_data, $session_id)
     {
@@ -3115,37 +3103,9 @@ function isValidCSRFToken($token_data, $session_id)
         {
         return true;
         }
-
-    if($token_data === "")
-        {
-        debug("CSRF: INVALID - no token data");
-        return false;
-        }
-
-    $plaintext = rsDecrypt($token_data, $session_id);
-
-    if($plaintext === false)
-        {
-        debug("CSRF: INVALID - unable to decrypt token data");
-        return false;
-        }
-
-    $csrf_data = json_decode($plaintext, true);
-
-    if(is_null($csrf_data))
-        {
-        debug("CSRF: INVALID - unable to decode token data");
-        return false;
-        }
-
-    if($csrf_data["session"] == $session_id)
-        {
-        return true;
-        }
-
-    debug("CSRF: INVALID - session ID did not match: {$csrf_data['session']} vs {$session_id}");
-
-    return false;
+    
+    $csrf_valid = rs_validate_token($token_data, $session_id);
+    return $csrf_valid;    
     }
 
 
@@ -3196,6 +3156,31 @@ function generateAjaxToken($form_id)
     $token = generateCSRFToken($usersession, $form_id);
 
     return "{$CSRF_token_identifier}: \"{$token}\"";
+    }
+
+/**
+ * Create a CSRF token as a JS object
+ * 
+ * @param string $name The name of the token identifier (e.g API function called)
+ * @return string JS object with CSRF data (identifier & token) if CSRF is enabled, empty object otherwise
+ */
+function generate_csrf_js_object(string $name): string
+    {
+    return $GLOBALS['CSRF_enabled']
+        ? json_encode([$GLOBALS['CSRF_token_identifier'] => generateCSRFToken($GLOBALS['usersession'] ?? null, $name)])
+        : '{}';
+    }
+
+/**
+ * Create an HTML data attribute holding a CSRF token (JS) object
+ * 
+ * @param string $fct_name The name of the API function called (e.g create_resource)
+ */
+function generate_csrf_data_for_api_native_authmode(string $fct_name): string
+    {
+    return $GLOBALS['CSRF_enabled']
+        ? sprintf(' data-api-native-csrf="%s"', escape(generate_csrf_js_object($fct_name)))
+        : '';
     }
 
 
@@ -3265,7 +3250,17 @@ function is_resourcespace_upgrade_available()
         {
         $default_socket_timeout_cache = ini_get('default_socket_timeout');
         ini_set('default_socket_timeout',5); //Set timeout to 5 seconds incase server cannot access resourcespace.com
-        $centralised_version_number = @file_get_contents('https://www.resourcespace.com/current_release.txt');
+        $use_error_exception_cache = $GLOBALS["use_error_exception"]??false;
+        $GLOBALS["use_error_exception"] = true;
+        try
+            {
+            $centralised_version_number = file_get_contents('https://www.resourcespace.com/current_release.txt');
+            }
+        catch (Exception $e)
+            {
+            $centralised_version_number = false;
+            }
+        $GLOBALS["use_error_exception"] = $use_error_exception_cache;
         ini_set('default_socket_timeout',$default_socket_timeout_cache);
         debug("RS_UPGRADE_AVAILABLE: centralised_version_number = $centralised_version_number");
         if($centralised_version_number === false)
@@ -3341,14 +3336,41 @@ function is_resourcespace_upgrade_available()
 /**
  * Fetch a count of recently active users
  *
- * @param  mixed $days  How many days to look back
+ * @param  int  $days   How many days to look back
+ * 
  * @return integer
  */
 function get_recent_users($days)
     {
-    return (sql_value("select count(*) value from user where datediff(now(),last_active) <= '" . escape_check($days) . "'",0));
+    return (ps_value("select count(*) value from user where datediff(now(), last_active) <= ?", array("i", $days), 0));
     }
 
+/**
+ * Return the total number of approved
+ *
+ * @return integer  The number of approved users
+ */
+function get_total_approved_users()
+    {
+    return (ps_value("select count(*) value from user where approved=1", [], 0));
+    }
+
+/**
+ * Return the number of resources in the system with optional filter by archive state
+ *
+ * @param  int|bool $status     Archive state to filter by if required
+ * @return int                  Number of resources in the system, filtered by status if provided
+ */
+function get_total_resources($status = false)
+{
+    $sql = new PreparedStatementQuery("SELECT COUNT(*) value FROM resource WHERE ref>0",[]);
+
+    if (is_int($status)) {
+        $sql->sql .= " AND archive=?";
+        $sql->parameters = array_merge($sql->parameters,["i",$status]);
+    }
+    return ps_value($sql->sql,$sql->parameters,0);
+}
 
 /**
 * Check if script last ran more than the failure notification days
@@ -3368,9 +3390,8 @@ function check_script_last_ran($name, $fail_notify_allowance, &$last_ran_datetim
         {
         return false;
         }
-    $name = escape_check($name);
 
-    $script_last_ran = sql_value("SELECT `value` FROM sysvars WHERE name = '{$name}'", '');
+    $script_last_ran = ps_value("SELECT `value` FROM sysvars WHERE name = ?", array("s", $name), '');
     $script_failure_notify_seconds = intval($fail_notify_allowance) * 24 * 60 * 60;
 
     if('' != $script_last_ran)
@@ -3475,7 +3496,7 @@ function bypass_permissions(array $perms, callable $f, array $p = array())
 
     // fake having these permissions temporarily
     $o_perm = $userpermissions;
-    $userpermissions = array_values(array_merge($userpermissions, $perms));
+    $userpermissions = array_values(array_merge($userpermissions ?? [], $perms));
 
     $result = call_user_func_array($f, $p);
 
@@ -3494,13 +3515,11 @@ function bypass_permissions(array $perms, callable $f, array $p = array())
 function set_sysvar($name,$value=null)
     {
     global $sysvars;
-    $name=escape_check($name);
     db_begin_transaction("set_sysvar");
-    sql_query("DELETE FROM `sysvars` WHERE `name`='{$name}'");
+    ps_query("DELETE FROM `sysvars` WHERE `name` = ?", array("s", $name));
     if($value!=null)
         {
-        $safevalue=escape_check($value);
-        sql_query("INSERT INTO `sysvars`(`name`,`value`) values('{$name}','{$safevalue}')");
+        ps_query("INSERT INTO `sysvars` (`name`, `value`) values (?, ?)", array("s", $name, "s", $value));
         }
     db_end_transaction("set_sysvar");
 
@@ -3525,8 +3544,7 @@ function get_sysvar($name, $default=false)
         }
 
     // Load from db or return default
-    $name=escape_check($name);
-    return sql_value("SELECT `value` FROM `sysvars` WHERE `name`='{$name}'",$default);
+    return ps_value("SELECT `value` FROM `sysvars` WHERE `name` = ?", array("s", $name), $default);
     }
 
 /**
@@ -3547,10 +3565,10 @@ function hook($name,$pagename="",$params=array(),$last_hook_value_wins=false)
 		{
 		global $pagename;
 		}
-	
+
 	# the index name for the $hook_cache
 	$hook_cache_index = $name . "|" . $pagename;
-	
+
 	# we have already processed this hook name and page combination before so return from cache
 	if (isset($hook_cache[$hook_cache_index]))
 		{
@@ -3567,7 +3585,6 @@ function hook($name,$pagename="",$params=array(),$last_hook_value_wins=false)
 		foreach ($hook_cache[$hook_cache_index] as $function)
 			{
 			$function_return_value = call_user_func_array($function, $params);
-            debug_track_vars('line-' . __LINE__ . '@include/general_functions.php', get_defined_vars(), ['hook_fct_name' => $function]);
 
 			if ($function_return_value === null)
 				{
@@ -3618,21 +3635,20 @@ function hook($name,$pagename="",$params=array(),$last_hook_value_wins=false)
 				}
 			}
 
-        debug_track_vars('line-' . __LINE__ . '@include/general_functions.php', $GLOBALS, ['hook_name' => $name]);
 		return (isset($GLOBALS['hook_return_value']) ? $GLOBALS['hook_return_value'] : false);
 		}
 
 	# we have not encountered this hook and page combination before so go add it
 	global $plugins;
-	
+
 	# this will hold all of the functions to call when hitting this hook name and page combination
 	$function_list = array();
 
 	for ($n=0;$n<count($plugins);$n++)
 		{	
 		# "All" hooks
-        $function= isset($plugins[$n]) ? "Hook" . ucfirst($plugins[$n]) . "All" . ucfirst($name) : "";	
-        	
+        $function= isset($plugins[$n]) ? "Hook" . ucfirst((string) $plugins[$n]) . "All" . ucfirst((string) $name) : "";	
+
 		if (function_exists($function)) 
 			{			
 			$function_list[]=$function;
@@ -3640,21 +3656,28 @@ function hook($name,$pagename="",$params=array(),$last_hook_value_wins=false)
 		else 
 			{
 			# Specific hook	
-			$function= isset($plugins[$n]) ? "Hook" . ucfirst($plugins[$n]) . ucfirst($pagename) . ucfirst($name) : "";
+            $function= isset($plugins[$n]) ? "Hook" . ucfirst((string) $plugins[$n]) . ucfirst((string) $pagename) . ucfirst((string) $name) : "";
 			if (function_exists($function)) 
 				{
 				$function_list[]=$function;
 				}
 			}
 		}	
-	
+
+    // Support a global, non-plugin format of hook function that can be defined in config overrides.
+    $function= "GlobalHook" . ucfirst((string) $name);	
+    if (function_exists($function)) 
+        {			
+        $function_list[]=$function;
+        }
+
 	# add the function list to cache
 	$hook_cache[$hook_cache_index] = $function_list;
 
 	# do a callback to run the function(s) - this will not cause an infinite loop as we have just added to cache for execution.
 	return hook($name, $pagename, $params, $last_hook_value_wins);
     }
-    
+
 
 /**
 * Utility function to remove unwanted HTML tags and attributes.
@@ -3669,20 +3692,23 @@ function hook($name,$pagename="",$params=array(),$last_hook_value_wins=false)
 function strip_tags_and_attributes($html, array $tags = array(), array $attributes = array())
     {
 	global $permitted_html_tags, $permitted_html_attributes;
-	
+
     if(!is_string($html) || 0 === strlen($html))
         {
         return $html;
         }
 
-    //Convert to html before loading into libxml as we will lose non-ASCII characters otherwise
-    $html = mb_convert_encoding(htmlspecialchars_decode($html), 'HTML-ENTITIES', 'UTF-8');
+    $html = htmlspecialchars_decode($html);
+    // Return character codes for non-ASCII characters (UTF-8 characters more than a single byte - 0x80 / 128 decimal or greater).
+    // This will prevent them being lost when loaded into libxml.
+    // Second parameter represents convert mappings array - in UTF-8 convert characters of 2,3 and 4 bytes, 0x80 to 0x10FFFF, with no offset and add mask to return character code.
+    $html = mb_encode_numericentity($html, array(0x80, 0x10FFFF, 0, 0xFFFFFF), 'UTF-8');
 
     // Basic way of telling whether we had any tags previously
     // This allows us to know that the returned value should actually be just text rather than HTML
     // (DOMDocument::saveHTML() returns a text string as a string wrapped in a <p> tag)
     $is_html = ($html != strip_tags($html));
-    
+
     $allowed_tags = array_merge($permitted_html_tags, $tags);
     $allowed_attributes = array_merge($permitted_html_attributes, $attributes);
 
@@ -3753,10 +3779,20 @@ function strip_tags_and_attributes($html, array $tags = array(), array $attribut
         $html = strip_tags($html);
         }
 
-    // Revert back to UTF-8
-    $html = mb_convert_encoding($html, 'UTF-8','HTML-ENTITIES');
-
+    $html = html_entity_decode($html, ENT_NOQUOTES | ENT_SUBSTITUTE | ENT_HTML401, 'UTF-8');
     return $html;
+    }
+
+/**
+* Remove paragraph tags from start and end of text
+* 
+* @param string $text HTML string
+* 
+* @return string Returns the text without surrounding <p> and </p> tags.
+*/
+function strip_paragraph_tags(string $text): string
+    {
+    return rtrim(ltrim($text, '<p>'), '</p>');
     }
 
 
@@ -3774,7 +3810,7 @@ function strip_tags_and_attributes($html, array $tags = array(), array $attribut
 function get_inner_html_from_tag(string $txt, string $tag)
     {
     //Convert to html before loading into libxml as we will lose non-ASCII characters otherwise
-    $html = mb_convert_encoding($txt, "HTML-ENTITIES", "UTF-8");
+    $html = htmlspecialchars_decode(htmlentities($txt, ENT_NOQUOTES | ENT_SUBSTITUTE | ENT_HTML401, 'UTF-8', false));
 
     if($html == strip_tags($txt))
         {
@@ -3805,9 +3841,7 @@ function get_inner_html_from_tag(string $txt, string $tag)
             }
         }
 
-    // Revert back to UTF-8
-    $inner_html = mb_convert_encoding($inner_html, "UTF-8","HTML-ENTITIES");
-
+    $inner_html = html_entity_decode($inner_html, ENT_NOQUOTES | ENT_SUBSTITUTE | ENT_HTML401, 'UTF-8');
     return $inner_html;
     }
 
@@ -3815,16 +3849,15 @@ function get_inner_html_from_tag(string $txt, string $tag)
 /**
  * Returns the page load time until this point.
  *
- * @return string
  */
-function show_pagetime()
+function show_pagetime():string
     {
     global $pagetime_start;
     $time = microtime();
     $time = explode(' ', $time);
     $time = $time[1] + $time[0];
     $total_time = round(($time - $pagetime_start), 4);
-    echo $total_time." sec";
+    return $total_time." sec";
     }
 
 /**
@@ -3836,7 +3869,7 @@ function show_pagetime()
 function get_debug_log_dir()
     {
     global $tempdir, $storagedir;
-    
+
     // Set up the default.
     $result = dirname(dirname(__FILE__)) . "/filestore/tmp";
 
@@ -3894,7 +3927,7 @@ function debug($text,$resource_log_resource_ref=null,$resource_log_code=LOG_CODE
 
     # Output some text to a debug file.
     # For developers only
-    global $debug_log, $debug_log_override, $debug_log_location, $debug_extended_info, $debug_log_readable;
+    global $debug_log, $debug_log_override, $debug_log_location, $debug_extended_info;
     if (!$debug_log && !$debug_log_override) {return true;} # Do not execute if switched off.
 
     # Cannot use the general.php: get_temp_dir() method here since general may not have been included.
@@ -3916,14 +3949,10 @@ function debug($text,$resource_log_resource_ref=null,$resource_log_code=LOG_CODE
 
         if(!file_exists($debug_log_location))
             {
-            // Set the permissions if we can to prevent browser access (will not work on Windows)
             $f=fopen($debug_log_location,"a");
-            if($debug_log_readable)
+            if(strpos($debug_log_location,$GLOBALS['storagedir']) !== false)
                 {
-                chmod($debug_log_location,0666);
-                }
-            else
-                {
+                // Probably in a browseable location. Set the permissions if we can to prevent browser access (will not work on Windows)
                 chmod($debug_log_location,0222);
                 }
             }
@@ -3941,18 +3970,20 @@ function debug($text,$resource_log_resource_ref=null,$resource_log_code=LOG_CODE
     $extendedtext = "";	
     if(isset($debug_extended_info) && $debug_extended_info && function_exists("debug_backtrace"))
         {
+        $trace_id = isset($GLOBALS['debug_trace_id']) ? "[traceID {$GLOBALS['debug_trace_id']}]" : '';
         $backtrace = debug_backtrace(0);
         $btc = count($backtrace);
-        $callingfunctions = array();
-        $page = "";
+        $callingfunctions = array(); 
+        $page = $backtrace[$btc - 1]['file'] ?? pagename();
+        $debug_line = $backtrace[0]['line'] ?? 0;
         for($n=$btc;$n>0;$n--)
             {
             if($page == "" && isset($backtrace[$n]["file"]))
                 {
                 $page = $backtrace[$n]["file"];
                 }
-                
-            if(isset($backtrace[$n]["function"]) && !in_array($backtrace[$n]["function"],array("sql_connect","sql_query","sql_value","sql_array")))
+
+            if(isset($backtrace[$n]["function"]) && !in_array($backtrace[$n]["function"],array("sql_connect","sql_query","sql_value","sql_array","ps_query","ps_value","ps_array")))
                 {
                 if(in_array($backtrace[$n]["function"],array("include","include_once","require","require_once")) && isset($backtrace[$n]["args"][0]))
                     {
@@ -3960,18 +3991,20 @@ function debug($text,$resource_log_resource_ref=null,$resource_log_code=LOG_CODE
                     }
                 else
                     {
-                    $callingfunctions[] = $backtrace[$n]["function"];
+                    $trace_line = isset($backtrace[$n]['line']) ? ":{$backtrace[$n]['line']}" : '';
+                    $callingfunctions[] = $backtrace[$n]["function"] . $trace_line;
                     }
                 }
             }
-        $extendedtext .= "[" . $page . "] " . (count($callingfunctions)>0 ? "(" . implode("->",$callingfunctions)  . ") " : " ");
+        $extendedtext .= "{$trace_id}[" . $page . "] "
+            . (count($callingfunctions)>0 ? "(" . implode("->",$callingfunctions)  . "::{$debug_line}) " : "(::{$debug_line}) ");
         }
 
     fwrite($f,date("Y-m-d H:i:s") . " " . $extendedtext . $text . "\n");
     fclose ($f);
     return true;
     }
-    
+
 /**
  * Recursively removes a directory.
  *  
@@ -4010,11 +4043,23 @@ function rcRmdir ($path,$ignore=array())
                 }
             }
         }
-    $success = @rmdir($path);
+
+    $GLOBALS['use_error_exception'] = true;
+    try
+        {
+        $success = rmdir($path);
+        }
+    catch(Throwable $t)
+        {
+        $success = false;
+        debug(sprintf('rcRmdir: failed to remove directory "%s". Reason: %s', $path, $t->getMessage()));
+        }
+    unset($GLOBALS['use_error_exception']);
+
     debug("rcRmdir: " . $path . " - " . ($success ? "SUCCESS" : "FAILED"));
     return $success;
     }
-    
+
 /**
  * Update the daily statistics after a loggable event.
  * 
@@ -4022,40 +4067,41 @@ function rcRmdir ($path,$ignore=array())
  *
  * @param  string $activity_type
  * @param  integer $object_ref
+ * @param  integer $to_add      Optional, how many counts to add, defaults to 1.
  * @return void
  */
-function daily_stat($activity_type,$object_ref)
+function daily_stat($activity_type,$object_ref,int $to_add=1)
     {
     global $disable_daily_stat;
-    
+
     if($disable_daily_stat===true){return;}  //can be used to speed up heavy scripts when stats are less important
     $date=getdate();$year=$date["year"];$month=$date["mon"];$day=$date["mday"];
-        
+
     if ($object_ref=="") {$object_ref=0;}
 
-    
+
     # Find usergroup
     global $usergroup;
     if ((!isset($usergroup)) || ($usergroup == "")) 
         {
         $usergroup=0;
         }
-    
+
     # External or not?
     global $k;$external=0;
     if (getval("k","")!="") {$external=1;}
-    
+
     # First check to see if there's a row
-    $count=sql_value("select count(*) value from daily_stat where year='$year' and month='$month' and day='$day' and usergroup='$usergroup' and activity_type='$activity_type' and object_ref='$object_ref' and external='$external'",0);
-    if ($count==0)
+    $count = ps_value("select count(*) value from daily_stat where year = ? and month = ? and day = ? and usergroup = ? and activity_type = ? and object_ref = ? and external = ?", array("i", $year, "i", $month, "i", $day, "i", $usergroup, "s", $activity_type, "i", $object_ref, "i", $external), 0);
+    if ($count == 0)
         {
         # insert
-        sql_query("insert into daily_stat(year,month,day,usergroup,activity_type,object_ref,external,count) values ('$year','$month','$day','$usergroup','$activity_type','$object_ref','$external','1')",false,-1,true,0);
+        ps_query("insert into daily_stat (year, month, day, usergroup, activity_type, object_ref, external, count) values (? ,? ,? ,? ,? ,? ,? , ?)", array("i", $year, "i", $month, "i", $day, "i", $usergroup, "s", $activity_type, "i", $object_ref, "i", $external, "i", $to_add), false, -1, true, 0);
         }
     else
         {
         # update
-        sql_query("update daily_stat set count=count+1 where year='$year' and month='$month' and day='$day' and usergroup='$usergroup' and activity_type='$activity_type' and object_ref='$object_ref' and external='$external'",false,-1,true,0);
+        ps_query("update daily_stat set count = count+? where year = ? and month = ? and day = ? and usergroup = ? and activity_type = ? and object_ref = ? and external = ?", array("i",$to_add,"i", $year, "i", $month, "i", $day, "i", $usergroup, "s", $activity_type, "i", $object_ref, "i", $external), false, -1, true, 0);
         }
     }
 
@@ -4066,15 +4112,15 @@ function daily_stat($activity_type,$object_ref)
  */
 function pagename()
 	{
-	$name=safe_file_name(getvalescaped('pagename', ''));
+	$name=safe_file_name(getval('pagename', ''));
 	if (!empty($name))
 		return $name;
 	$url=str_replace("\\","/", $_SERVER["PHP_SELF"]); // To work with Windows command line scripts
 	$urlparts=explode("/",$url);
     $url=$urlparts[count($urlparts)-1];
-    return escape_check($url);
+    return $url;
     }
-    
+
 /**
  *  Returns the site content from the language strings. These will already be overridden with site_text content if present.
  *
@@ -4095,21 +4141,20 @@ function text($name)
 
 	return "";
 	}
-    
+
 /**
  * Gets a list of site text sections, used for a multi-page help area.
  *
  * @param  mixed $page
- * @return void
  */
-function get_section_list($page)
+function get_section_list($page): array
 	{
-        
-    global $usergroup;
-    
 
-    return sql_array("select distinct name value from site_text where page='" . escape_check($page) . "' and name<>'introtext' and (specific_to_group IS NULL or specific_to_group ='" . escape_check($usergroup) . "') order by name");
-    
+    global $usergroup;
+
+
+    return ps_array("select distinct name value from site_text where page = ? and name <> 'introtext' and (specific_to_group IS NULL or specific_to_group = ?) order by name", array("s", $page, "i", $usergroup));
+
 	}
 /**
  * Returns a more friendly user agent string based on the passed user agent. Used in the user area to establish browsers used.
@@ -4170,7 +4215,7 @@ function resolve_user_agent($agent)
         {if (!strpos($agent,$key)===false) {$os=$value;break;}}
     return $os . " / " . $b;
     }
-    
+
 
 /**
  * Returns the current user's IP address, using HTTP proxy headers if present.
@@ -4180,12 +4225,12 @@ function resolve_user_agent($agent)
 function get_ip()
 	{
 	global $ip_forwarded_for;
-	
+
 	if ($ip_forwarded_for)
 		{
 		if (isset($_SERVER) && array_key_exists('HTTP_X_FORWARDED_FOR', $_SERVER)) {return $_SERVER["HTTP_X_FORWARDED_FOR"];}
 		}
-		
+
 	# Returns the IP address for the current user.
 	if (array_key_exists("REMOTE_ADDR",$_SERVER)) {return $_SERVER["REMOTE_ADDR"];}
 
@@ -4199,9 +4244,8 @@ function get_ip()
  * For a value such as 10M return the kilobyte equivalent such as 10240. Used  by check.php
  *
  * @param  mixed $value
- * @return void
  */
-function ResolveKB($value)
+function ResolveKB($value): string
 {
 $value=trim(strtoupper($value));
 if (substr($value,-1,1)=="K")
@@ -4240,7 +4284,7 @@ function trim_filename(string $s)
         {
         return mb_strcut($s, 0, 255);
         }
-    
+
     $ext_len = mb_strlen(".{$extension}");
     $len = 255 - $ext_len;
     $s = mb_strcut($s, 0, $len);
@@ -4352,6 +4396,16 @@ function is_int_loose($var)
         }
     return (string)(int)$var === (string)$var;
      }
+
+/**
+ * Helper function to check if value is a positive integer looking type.
+ * 
+ * @param int|float|string $V Value to be tested
+ */
+function is_positive_int_loose($V): bool
+    {
+    return is_int_loose($V) && $V > 0;
+    }
 
 /**
  * Does the provided $ip match the string $ip_restrict? Used for restricting user access by IP address.
@@ -4471,17 +4525,17 @@ function get_system_status()
     $return = [
         'results' => [
             // Example of a test result
-            // [
-            // 'name' => 'Short name of what is being tested',
-            // 'status' => 'OK/FAIL/WARNING',
-            // 'info' => 'Any relevant information',
+            // 'name' => [
+            //     'status' => 'OK/FAIL',
+            //     'info' => 'Any relevant information',
+            //     'severity' => 'SEVERITY_CRITICAL/SEVERITY_WARNING/SEVERITY_NOTICE'
+            //     'severity_text' => Text for severity using language strings e.g. $GLOBALS["lang"]["severity-level_" . SEVERITY_CRITICAL]
             // ]
         ],
         'status' => 'FAIL',
     ];
-    $warn_tests = 0;
+    $fail_tests = 0;
     $rs_root = dirname(__DIR__);
-
 
     // Checking requirements must be done before db.php. If that's the case always stop after testing for required PHP modules
     // otherwise the function will break because of undefined global variables or functions (as expected).
@@ -4506,6 +4560,8 @@ function get_system_status()
         $return['results']['required_php_modules'] = [
             'status' => 'FAIL',
             'info' => 'Missing PHP modules: ' . implode(', ', $missing_modules),
+            'severity' => SEVERITY_CRITICAL,
+            'severity_text' => $GLOBALS["lang"]["severity-level_" . SEVERITY_CRITICAL],
         ];
 
         // Return now as this is considered fatal to the system. If not, later checks might crash process because of missing one of these modules.
@@ -4516,28 +4572,26 @@ function get_system_status()
         return ['results' => [], 'status' => 'OK'];
         }
 
+    // Check PHP version is supported
+    if (PHP_VERSION_ID < PHP_VERSION_SUPPORTED)
+        {
+        $return['results']['php_version'] = [
+            'status' => 'FAIL',
+            'info' => 'PHP version not supported',
+            'severity' => SEVERITY_WARNING,
+            'severity_text' => $GLOBALS["lang"]["severity-level_" . SEVERITY_WARNING],
+        ];
+        ++$fail_tests;
+        }
 
     // Check configured utility paths
-    $system_utilities = [
-        'im-convert' => 'imagemagick_path',
-        'im-identify' => 'imagemagick_path',
-        'im-composite' => 'imagemagick_path',
-        'im-mogrify' => 'imagemagick_path',
-        'ghostscript' => 'ghostscript_path',
-        'ffmpeg' => 'ffmpeg_path',
-        'ffprobe' => 'ffmpeg_path',
-        'exiftool' => 'exiftool_path',
-        'php' => 'php_path',
-        'python' => 'python_path',
-        'archiver' => 'archiver_path',
-        'fits' => 'fits_path',
-    ];
     $missing_utility_paths = [];
-    foreach($system_utilities as $name => $path_var_name)
+    foreach(RS_SYSTEM_UTILITIES as $sysu_name => $sysu)
         {
-        if(isset($GLOBALS[$path_var_name]) && get_utility_path($name) === false)
+        // Check only required (core to ResourceSpace) and configured utilities
+        if($sysu['required'] && isset($GLOBALS[$sysu['path_var_name']]) && get_utility_path($sysu_name) === false)
             {
-            $missing_utility_paths[$name] = $path_var_name;
+            $missing_utility_paths[$sysu_name] = $sysu['path_var_name'];
             }
         }
     if(!empty($missing_utility_paths))
@@ -4547,6 +4601,8 @@ function get_system_status()
             'info' => 'Unable to get utility path',
             'affected_utilities' => array_unique(array_keys($missing_utility_paths)),
             'affected_utility_paths' => array_unique(array_values($missing_utility_paths)),
+            'severity' => SEVERITY_WARNING,
+            'severity_text' => $GLOBALS["lang"]["severity-level_" . SEVERITY_WARNING],
         ];
 
         return $return;
@@ -4554,17 +4610,32 @@ function get_system_status()
 
 
     // Check database connectivity.
-    $check = sql_value('SELECT count(ref) value FROM resource_type', 0);
+    $check = ps_value('SELECT count(ref) value FROM resource_type', array(), 0);
     if ($check <= 0)
         {
         $return['results']['database_connection'] = [
             'status' => 'FAIL',
             'info' => 'SQL query produced unexpected result',
+            'severity' => SEVERITY_CRITICAL,
+            'severity_text' => $GLOBALS["lang"]["severity-level_" . SEVERITY_CRITICAL],
         ];
 
         return $return;
         }
 
+    // Check database encoding.
+    global $mysql_db;
+    $db_encoding = ps_value("SELECT default_character_set_name AS `value` FROM information_schema.SCHEMATA WHERE `schema_name` = ?;", array("s",$mysql_db), '');
+    if (substr(strtolower($db_encoding), 0, 4) != 'utf8')
+        {
+        $return['results']['database_encoding'] = [
+            'status' => 'FAIL',
+            'info' => 'Database encoding is not utf8',
+            'severity' => SEVERITY_WARNING,
+            'severity_text' => $GLOBALS["lang"]["severity-level_" . SEVERITY_WARNING],
+        ];
+        ++$fail_tests;
+        }
 
     // Check write access to filestore
     if(!is_writable($GLOBALS['storagedir']))
@@ -4572,6 +4643,8 @@ function get_system_status()
         $return['results']['filestore_writable'] = [
             'status' => 'FAIL',
             'info' => '$storagedir is not writeable',
+            'severity' => SEVERITY_CRITICAL,
+            'severity_text' => $GLOBALS["lang"]["severity-level_" . SEVERITY_CRITICAL],
         ];
 
         return $return;
@@ -4585,6 +4658,8 @@ function get_system_status()
         $return['results']['create_file_in_filestore'] = [
             'status' => 'FAIL',
             'info' => 'Unable to write to configured $storagedir. Folder permissions are: ' . fileperms($GLOBALS['storagedir']),
+            'severity' => SEVERITY_WARNING,
+            'severity_text' => $GLOBALS["lang"]["severity-level_" . SEVERITY_WARNING],
         ];
 
         return $return;
@@ -4595,6 +4670,8 @@ function get_system_status()
         $return['results']['filestore_file_exists_and_is_readable'] = [
             'status' => 'FAIL',
             'info' => 'Hash not saved or unreadable in file ' . $file,
+            'severity' => SEVERITY_WARNING,
+            'severity_text' => $GLOBALS["lang"]["severity-level_" . SEVERITY_WARNING],
         ];
 
         return $return;
@@ -4611,11 +4688,13 @@ function get_system_status()
         catch (Throwable $t)
             {
             $return['results']['filestore_file_delete'] = [
-                'status' => 'WARNING',
+                'status' => 'FAIL',
                 'info' => sprintf('Unable to delete file "%s". Reason: %s', $file, $t->getMessage()),
+                'severity' => SEVERITY_WARNING,
+                'severity_text' => $GLOBALS["lang"]["severity-level_" . SEVERITY_WARNING],
             ];
 
-            ++$warn_tests;
+            ++$fail_tests;
             }
         $GLOBALS['use_error_exception'] = false;
         }
@@ -4624,6 +4703,8 @@ function get_system_status()
         $return['results']['filestore_file_check_hash'] = [
             'status' => 'FAIL',
             'info' => sprintf('Test write to disk returned a different string ("%s" vs "%s")', $hash, $check),
+            'severity' => SEVERITY_WARNING,
+            'severity_text' => $GLOBALS["lang"]["severity-level_" . SEVERITY_WARNING],
         ];
 
         return $return;
@@ -4637,6 +4718,8 @@ function get_system_status()
         $return['results']['filestore_indexed'] = [
             'status' => 'FAIL',
             'info' => $cfb['info'],
+            'severity' => SEVERITY_CRITICAL,
+            'severity_text' => $GLOBALS["lang"]["severity-level_" . SEVERITY_CRITICAL],
         ];
         return $return;
         }
@@ -4652,8 +4735,9 @@ function get_system_status()
             $return['results']['mysql_log_location'] = [
                 'status' => 'FAIL',
                 'info' => 'Invalid $mysql_log_location specified in config file',
+                'severity' => SEVERITY_CRITICAL,
+                'severity_text' => $GLOBALS["lang"]["severity-level_" . SEVERITY_CRITICAL],
             ];
-
             return $return;
             }
         }
@@ -4665,23 +4749,23 @@ function get_system_status()
     if(!is_writeable($debug_log_dir) || (file_exists($debug_log_location) && !is_writeable($debug_log_location)))
         {
         $debug_log = isset($GLOBALS['debug_log']) && $GLOBALS['debug_log'];
-        $debug_log_location_test_status = ($debug_log ? 'FAIL' : 'WARNING');
-
         $return['results']['debug_log_location'] = [
-            'status' => $debug_log_location_test_status,
+            'status' => 'FAIL',
             'info' => 'Invalid $debug_log_location specified in config file',
         ];
 
         if($debug_log)
             {
+            $return['results']['debug_log_location']['severity'] = SEVERITY_CRITICAL;
+            $return['results']['debug_log_location']['severity_text'] = $GLOBALS["lang"]["severity-level_" . SEVERITY_CRITICAL];
             return $return;
             }
         else
             {
-            ++$warn_tests;
+            ++$fail_tests;
             }
         }
-
+        
 
     // Check that the cron process executed within the last day (FAIL)
     $last_cron = strtotime(get_sysvar('last_cron', ''));
@@ -4691,31 +4775,37 @@ function get_system_status()
         $return['results']['cron_process'] = [
             'status' => 'FAIL',
             'info' => 'Cron was executed ' . round($diff_days, 1) . ' days ago.',
+            'severity' => SEVERITY_WARNING,
+            'severity_text' => $GLOBALS["lang"]["severity-level_" . SEVERITY_WARNING],
         ];
-
-        return $return;
+        ++$fail_tests;
         }
 
 
-    // Check free disk space is sufficient -  WARN (or FAIL if critical low)
+    // Check free disk space is sufficient -  WARN
     $avail = disk_total_space($GLOBALS['storagedir']);
     $free = disk_free_space($GLOBALS['storagedir']);
     $calc = $free / $avail;
-    if($calc < 0.05)
-        {
-        $return['results']['free_disk_space'] = [
-            'status' => 'WARNING',
-            'info' => 'Less than 5% disk space free.',
-        ];
-        ++$warn_tests;
-        }
-    else if($calc < 0.01)
+
+    if($calc < 0.01)
         {
         $return['results']['free_disk_space'] = [
             'status' => 'FAIL',
             'info' => 'Less than 1% disk space free.',
+            'severity' => SEVERITY_CRITICAL,
+            'severity_text' => $GLOBALS["lang"]["severity-level_" . SEVERITY_CRITICAL],
         ];
         return $return;
+        }
+    else if($calc < 0.05)
+        {
+        $return['results']['free_disk_space'] = [
+            'status' => 'FAIL',
+            'info' => 'Less than 5% disk space free.',
+            'severity' => SEVERITY_WARNING,
+            'severity_text' => $GLOBALS["lang"]["severity-level_" . SEVERITY_WARNING],
+        ];
+        ++$fail_tests;
         }
 
 
@@ -4726,23 +4816,16 @@ function get_system_status()
         $used = get_total_disk_usage(); # Total usage in bytes
         $percent = ceil(((int) $used / $avail) * 100);
 
-        if($percent >= 95 && $percent <= 100)
-            {
-            $return['results']['quota_limit'] = [
-                'status' => 'WARNING',
-                'info' => $percent . '% used - nearly full.',
-                'avail' => $avail, 'used' => $used, 'percent' => $percent
-            ];
-            ++$warn_tests;
-            }
-        else if($percent > 100)
+        if($percent >= 95)
             {
             $return['results']['quota_limit'] = [
                 'status' => 'FAIL',
-                'info' => $percent . '% used - over quota.',
-                'avail' => $avail, 'used' => $used, 'percent' => $percent
+                'info' => $percent . '% used - nearly full.',
+                'avail' => $avail, 'used' => $used, 'percent' => $percent,
+                'severity' => SEVERITY_WARNING,
+                'severity_text' => $GLOBALS["lang"]["severity-level_" . SEVERITY_WARNING],
             ];
-            return $return;
+            ++$fail_tests;
             }
         else
             {
@@ -4753,20 +4836,6 @@ function get_system_status()
             ];
             }
         }
-
-
-    // Check if plugins have their tests FAILed
-    $extra_fail_checks = hook('extra_fail_checks');
-    if($extra_fail_checks !== false && is_array($extra_fail_checks))
-        {
-        $return['results'][$extra_fail_checks['name']] = [
-            'status' => 'FAIL',
-            'info' => $extra_fail_checks['info'],
-        ];
-
-        return $return;
-        }
-
 
     // Return the version number
     $return['results']['version'] = [
@@ -4818,31 +4887,66 @@ function get_system_status()
     $return['results']['recent_user_count'] = [
         'status' => 'OK',
         'info' => get_recent_users(7),
-        'within_year' => get_recent_users(365)
+        'within_year' => get_recent_users(365),
+        'total_approved' => get_total_approved_users()
+    ];
+
+    // Return current number of resources
+    $return['results']['resource_count'] = [
+        'status' => 'OK',
+        'total' => get_total_resources(),
+        'active' => get_total_resources(0),
+    ];
+
+    // Return bandwidth usage last 30 days
+    $return['results']['download_bandwidth_last_30_days_gb'] = [
+        'status' => 'OK',
+        'total' => round(ps_value("select sum(`count`) value from daily_stat where
+            activity_type='Downloaded KB'
+        and (`year`=year(now()) or (month(now())=1 and `year`=year(now())-1))
+        and (`month`=month(now()) or `month`=month(now())-1 or (month(now())=1 and `month`=12))
+        and datediff(now(), concat(`year`,'-',lpad(`month`,2,'0'),'-',lpad(`day`,2,'0')))<=30
+            ",[],0)/(1024*1024),3) // Note - limit to this month and last month before the concat to get the exact period; ensures not performing the concat on a large set of data.
     ];
 
     // Check if plugins have any warnings
-    $extra_warn_checks = hook('extra_warn_checks');
-    if($extra_warn_checks !== false && is_array($extra_warn_checks) )
+    $extra_checks = hook('extra_checks');
+    if($extra_checks !== false && is_array($extra_checks))
         {
-        foreach ($extra_warn_checks as $extra_warn_check)
+        foreach ($extra_checks as $check_name => $extra_check)
             {
-            $return['results'][$extra_warn_check['name']] = [
-                'status' => 'WARN',
-                'info' => $extra_warn_check['info'],
+            $return['results'][$check_name] = [
+                'status' => $extra_check['status'],
+                'info' => $extra_check['info'],
                 ];
+            if (isset($extra_check['severity']))
+                {
+                // Severity is optional and may not be returned by some plugins
+                $return['results'][$check_name]['severity'] = $extra_check['severity'];
+                $return['results'][$check_name]['severity_text'] = $GLOBALS["lang"]["severity-level_" .  $extra_check['severity']];
+                }
+
+            $warn_details = $extra_warn['details'] ?? [];
+            if ($warn_details !== [])
+                {
+                $return['results'][$check_name]['details'] = $warn_details;
+                }
+
+            if ($extra_check['status'] == 'FAIL')
+                {
+                ++$fail_tests;
+                }
             }
         }
 
-    if($warn_tests > 0)
+    if($fail_tests > 0)
         {
-        $return['status'] = 'WARNING';
+        $return['status'] = 'FAIL';
         }
     else
         {
         $return['status'] = 'OK';
         }
-
     return $return;
     }
 
@@ -4870,6 +4974,20 @@ function try_unlink($deletefile)
     return $deleted;
     }
 
+function try_getimagesize(string $filename, &$image_info = NULL)
+    {
+    $GLOBALS["use_error_exception"] = true;
+    try
+        {
+        $return = getimagesize($filename,$image_info);
+        }
+    catch (Throwable $e)
+        {
+        $return = false;
+        }
+    unset($GLOBALS["use_error_exception"]);
+    return $return;
+    }
 
 /**
  * Check filestore folder browseability.
@@ -4924,3 +5042,346 @@ function check_filestore_browseability()
 
     return $return;
     }
+
+/**
+ * Check CLI version found for ImageMagick is as expected.
+ * 
+ * @param string $version_output The version output for ImageMagick
+ * @param array  $utility        Utility structure. {@see RS_SYSTEM_UTILITIES}
+ * 
+ * @return array Returns array as expected by the check.php page
+ * - utility - New utility value for its display name
+ * - found - PHP bool representing whether we've found what we were expecting in the version output.
+ */
+function check_imagemagick_cli_version_found(string $version_output, array $utility)
+    {
+    $expected = ['ImageMagick', 'GraphicsMagick'];
+
+    foreach($expected as $utility_name)
+        {
+        if(mb_strpos($version_output, $utility_name) !== false)
+            {
+            $utility['display_name'] = $utility_name;
+            }
+        }
+
+    return [
+        'utility' => $utility,
+        'found' => in_array($utility['display_name'], $expected),
+    ];
+    }
+
+/**
+ * Check CLI numeric version found for a utility is as expected.
+ * 
+ * @param string $version_output The version output
+ * @param array  $utility        Utility structure. {@see RS_SYSTEM_UTILITIES}
+ * 
+ * @return array Returns array as expected by the check.php page
+ * - utility - not used
+ * - found - PHP bool representing whether we've found what we were expecting in the version output.
+ */
+function check_numeric_cli_version_found(string $version_output, array $utility)
+    {
+    return [
+        'utility' => $utility,
+        'found' => preg_match("/^([0-9]+)+\.([0-9]+)/", $version_output) === 1,
+    ];
+    }
+
+/**
+ * Check CLI version found for a utility is as expected by looking up for its name.
+ * 
+ * @param string $version_output The version output for the utility
+ * @param array  $utility        Utility structure. {@see RS_SYSTEM_UTILITIES}
+ * 
+ * @return array Returns array as expected by the check.php page
+ * - utility - not used
+ * - found - PHP bool representing whether we've found what we were expecting in the version output.
+ */
+function check_utility_cli_version_found_by_name(string $version_output, array $utility, array $lookup_names)
+    {
+    $version_output = strtolower($version_output);
+    $lookup_names = array_filter($lookup_names);
+
+    foreach($lookup_names as $utility_name)
+        {
+        if(mb_strpos($version_output, strtolower($utility_name)) !== false)
+            {
+            $found = true;
+            break;
+            }
+        }
+
+    return [
+        'utility' => $utility,
+        'found' => isset($found),
+    ];
+    }
+
+
+/**
+ * Check we're running on the command line, exit otherwise. Security feature for the scripts in /pages/tools/
+ * 
+ * 
+ * @return void
+ */
+function command_line_only()
+    {
+    if('cli' != PHP_SAPI)
+        {
+        http_response_code(401);
+        exit('Access denied - Command line only!');
+        }
+    }
+
+/**
+ * Helper function to quickly build a list of values, all prefixed the same way.
+ * 
+ * Example use:
+ * $fieldXs = array_map(prefix_value('field'), [3, 88]);
+ * 
+ * @param string $prefix Prefix value to prepend.
+ * 
+ * @return Closure
+ */
+function prefix_value(string $prefix): Closure
+    {
+    return function(string $value) use ($prefix): string
+        {
+        return $prefix . $value;
+        };
+    }
+
+/**
+* Utility function to check string is a valid date/time with a specific format.
+*
+* @param string $datetime Date/time value
+* @param string $format The format that date/time value should be in. {@see https://www.php.net/manual/en/datetimeimmutable.createfromformat.php}
+* @return boolean
+*/
+function validateDatetime(string $datetime, string $format = 'Y-m-d H:i:s'): bool
+    {
+    $date = DateTimeImmutable::createFromFormat($format, $datetime);
+    return $date && $date->format($format) === $datetime;
+    }
+
+/**
+ *  @param string $haystack Value to be checked
+ *  @param string $needle Substing to seach for in the haystack
+ * 
+ *  @return bool True if the haystack ends with the needle otherwise false
+ */
+function string_ends_with($haystack, $needle)
+    {
+    return substr($haystack, strlen($haystack) - strlen($needle), strlen($needle)) === $needle;
+    }
+
+/**
+ * Helper function to set the order_by key of an array to zero.
+ * 
+ * @param array item Item for which we need to set the order_by
+ * @return array Same item with the order_by key zero.
+ */
+function set_order_by_to_zero(array $item): array
+    {
+    $item['order_by'] = 0;
+    return $item;
+    }
+
+/**
+ * Helper function to cast functions that only echo things out (e.g render functions) to string type.
+ *
+ * @param callable $fn Function to cast
+ * @param array $args Provide function's arguments (if applicable)
+ */
+function cast_echo_to_string(callable $fn, array $args = []): string
+    {
+    ob_start();
+    $fn(...$args);
+    $result = ob_get_contents();
+    ob_end_clean();
+    return $result;
+    }
+
+/**
+ * Helper function to parse input to a list of a particular type.
+ * 
+ * @example include/api_bindings.php Used in api_get_resource_type_fields() or api_create_resource_type_field()
+ * 
+ * @param string $csv CSV of raw data
+ * @param callable(string) $type Function checking each CSV item, as required by your context, to determine if it should
+ *                               be allowed in the result set
+ */
+function parse_csv_to_list_of_type(string $csv, callable $type): array
+    {
+    $list = explode(',', $csv);
+    $return = [];
+    foreach ($list as $value)
+        {
+        $value = trim($value);
+        if ($type($value))
+            {
+            $return[] = $value;
+            }
+        }
+    return $return;
+    }
+
+/**
+ * Remove metadata field properties during execution lockout
+ *
+ * @param array $rtf Resource type field data structure
+ * @return array Returns without the relevant properties if execution lockout is enabled
+ */
+function execution_lockout_remove_resource_type_field_props(array $rtf): array
+    {
+    $props = [
+        'autocomplete_macro',
+        'value_filter',
+        'exiftool_filter',
+        'onchange_macro',
+    ];
+    return $GLOBALS['execution_lockout'] ? array_diff_key($rtf, array_flip($props)) : $rtf;
+    }
+
+/**
+ * Update global variable watermark to point to the correct file. Watermark set on System Configuration page will override a watermark
+ * set in config.php. config.default.php will apply otherwise (blank) so no watermark will be applied.
+ *
+ * @return void
+ */
+function set_watermark_image()
+    {
+    global $watermark, $storagedir;
+    
+    $wm = (string) $watermark;
+
+    if (trim($wm) !== '' && substr($wm, 0, 13) == '[storage_url]')
+        {
+        $GLOBALS["watermark"] = str_replace('[storage_url]', $storagedir, $watermark);  # Watermark from system configuration page
+        }
+    elseif (trim($wm) !== '')
+        {
+        $GLOBALS["watermark"] = dirname(__FILE__). "/../" . $watermark;  # Watermark from config.php - typically "gfx/watermark.png"
+        }
+    }
+
+/** DPI calculations */
+function compute_dpi($width, $height, &$dpi, &$dpi_unit, &$dpi_w, &$dpi_h)
+    {
+    global $lang, $imperial_measurements,$sizes,$n;
+    
+    if (isset($sizes[$n]['resolution']) && $sizes[$n]['resolution']!=0 && is_int($sizes[$n]['resolution']))
+        {
+        $dpi=$sizes[$n]['resolution'];
+        }
+    else if (!isset($dpi) || $dpi==0)
+        {
+        $dpi=300;
+        }
+
+    if (((isset($sizes[$n]['unit']) && trim(strtolower($sizes[$n]['unit']))=="inches")) || $imperial_measurements)
+        {
+        # Imperial measurements
+        $dpi_unit=$lang["inch-short"];
+        $dpi_w=round($width/$dpi,1);
+        $dpi_h=round($height/$dpi,1);
+        }
+    else
+        {
+        $dpi_unit=$lang["centimetre-short"];
+        $dpi_w=round(($width/$dpi)*2.54,1);
+        $dpi_h=round(($height/$dpi)*2.54,1);
+        }
+    }
+
+/** MP calculation */
+function compute_megapixel(int $width, int $height): float
+    {
+    return round(($width * $height) / 1000000, 2);
+    }
+
+/**
+ * Get size info as a paragraphs HTML tag
+ * @param array $size Preview size information
+ * @param array|null $originalSize Original preview size information
+ */
+function get_size_info(array $size, ?array $originalSize = null): string
+    {
+    global $lang, $ffmpeg_supported_extensions;
+    
+    $newWidth  = intval($size['width']);
+    $newHeight = intval($size['height']);
+
+    if ($originalSize != null && $size !== $originalSize)
+        {
+        // Compute actual pixel size
+        $imageWidth  = $originalSize['width'];
+        $imageHeight = $originalSize['height'];
+        if ($imageWidth > $imageHeight)
+            {
+            // landscape
+            if ($imageWidth == 0) return '<p>&ndash;</p>';
+            $newWidth = $size['width'];
+            $newHeight = round(($imageHeight * $newWidth + $imageWidth - 1) / $imageWidth);
+            }
+        else
+            {
+            // portrait or square
+            if ($imageHeight == 0) return '<p>&ndash;</p>';
+            $newHeight = $size['height'];
+            $newWidth = round(($imageWidth * $newHeight + $imageHeight - 1) / $imageHeight);
+            }
+        }
+
+    $output = sprintf(
+        '<p>%s &times; %s %s',
+        htmlspecialchars($newWidth),
+        htmlspecialchars($newHeight),
+        htmlspecialchars($lang['pixels']),
+    );
+
+    if (!hook('replacemp'))
+        {
+        $mp = compute_megapixel($newWidth, $newHeight);
+        if ($mp >= 0)
+            {
+            $output .= sprintf(' (%s %s)',
+                htmlspecialchars($mp),
+                htmlspecialchars($lang['megapixel-short']),
+            );
+            }
+        }
+
+    $output .= '</p>';
+
+    if (!isset($size['extension']) || !in_array(strtolower($size['extension']), $ffmpeg_supported_extensions))
+        {
+        if (!hook("replacedpi"))
+            {   
+            # Do DPI calculation only for non-videos
+            compute_dpi($newWidth, $newHeight, $dpi, $dpi_unit, $dpi_w, $dpi_h);
+            $output .= sprintf(
+                '<p>%1$s %2$s &times; %3$s %2$s %4$s %5$s %6$s</p>',
+                htmlspecialchars($dpi_w),
+                htmlspecialchars($dpi_unit),
+                htmlspecialchars($dpi_h),
+                htmlspecialchars($lang['at-resolution']),
+                htmlspecialchars($dpi),
+                htmlspecialchars($lang['ppi']),
+            );
+            }
+        }
+
+    return $output;
+    }
+
+/**
+ * Input validation helper function for sorting (ASC/DESC).
+ * @param mixed $val User input value to be validated
+ */
+function validate_sort_value($val): bool
+{
+    return is_string($val) && in_array(mb_strtolower($val), ['asc', 'desc']);
+}

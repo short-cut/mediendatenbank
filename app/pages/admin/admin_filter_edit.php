@@ -32,8 +32,8 @@ else
     }
 
   
-$delete_filter = getvalescaped('delete_filter', '');
-$delete_filter_rule = getvalescaped('delete_filter_rule', '');
+$delete_filter = getval('delete_filter', '');
+$delete_filter_rule = getval('delete_filter_rule', '');
 $filter_rule = getval("filter_rule","");
 $filter_copy_from = getval("copy_from",0,true);
 
@@ -61,19 +61,22 @@ if($delete_filter != "" && enforcePostRequest("admin_filter_edit"))
     else
         {
         $response   = array('deleted' => false);
-        $response["errors"] = array();
-        $response["errors"][] = $lang["filter_delete_error"] . ":- ";
+        $errors = array();
+        $errors[] = htmlspecialchars($lang["filter_delete_error"]) . ":- ";
         foreach($result["groups"] as $group)
             {
-            $response["errors"][] = $lang["group"] . ": <a href='" . $baseurl_short . "/pages/admin/admin_group_management_edit.php?ref=" . $group . "' target='_blank' >" . $group . "</a>";
+            $errors[] = htmlspecialchars($lang["group"]) . ": <a href='" . $baseurl_short . "/pages/admin/admin_group_management_edit.php?ref=" . (int) $group . "' target='_blank' >" . (int) $group . "</a>";
             }
            
         foreach($result["users"] as $user)
             {
-            $response["errors"][] = $lang["user"] . ": <a href='" . $baseurl_short . "?u=" . $user . "' target='_blank' >" . $user . "</a>";
+            $errors[] = htmlspecialchars($lang["user"]) . ": <a href='" . $baseurl_short . "?u=" . (int) $user . "' target='_blank' >" . (int) $user . "</a>";
             }
-        
-        exit(json_encode($response));
+        if(getval("filter_manage_page","") != "")
+            {
+            $response['errors'] = $errors;
+            exit(json_encode($response));
+            }
         }
     }
 if($delete_filter_rule != "" && enforcePostRequest("delete_filter_rule"))
@@ -104,7 +107,7 @@ elseif($filterid != "" && getval("save","") != "" && enforcePostRequest("admin_f
         {
         save_filter($filterid,$filter_name,$filter_condition);
         
-        if(getval("filter_manage_page","") == "")
+        if(getval("filter_manage_page","") == "" && !isset($errors) && empty($errors))
             {
             redirect($backurl);    
             } 
@@ -190,12 +193,13 @@ include "../../include/header.php";
 <div id="CentralSpaceContainer">
     <div id="CentralSpace">
         <div class="BasicsBox">
-        
+            <h1><?php echo $filterid == 0 ? $lang["filter_new"] : $lang["filter_edit"]; ?></h1>
             <?php
             $links_trail = array(
                 array(
                     'title' => $lang["systemsetup"],
-                    'href'  => $baseurl_short . "pages/admin/admin_home.php"
+                    'href'  => $baseurl_short . "pages/admin/admin_home.php",
+		            'menu' =>  true
                 ),
                 array(
                     'title' => $lang["filter_manage"],
@@ -249,7 +253,6 @@ include "../../include/header.php";
                                 $ruletext = array();
                                 foreach($ruleinfo["fields"] as $rulefield)
                                     {
-                                    //print_r($rulefield);
                                     if(isset($rulefield["values_on"]) && count($rulefield["values_on"]) > 0)
                                         {
                                         $ruletext[] = $rulefield["fieldname"] . " " . $lang["filter_is_in"] . " ('" . implode("'&nbsp;" . $lang["filter_or"] . "&nbsp;'", $rulefield["values_on"]) . "')";
@@ -273,7 +276,6 @@ include "../../include/header.php";
 
 
                 <div class="Question">
-                    <label for="ruleadd"></label>
                     <input name="ruleadd" type="button" onclick="addFilterRule();"value="&nbsp;&nbsp;<?php echo $lang["filter_rule_add"]; ?>&nbsp;&nbsp;">
                 <div class="clearerleft"></div>
                 </div>
@@ -285,8 +287,7 @@ include "../../include/header.php";
                 </div>
                         
                 <div class="QuestionSubmit">
-                    <label for="save"></label>
-                    <input name="save" type="submit" value="&nbsp;&nbsp;<?php echo $lang["save"]; ?>&nbsp;&nbsp;" onClick="return CentralSpacePost(this.form,true);">
+                    <input name="save" type="submit" value="&nbsp;&nbsp;<?php echo escape($lang["save"]);?>&nbsp;&nbsp;" onClick="return CentralSpacePost(this.form,true);">
                 </div>
 
 
@@ -325,6 +326,20 @@ function deleteFilterRule(rule)
         
         return false;
     }
+
+jQuery(document).ready(function(){
+    let errors = <?php echo (isset($errors)?json_encode($errors):'""');?>;
+    if(errors.length > 0)
+        {
+        error_message = '';
+        for (var i in errors) 
+            {
+            error_message += errors[i] + "<br />";
+            }
+        console.log(error_message);
+        styledalert("<?php echo escape($lang['error']); ?>", error_message);
+        }
+})
 </script>
 
 

@@ -12,7 +12,7 @@ if(checkperm('h') && checkperm('hdt_ug'))
     }
 
 // Get selected user group or default to all users dash tiles
-$selected_user_group = getvalescaped('selected_user_group', key($user_groups), true);
+$selected_user_group = getval('selected_user_group', key($user_groups), true);
 
 $show_usergroups_dash = ('true' == getval('show_usergroups_dash', '') ? true : false);
 if($selected_user_group == 0)
@@ -20,10 +20,10 @@ if($selected_user_group == 0)
     $show_usergroups_dash = false;
     }
 
-if(getvalescaped("quicksave",FALSE))
+if(getval("quicksave",FALSE))
 	{
-	$tile = getvalescaped("tile","");
-	$revokeallusers = getvalescaped("revokeallusers","false") != "false";
+	$tile = getval("tile","");
+	$revokeallusers = getval("revokeallusers","false") != "false";
 
 	#If a valid tile value supplied
 	if(!empty($tile) && is_numeric($tile))
@@ -70,8 +70,8 @@ if(getvalescaped("quicksave",FALSE))
 			else
 				{
 				#Add to the front of the pile if the user already has the tile
-				sql_query("DELETE FROM user_dash_tile WHERE dash_tile=".$tile["ref"]);
-				sql_query("INSERT user_dash_tile (user,dash_tile,order_by) SELECT user.ref,'".$tile["ref"]."',5 FROM user");
+				ps_query("DELETE FROM user_dash_tile WHERE dash_tile= ?", ['i', $tile["ref"]]);
+				ps_query("INSERT user_dash_tile (user,dash_tile,order_by) SELECT user.ref, ?,5 FROM user", ['i', $tile['ref']]);
 
 				$dtiles_available = get_alluser_available_tiles();
 				exit("positiveglow");
@@ -84,11 +84,13 @@ if(getvalescaped("quicksave",FALSE))
 include "../../include/header.php";
 ?>
 <div class="BasicsBox">
+    <h1><?php echo $lang["manage_dash_tiles"]; ?></h1>
     <?php
         $links_trail = array(
         array(
             'title' => $lang["teamcentre"],
-            'href'  => $baseurl_short . "pages/team/team_home.php"
+            'href'  => $baseurl_short . "pages/team/team_home.php",
+			'menu' =>  true
         ),
         array(
             'title' => $lang["manage_dash_tiles"],
@@ -129,7 +131,7 @@ render_dropdown_question(
 ?>
     <form class="Listview">
 	<input type="hidden" name="submit" value="true" />
-	<table class="ListviewStyle">
+	<table border="0" cellspacing="0" cellpadding="0" class="ListviewStyle">
 		<thead>
 			<tr class="ListviewTitleStyle">
 				<td><?php echo $lang["dashtileshow"];?></td>

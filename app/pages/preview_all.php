@@ -3,7 +3,7 @@ include "../include/db.php";
 
 
 # External access support (authenticate only if no key provided, or if invalid access key provided)
-$k=getvalescaped("k","");if (($k=="") || (!check_access_key(getvalescaped("ref","",true),$k))) {include "../include/authenticate.php";}
+$k=getval("k","");if (($k=="") || (!check_access_key(getval("ref","",true),$k))) {include "../include/authenticate.php";}
 
 $backto=getval("backto","");
 $col_order_by=getval("col_order_by","");
@@ -20,14 +20,14 @@ $skip=false;
 $allow_reorder=false;
 
 # Fetch and set the values
-$search=getvalescaped("search","");
+$search=getval("search","");
 if (strpos($search,"!")===false) {rs_setcookie('search', $search);} # store the search in a cookie if not a special search
-$offset=getvalescaped("offset",0,true);if (strpos($search,"!")===false) {rs_setcookie('saved_offset', $offset);}
+$offset=getval("offset",0,true);if (strpos($search,"!")===false) {rs_setcookie('saved_offset', $offset);}
 if ((!is_numeric($offset)) || ($offset<0)) {$offset=0;}
-$order_by=getvalescaped("order_by",$default_sort);if (strpos($search,"!")===false) {rs_setcookie('saved_order_by', $order_by);}
+$order_by=getval("order_by",$default_sort);if (strpos($search,"!")===false) {rs_setcookie('saved_order_by', $order_by);}
 if ($order_by=="") {$order_by=$default_sort;}
-$per_page=getvalescaped("per_page",$default_perpage);rs_setcookie('per_page', $per_page);
-$archive=getvalescaped("archive",0);if (strpos($search,"!")===false) {rs_setcookie('saved_archive', $archive);}
+$per_page=getval("per_page",$default_perpage);rs_setcookie('per_page', $per_page);
+$archive=getval("archive",0);if (strpos($search,"!")===false) {rs_setcookie('saved_archive', $archive);}
 $jumpcount=0;
 
 # Most sorts such as popularity, date, and ID should be descending by default,
@@ -46,7 +46,7 @@ if ($allow_reorder)
 	{
 	
 	# Also check for the parameter and reorder as necessary.
-	$reorder=getvalescaped("reorder","");
+	$reorder=getval("reorder","");
 	if ($reorder!="")
 		{
 		$r=explode("-",$reorder);
@@ -57,12 +57,12 @@ if ($allow_reorder)
 $border=true;
 
 $search='!collection'.$colref;
-$offset=getvalescaped("offset",0,true);
-$order_by=getvalescaped("order_by","relevance");
-$archive=getvalescaped("archive","",true);
-$restypes=getvalescaped("restypes","");
-$page=getvalescaped("page",1);
-$alternative=getvalescaped("alternative",-1);
+$offset=getval("offset",0,true);
+$order_by=getval("order_by","relevance");
+$archive=getval("archive","",true);
+$restypes=getval("restypes","");
+$page=getval("page",1);
+$alternative=getval("alternative",-1);
 if (strpos($search,"!")!==false) {$restypes="";}
 
 $default_sort_direction="DESC";
@@ -119,12 +119,12 @@ function ReorderResources(id1,id2)
 <br/>
 <table id="preview_all_table" style="width:100%;">
 <tr><p style="margin:7px 0 7px 0;padding:0;"><a class="enterLink" href="<?php if ($backto!=''){echo urlencode($backto);} else { echo $baseurl_short.'pages/search';}?>.php?search=%21collection<?php echo urlencode($colref)?>&order_by=<?php echo urlencode($order_by)?>&col_order_by=<?php echo urlencode($col_order_by)?>&sort=<?php echo urlencode($sort)?>&k=<?php echo urlencode($k)?>"><?php echo LINK_CARET_BACK ?><?php echo $lang["backtoresults"]?></a>
-&nbsp;&nbsp;<a href="<?php echo $baseurl_short?>pages/preview_all.php?backto=<?php echo urlencode($backto)?>&ref=<?php echo urlencode($colref)?>&vertical=h&offset=<?php echo urlencode($offset)?>&search=<?php echo urlencode($search)?>&order_by=<?php echo urlencode($order_by)?>&col_order_by=<?php echo urlencode($col_order_by)?>&sort=<?php echo urlencode($sort)?>&archive=<?php echo urlencode($archive)?>&k=<?php echo urlencode($k)?>">&gt; <?php echo $lang["horizontal"]; ?> </a>
-&nbsp;&nbsp;<a href="<?php echo $baseurl_short?>pages/preview_all.php?backto=<?php echo urlencode($backto)?>&ref=<?php echo urlencode($colref)?>&vertical=v&offset=<?php echo urlencode($offset)?>&search=<?php echo urlencode($search)?>&order_by=<?php echo urlencode($order_by)?>&col_order_by=<?php echo urlencode($col_order_by)?>&sort=<?php echo urlencode($sort)?>&archive=<?php echo urlencode($archive)?>&k=<?php echo urlencode($k)?>">&gt; <?php echo $lang["vertical"]; ?> </a>
+&nbsp;&nbsp;<a href="<?php echo $baseurl_short?>pages/preview_all.php?backto=<?php echo urlencode($backto)?>&ref=<?php echo urlencode($colref)?>&vertical=h&offset=<?php echo urlencode($offset)?>&search=<?php echo urlencode($search)?>&order_by=<?php echo urlencode($order_by)?>&col_order_by=<?php echo urlencode($col_order_by)?>&sort=<?php echo urlencode($sort)?>&archive=<?php echo urlencode($archive)?>&k=<?php echo urlencode($k)?>"><?php echo LINK_CARET . $lang["horizontal"]; ?> </a>
+&nbsp;&nbsp;<a href="<?php echo $baseurl_short?>pages/preview_all.php?backto=<?php echo urlencode($backto)?>&ref=<?php echo urlencode($colref)?>&vertical=v&offset=<?php echo urlencode($offset)?>&search=<?php echo urlencode($search)?>&order_by=<?php echo urlencode($order_by)?>&col_order_by=<?php echo urlencode($col_order_by)?>&sort=<?php echo urlencode($sort)?>&archive=<?php echo urlencode($archive)?>&k=<?php echo urlencode($k)?>"><?php echo LINK_CARET . $lang["vertical"]; ?> </a>
 </tr>
 
 <?php 
-echo $search_title;
+echo "<h1>" . $search_title . "</h1>";
 
 $heightmod = 120;
 for ($x=0;$x<count($result);$x++){
@@ -157,19 +157,19 @@ if ($access==2)
 # Locate the resource
 $path="";
 $url="";
-	if ($access==1&&(checkperm('w')|| ($k!="" && isset($watermark)))){$watermark=true;} else {$watermark=false;}
-$path=get_resource_path($ref,true,"scr",false,$ext,-1,$page,$watermark,$result[$x]["file_modified"],$alternative,-1,false);
+	if ($access==1&&(checkperm('w')|| ($k != "" && $watermark !== ""))){$watermark=true;} else {$watermark=false;}
+$path=get_resource_path($ref,true,"scr",false,$ext,-1,$page,$watermark,$result[$x]["file_modified"],$alternative,false);
 
 if (file_exists($path) && resource_download_allowed($result[$x],"scr",$resource_data["resource_type"]))
 	{
-	$url=get_resource_path($ref,false,"scr",false,$ext,-1,$page,$watermark,$result[$x]["file_modified"],$alternative,-1,false);
+	$url=get_resource_path($ref,false,"scr",false,$ext,-1,$page,$watermark,$result[$x]["file_modified"],$alternative,false);
 	}
 else
 	{
-	$path=get_resource_path($ref,true,"pre",false,$ext,-1,$page,$watermark,$result[$x]["file_modified"],$alternative,-1,false);
+	$path=get_resource_path($ref,true,"pre",false,$ext,-1,$page,$watermark,$result[$x]["file_modified"],$alternative,false);
 	if (file_exists($path))
 		{
-		$url=get_resource_path($ref,false,"pre",false,$ext,-1,$page,$watermark,$result[$x]["file_modified"],$alternative,-1,false);
+		$url=get_resource_path($ref,false,"pre",false,$ext,-1,$page,$watermark,$result[$x]["file_modified"],$alternative,false);
 		}
 	 }	
 if (!file_exists($path))
@@ -185,8 +185,8 @@ if (!file_exists($path))
     
 <?php if ($vertical=="v"){
 	if (!hook("replacepreviewalltitle")){ ?><a href="<?php echo $baseurl_short?>pages/view.php?ref=<?php echo $result[$x]['ref']?>&search=<?php echo urlencode($search)?>&order_by=<?php echo urlencode($order_by)?>&archive=<?php echo urlencode($archive)?>&k=<?php echo urlencode($k)?>&sort=<?php echo urlencode($sort)?>">&nbsp;<?php echo i18n_get_translated($result[$x]['field'.$view_title_field])?></a><?php } /* end hook replacepreviewalltitle */?></tr><tr>
-		
-	<?php } else { ?>
+
+<?php } else { ?>
 	<td style="padding:10px;">
 <?php } ?>
 	
@@ -242,17 +242,15 @@ if (maxheight><?php echo $imageheight?>){
 				});
 			});
 		</script>
-		<?php } ?>
+<?php } ?>
 <?php if ($vertical=="v"){?><tr><?php } else  { ?></td> <?php } ?>
 <?php } ?>
 </tr>
 </table>
 
 <script type="text/javascript">
-<?php if ($preview_all_hide_collections) { ?>
-	CollectionDivLoad("<?php echo $baseurl ?>/pages/collections.php?ref=<?php echo urlencode($collection) ?>&search=<?php echo urlencode($search)?>&order_by=<?php echo urlencode($order_by)?>&archive=<?php echo urlencode($archive)?>&k=<?php echo urlencode($k)?>&sort=<?php echo urlencode($sort)?>&thumbs=hide");
-<?php } ?>
 
+	CollectionDivLoad("<?php echo $baseurl ?>/pages/collections.php?ref=<?php echo urlencode($collection) ?>&search=<?php echo urlencode($search)?>&order_by=<?php echo urlencode($order_by)?>&archive=<?php echo urlencode($archive)?>&k=<?php echo urlencode($k)?>&sort=<?php echo urlencode($sort)?>&thumbs=hide");
 	window.onresize=function(event){
 	var maxheight=window.innerHeight-<?php echo $heightmod?>;
     if (isNaN(maxheight)){maxheight=document.documentElement.clientHeight-<?php echo $heightmod?>;}

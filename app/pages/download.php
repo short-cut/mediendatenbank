@@ -7,46 +7,48 @@ include_once dirname(__FILE__) . '/../include/db.php';
 include_once dirname(__FILE__) . '/../include/resource_functions.php';
 include_once dirname(__FILE__) . '/../include/image_processing.php';
 ob_end_clean(); 
-
-$k="";
-
 if($download_no_session_cache_limiter)
     {
     session_cache_limiter(false);
     }
 
-$direct = (0 < strlen(getvalescaped('direct', '')) ? true : false);
-
-// if direct downloading without authentication is enabled, skip the authentication step entirely
-if(!($direct_download_noauth && $direct))
-    {
-    // External access support (authenticate only if no key provided, or if invalid access key provided)
-    $k = getvalescaped('k', '');
-
-    if(('' == $k || !check_access_key(getvalescaped('ref', '', true), $k)) && !(getval("slideshow",0,true) > 0))
-        {
-        include dirname(__FILE__) . '/../include/authenticate.php';
-        }
-    }
-
-    
-// Set a flag for logged in users if $external_share_view_as_internal is set and logged on user is accessing an external share
-$internal_share_access = internal_share_access();
-
-$ref                = getvalescaped('ref', '', true);
-$size               = getvalescaped('size', '');
-$alternative        = getvalescaped('alternative', -1, true);
-$page               = getvalescaped('page', 1);
-$iaccept            = getvalescaped('iaccept', 'off');
-$usage              = getvalescaped('usage', '-1');
-$usagecomment       = getvalescaped('usagecomment', '');
-$email              = getvalescaped('email', '');
-$ext                = getvalescaped('ext', '');
-$snapshot_frame     = getvalescaped('snapshot_frame', 0, true);
+$ref                = getval('ref', '', true);
+$size               = trim(getval('size', ''));
+$alternative        = getval('alternative', -1, true);
+$page               = getval('page', 1);
+$iaccept            = getval('iaccept', 'off');
+$usage              = getval('usage', '-1');
+$usagecomment       = getval('usagecomment', '');
+$email              = getval('email', '');
+$ext                = getval('ext', '');
+$snapshot_frame     = getval('snapshot_frame', 0, true);
 $modal              = (getval("modal","")=="true");
 $tempfile           = getval("tempfile","");
 $slideshow          = getval("slideshow",0,true);
-$userfiledownload   = getvalescaped('userfile', '');
+$userfiledownload   = getval('userfile', '');
+$write_exif_data    = (getval('exif_write', '') == 'true');
+$k                  = getval('k', '');
+$download_temp_key  = getval("access_key", '');
+$watermarked        = getval('watermarked', 0, true);
+$override_temp_key  = getval("override_key", '');
+$noattach           = getval('noattach','') != '';
+
+// Check for temporary download access using key (e.g. from API get_resource_path) 
+$valid_key = false;
+if($ref>0 && ($download_temp_key !== '' || $override_temp_key !== ''))
+    {
+    $valid_key = validate_temp_download_key($ref, trim($download_temp_key === '' ? $override_temp_key : $download_temp_key), $size);
+    }
+
+// External access support (authenticate only if no key provided, or if invalid access key provided)
+if(!$valid_key && ('' == $k || !check_access_key(getval('ref', '', true), $k)) && !(getval("slideshow",0,true) > 0))
+    {
+    include dirname(__FILE__) . '/../include/authenticate.php';
+    }
+    
+// Set a flag for logged in users if $external_share_view_as_internal is set and logged on user is accessing an external share
+$internal_share_access = internal_share_access();
+$log_download = true;
 
 // Ensure terms have been accepted and usage has been supplied when required. Not for slideshow files etc.
 $checktermsusage =  !in_array($size, $sizes_always_allowed)
@@ -73,16 +75,33 @@ if ($download_usage && $checktermsusage)
         }            
     }
 
-if(!preg_match('/^[a-zA-Z0-9]+$/', $ext))
+if (is_banned_extension($ext)) {
+    $ext = 'jpg';
+}
+
+$override_key = false;
+if($ref > 0 && $override_temp_key !== '')
     {
-    $ext='jpg';
+    // Check if the download should be allowed. Permissions have already been considered elsewhere.
+    // Used to display edit page resource preview image after upload where search filter has not yet been set.
+    $override_key = validate_temp_download_key($ref, trim($override_temp_key), $size, 2, false);
     }
 
 // Is this a user specific download?
 if('' != $userfiledownload)
     {
-    $noattach       = '';
-    $exiftool_write = false;
+    $noattach       = false;
+    $log_download   = false;
+    // Provide a way of overriding $exiftool_write = false depending on download source e.g. from format chooser
+    if ($exiftool_write && $write_exif_data)
+        {
+        $exiftool_write = true;
+        }
+    else
+        {
+        $exiftool_write = false;
+        }
+
     $filedetails    = explode('_', $userfiledownload);
     $ref            = (int)$filedetails[0];
     $downloadkey    = strip_extension($filedetails[1]);
@@ -91,30 +110,57 @@ if('' != $userfiledownload)
     $rqstname       = getval("filename","");
     if($rqstname!="")
         {
-        $filename   = safe_file_name($rqstname) . "." . $ext;
+        $filename   = $rqstname . "." . $ext;
+        $filename_prefix = explode('_', $filename);
+        if(($filename_prefix[0] == 'Col' && $ext == 'zip') || ($filename_prefix[0] == 'metadata' && isset($filename_prefix[1]) && $filename_prefix[1] == 'export' && $ext == 'csv'))
+            {
+            // For offline collection or offline csv download, $ref will be user ref not resource ref.
+            $log_download = false;
+            }
         }
     hook('modifydownloadpath');
     }
 elseif($slideshow != 0)
     {
     $noattach       = true;
+    $log_download   = false;
     $path           = __DIR__ . DIRECTORY_SEPARATOR . ".." . DIRECTORY_SEPARATOR . $homeanim_folder . DIRECTORY_SEPARATOR . getval("slideshow",0,true) . ".jpg";
     }
 elseif($tempfile != "")
     {
     $noattach       = true;
+    $log_download   = false;
     $exiftool_write = false;
     $filedetails    = explode('_', $tempfile);
-    $code           = safe_file_name($filedetails[0]);
-    $ref            = (int)$filedetails[1];
-    $downloadkey    = strip_extension($filedetails[2]);
-    $ext            = safe_file_name(substr($filedetails[2], strlen($downloadkey) + 1));
-    $path           = get_temp_dir(false,"") . '/' . $code . '_' . $ref . "_" . md5($username . $downloadkey . $scramble_key) . '.' . $ext;
+    if(count($filedetails) >= 3)
+        {     
+        $code           = safe_file_name($filedetails[0]);
+        $ref            = (int)$filedetails[1];
+        $downloadkey    = strip_extension($filedetails[2]);
+        $ext            = safe_file_name(substr($filedetails[2], strlen($downloadkey) + 1));
+        $path           = get_temp_dir(false,"") . '/' . $code . '_' . $ref . "_" . md5($username . $downloadkey . $scramble_key) . '.' . $ext;
+        }
+    else
+        {
+        $error = $lang['downloadfile_nofile'];
+        if(getval('ajax', '') != '')
+            {
+            error_alert($error, true, 200);
+            }
+        else
+            {
+            include "../include/header.php";
+            $onload_message = ['title' => $lang["error"],'text' => $error];
+            include "../include/footer.php";
+            }
+        exit();
+        }
     }
 else
     {
     $resource_data = get_resource_data($ref);
-    if (!is_array($resource_data)){
+    if (!is_array($resource_data))
+        {
         $error = $lang["resourcenotfound"];
         if(getval("ajax","") != "")
             {
@@ -127,22 +173,14 @@ else
             include "../include/footer.php";
             }
         exit();
-    }
+        }
 
     resource_type_config_override($resource_data['resource_type']);
-
-    if($direct_download_noauth && $direct)
-        {
-        // if this is a direct download and direct downloads w/o authentication are enabled, allow regardless of permissions
-        $allowed = true;
-        }
-    else
-        {
-        // Permissions check
-        $allowed = resource_download_allowed($ref, $size, $resource_data['resource_type'], $alternative);
-        debug("PAGES/DOWNLOAD.PHP: \$allowed = " . ($allowed == true ? 'TRUE' : 'FALSE'));
-        }
-
+   
+    // Check permissions
+    $allowed = $override_key ? true : resource_download_allowed($ref, $size, $resource_data['resource_type'], $alternative);
+    debug("PAGES/DOWNLOAD.PHP: \$allowed = " . ($allowed == true ? 'TRUE' : 'FALSE'));
+   
     if(!$allowed || $ref <= 0)
         {
         $error = $lang['error-permissiondenied'];
@@ -161,25 +199,25 @@ else
 
     // additional access check, as the resource download may be allowed, but access restriction should force watermark.  
     $access        = get_resource_access($ref);
-    $use_watermark = check_use_watermark(getval("dl_key",""),$ref);
-
+    $use_watermark = check_use_watermark(getval("dl_key",""),$ref) || $watermarked;
     // If no extension was provided, we fallback to JPG.
     if('' == $ext)
         {
         $ext = 'jpg';
         }
 
-    $noattach = getval('noattach','');
-
-    // Where we are getting mp3 preview for videojs, clear size as we want to get the auto generated mp3 file rather than a custom size.
-    if ($size == 'videojs' && $ext == 'mp3')
-        {
+    // Where we are getting mp3 preview for videojs, clear size as we want to get the auto generated mp3 file rather than a custom size. 
+    // Also allow mp4 files for videojs if $video_preview_original is enabled
+    if (
+        $size == 'videojs' 
+        && ($ext == 'mp3' || ($ext == 'mp4' && $video_preview_original))
+        ) {
         $size="";
+        $log_download = false;
         }
-
-    // Provide a tile region if enabled and requested for the main resource.
-    if($preview_tiles && $allowed && $size == '' && getval('tile_region', 0, true) == 1)
+    elseif($preview_tiles && $allowed && $size == '' && getval('tile_region', 0, true) == 1)
         {
+        // Provide a tile region if enabled and requested for the main resource.
         $tile_scale = (int) getval('tile_scale', 1, true);
         $tile_row = (int) getval('tile_row', 0, true);
         $tile_col = (int) getval('tile_col', 0, true);
@@ -188,9 +226,9 @@ else
         $image_size = get_original_imagesize($ref,$fullpath, "jpg");
         if($image_size === false)
             {
-            debug("PAGES/DOWNLOAD.PHP: File does not exist!");        
-            header('HTTP/1.0 404 Not Found');
-            exit();
+            debug("PAGES/DOWNLOAD.PHP: File does not exist!");  
+            http_response_code(404);
+            exit($lang['downloadfile_nofile']);
             }
         else
             {
@@ -211,14 +249,25 @@ else
                 }
             }
         }
+    
+    // Establish nonwatermarked path for use when returning snapshot frames
+    $nowmpath = get_resource_path($ref, true, $size, false, $ext, -1, $page, false, '', $alternative);
 
     $path = get_resource_path($ref, true, $size, false, $ext, -1, $page, $use_watermark && $alternative == -1, '', $alternative);
     $download_extra = hook('download_resource_extra', '', array($path));
 
-    // Snapshots taken for videos? Make sure we convert to the real snapshot file
-    if(1 < $ffmpeg_snapshot_frames && 0 < $snapshot_frame)
+    // Process depending on whether snapshot frame is to be returned
+    if($snapshot_frame > 0 && $ffmpeg_snapshot_frames > 1)
         {
-        $path = str_replace('snapshot', "snapshot_{$snapshot_frame}", $path);
+        // Snapshot frame is to be returned, so adjust the path to be the actual frame requested
+        $path = str_replace('snapshot', "snapshot_{$snapshot_frame}", $nowmpath);
+        }
+    
+    if($snapshot_frame == 0 && $size == "pre" && $use_watermark && $ext == "mp4")
+        {
+        // Video stream preview size is to be returned and watermark is specified
+        // In this case there is no such thing as a watermarked video preview size, so use the unwatermarked path
+        $path=$nowmpath;
         }
 
     hook('modifydownloadpath');
@@ -229,33 +278,44 @@ else
         $path = $path_modified;
         }
         
-    if(!file_exists($path) && '' != $noattach)
+    if(!file_exists($path) && $noattach)
         {
         # Return icon for file (for previews)
-        $info = get_resource_data($ref);
-        $path = '../gfx/' . get_nopreview_icon($info['resource_type'], $ext, 'thm');
+        $path = '../gfx/' . get_nopreview_icon($resource_data['resource_type'], $ext, 'thm');
+        }
+
+    if($noattach)
+        {
+        if(!allow_in_browser($path))
+            {
+            // Override the noattach request if file is not valid for display in browser
+            $noattach = false;
+            }
+        if(!($size == "" && $resource_data["file_extension"] == $ext))
+            {
+            // Do not log downloads for these unless accessing original resource files
+            $log_download = false;
+            }
         }
 
     // Process metadata
     // Note: only for downloads (not previews)
-    if('' == $noattach && -1 == $alternative)
+    if(!$noattach && -1 == $alternative)
         {
         // Strip existing metadata only if we do not plan on writing metadata, otherwise this will be done twice
         if($exiftool_remove_existing && !$exiftool_write)
             {
             $temp_file_stripped_metadata = createTempFile($path, '', '');
-
+    
             if($temp_file_stripped_metadata !== false && stripMetadata($temp_file_stripped_metadata))
                 {
                 $path = $temp_file_stripped_metadata;
                 }
-            }
-
+            }    
         // writing RS metadata to files: exiftool
         if($exiftool_write)
             {
-            $tmpfile = write_metadata($path, $ref);
-
+            $tmpfile = write_metadata($path, $ref);    
             if(false !== $tmpfile && file_exists($tmpfile))
                 {
                 $path = $tmpfile;
@@ -265,14 +325,11 @@ else
     }
 
 debug("PAGES/DOWNLOAD.PHP: Preparing to download/ stream file '{$path}'");
-
-// File does not exist
 if(!file_exists($path))
     {
     debug("PAGES/DOWNLOAD.PHP: File does not exist!");
-
-    header('HTTP/1.0 404 Not Found');
-    exit();
+    http_response_code(404);
+    exit($lang['downloadfile_nofile']);
     }
 
 hook('modifydownloadfile'); 
@@ -282,57 +339,51 @@ $file_handle = fopen($path, 'rb');
 
 debug("PAGES/DOWNLOAD.PHP: \$file_size = {$file_size}");
 
-// File could not be opened
 if(!$file_handle)
     {
+    // File could not be opened
     debug("PAGES/DOWNLOAD.PHP: File could not be opened!");
-
-    header('HTTP/1.0 500 Internal Server Error');
+    http_response_code(500);
     exit();
     }
 
-// Log this activity (download only, not preview)
-if('' == $noattach)
+if(!$noattach)
     {
-    daily_stat('Resource download', $ref);
+    // Compute a file name for the download.
+    if(!isset($filename) || $filename == "" || $alternative != -1)
+        {
+        $filename = get_download_filename($ref, $size, $alternative, $ext);       
+        }
+    }
 
+if($log_download)
+    {
+    // Log this activity (download only, not preview)
+    daily_stat('Resource download', $ref);
     $email_add_to_log = ($email != "") ? ' Downloaded by ' . $email: "";
     resource_log($ref, LOG_CODE_DOWNLOADED, 0, $usagecomment . $email_add_to_log, '', '', $usage, ($alternative != -1 ? $alternative : $size));
-
+    
     hook('moredlactions');
 
-    // update hit count if tracking downloads only
+    // Update hit count if tracking downloads only
     if($resource_hit_count_on_downloads)
         {
         // greatest() is used so the value is taken from the hit_count column in the event that new_hit_count
         // is zero to support installations that did not previously have a new_hit_count column (i.e. upgrade compatability).
-        sql_query("UPDATE resource SET new_hit_count = greatest(hit_count, new_hit_count) + 1 WHERE ref = '{$ref}'");
-        }
-    
-    // We compute a file name for the download.
-    if(!isset($filename) || $filename == "")
-        {
-        $filename = get_download_filename($ref, $size, $alternative, $ext);
+        ps_query("UPDATE resource SET new_hit_count = greatest(hit_count, new_hit_count) + 1 WHERE ref = ?", ['i', $ref]);
         }
     }
 
 // Set appropriate headers for attachment or streamed file
-if(!$direct && isset($filename))
+if(isset($filename))
     {
     header("Content-Disposition: attachment; filename=\"{$filename}\"");
-
     debug("PAGES/DOWNLOAD.PHP: Set header for attachment file");
     }
 else
-    {
-    if(!allow_in_browser($path))
-        {
-        error_alert($lang['error-permissiondenied'],true);
-        exit();
-        }
-    header('Content-Disposition: inline;');
+    {   
+    header("Content-Disposition: inline; filename=\"download.{$ext}\"");
     header('Content-Transfer-Encoding: binary');
-
     debug("PAGES/DOWNLOAD.PHP: Set header for streamed file");
     }
 
@@ -396,43 +447,49 @@ if(0 < $seek_start || $seek_end < ($file_size - 1))
 
     debug("PAGES/DOWNLOAD.PHP: Content-Range: bytes {$seek_start}-{$seek_end}/{$file_size}");
     debug('PAGES/DOWNLOAD.PHP: Content-Length: ' . ($seek_end - $seek_start +1));
+
+    $total_to_send=$seek_end - $seek_start + 1;
     }
 else
     {
     header("Content-Length: {$file_size}");
 
     debug("PAGES/DOWNLOAD.PHP: Content-Length: {$file_size}");
+
+    $total_to_send=$file_size;
     }
+
 
 header('Accept-Ranges: bytes');
 
 set_time_limit(0);
 
-if(!hook('replacefileoutput'))
+$sent = (0 == fseek($file_handle, $seek_start) ? $seek_start : 0);
+
+while($sent < $file_size)
     {
-    $sent = (0 == fseek($file_handle, $seek_start) ? $seek_start : 0);
+    echo fread($file_handle, $download_chunk_size);
 
-    while($sent < $file_size)
+    ob_flush();
+    flush();
+
+    $sent += $download_chunk_size;
+
+    if(0 != connection_status()) 
         {
-        echo fread($file_handle, $download_chunk_size);
-
-        ob_flush();
-        flush();
-
-        $sent += $download_chunk_size;
-
-        if(0 != connection_status()) 
-            {
-            break;
-            }
+        break;
         }
-
-    fclose($file_handle);
     }
+
+fclose($file_handle);
+
+// File send complete, log to daily stat
+daily_stat('Downloaded KB', $ref, floor($total_to_send/1024));
+
 
 // Deleting Exiftool temp File:
 // Note: Only for downloads (not previews)
-if('' == $noattach && -1 == $alternative && $exiftool_write && file_exists($tmpfile))
+if(!$noattach && -1 == $alternative && $exiftool_write && isset($tmpfile) && file_exists($tmpfile))
     {
     delete_exif_tmpfile($tmpfile);
     }

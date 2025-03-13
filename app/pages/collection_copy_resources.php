@@ -3,7 +3,7 @@ include "../include/db.php";
 
 include "../include/authenticate.php"; 
 
-$ref = getvalescaped("ref",0,true);
+$ref = getval("ref",0,true);
 
 if(checkperm("b") || !collection_writeable($ref))
     {
@@ -72,8 +72,7 @@ include "../include/header.php";
         </select>
 	</div>
 
-	<div class="QuestionSubmit">
-		<label for="buttons"> </label>			
+	<div class="QuestionSubmit">		
 		<input name="save" type="submit" value="&nbsp;&nbsp;<?php echo $lang["copy"]?>&nbsp;&nbsp;" />
 	</div>
 </form>

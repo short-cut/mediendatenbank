@@ -2,18 +2,18 @@
 include "../include/db.php";
 
 # External access support (authenticate only if no key provided, or if invalid access key provided)
-$k           = getvalescaped('k', '');
-$ref         = getvalescaped('ref', '', true);
-$col         = getvalescaped('collection', getvalescaped('col', -1, true), true);
-$size        = getvalescaped('size', '');
-$ext         = getvalescaped('ext', '');
-$alternative = getvalescaped('alternative', -1);
-$iaccept     = getvalescaped('iaccept', 'off');
+$k           = getval('k', '');
+$ref         = getval('ref', '', true);
+$col         = getval('collection', getval('col', -1, true), true);
+$size        = getval('size', '');
+$ext         = getval('ext', '');
+$alternative = getval('alternative', -1);
+$iaccept     = getval('iaccept', 'off');
 $url         = getval('url', '');
 
-$email       = getvalescaped('email', '');
-$usage       = getvalescaped("usage", '');
-$usagecomment = getvalescaped("usagecomment", '');
+$email       = getval('email', '');
+$usage       = getval("usage", '', true);
+$usagecomment = getval("usagecomment", '');
 
 $error = array();
 
@@ -48,38 +48,47 @@ if (getval("save",'') != '' && enforcePostRequest(false))
 
     if (count($error) === 0)
         {
-    
+        $download_url_suffix_params = [];
         $download_url_suffix .= ($download_url_suffix == '') ? '?' : '&';
         if($download_usage && -1 != $col) 
             {
-            $download_url_suffix .= "collection=" . urlencode($col);
+            $download_url_suffix_params["collection"] = $col;
             $redirect_url = "pages/collection_download.php";
             } 
         else 
             {
-            $download_url_suffix .= "ref=" . urlencode($ref);
+            $download_url_suffix_params["ref"] = $ref;
             $redirect_url = "pages/download_progress.php";
             }
-        $download_url_suffix .= "&size=" . urlencode($size) . 
-                                "&ext=" . urlencode($ext) . 
-                                "&k=" . urlencode($k) . 
-                                "&alternative=" . urlencode($alternative) . 
-                                "&iaccept=" . urlencode($iaccept) .
-                                "&usage=" . urlencode($usage) . 
-                                "&usagecomment=" . urlencode($usagecomment) .
-                                "&offset=" . urlencode(getval("saved_offset", getval("offset",0,true))) .
-                                "&order_by=" . urlencode(getval("saved_order_by",getval("order_by",''))) . 
-                                "&sort=" . urlencode(getval("saved_sort",getval("sort",''))) .
-                                "&archive=" . urlencode(getval("saved_archive",getval("archive",''))) . 
-                                "&email=" . urlencode($email);
-        
+        $download_url_suffix_params = array_merge($download_url_suffix_params,
+                               ["size"          => $size,
+                                "ext"           => $ext, 
+                                "k"             => $k, 
+                                "alternative"   => $alternative,
+                                "iaccept"       => $iaccept,
+                                "usage"         => $usage,
+                                "usagecomment"  => $usagecomment,
+                                "offset"        => getval("saved_offset", getval("offset",0,true)),
+                                "order_by"      => getval("saved_order_by",getval("order_by",'')), 
+                                "sort"          => getval("saved_sort",getval("sort",'')),
+                                "archive"       => getval("saved_archive",getval("archive",'')), 
+                                "email"         => $email]);
+
         hook('before_usage_redirect');
-        if(strpos($url, 'download.php') != false && (strpos($url, $baseurl_short) !== false || strpos($url, $baseurl) !== false))
+        $url_parts = [];
+        if(strpos($url, '?') != false)
             {
-            $download_url_suffix .='&url=' . urlencode($url);
+            parse_str(explode('?',$url)[1],$url_parts);
             }
-        
-        redirect($redirect_url . $download_url_suffix);
+        if(strpos($url, 'download.php') != false && count($url_parts) > 0 && $url_parts['noattatch'] = true)
+            {
+            $redirect_url = $url;
+            }
+        elseif(strpos($url, 'download.php') != false && (strpos($url, $baseurl_short) !== false || strpos($url, $baseurl) !== false))
+            {
+            $download_url_suffix_params['url'] = $url;
+            }
+            redirect(generateURL($redirect_url, $download_url_suffix_params, $url_parts));
         }
     }
 
@@ -104,7 +113,7 @@ if(isset($download_usage_prevent_options))
 
 <div class="BasicsBox">
 
-    <form method="post" action="<?php echo $baseurl_short?>pages/download_usage.php<?php echo $download_url_suffix ?>" onSubmit="return CentralSpacePost(this,true);">
+    <form method="post" action="<?php echo $baseurl_short?>pages/download_usage.php<?php echo $download_url_suffix ?>">
         <?php
         generateFormToken("download_usage");
 
@@ -142,9 +151,9 @@ if(isset($download_usage_prevent_options))
                 <?php 
                 for ($n=0;$n<count($download_usage_options);$n++)
                     {
-                    $selected = ($n == $usage) ? "selected" : "";
+                    $selected = ($n === $usage) ? "selected" : "";
                     ?>
-                    <option <?php echo $selected ?> value="<?php echo $n; ?>"><?php echo htmlspecialchars($download_usage_options[$n]) ?></option>
+                    <option <?php echo $selected ?> value="<?php echo $n; ?>"><?php echo htmlspecialchars(i18n_get_translated($download_usage_options[$n])) ?></option>
                     <?php
                     } ?>
             </select>
@@ -154,8 +163,7 @@ if(isset($download_usage_prevent_options))
 
         <?php if ($usage_textbox_below && !$remove_usage_textbox) {  echo html_usagecomments($usagecomment,$error); } ?>
 
-        <div class="QuestionSubmit">
-            <label for="buttons"> </label>          
+        <div class="QuestionSubmit">        
             <input name="submit" type="submit" id="submit" value="&nbsp;&nbsp;<?php echo $lang["action-download"]?>&nbsp;&nbsp;" />
         </div>
 

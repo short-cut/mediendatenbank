@@ -3,19 +3,20 @@ include "../include/db.php";
 
 include "../include/authenticate.php";
 
-$offset=getvalescaped("offset", 0, true);
-$ref=getvalescaped("ref","",true);
+$offset=getval("offset", 0, true);
+$ref=getval("ref","",true);
 
 # Check access
 if (!collection_readable($ref)) {exit($lang["no_access_to_collection"]);}
 if ((!is_numeric($offset)) || ($offset<0)) {$offset=0;}
 
 # pager
-$per_page=getvalescaped("per_page_list_log",15);rs_setcookie('per_page_list_log', $per_page);
+$per_page=getval("per_page_list_log",15);rs_setcookie('per_page_list_log', $per_page);
 
 include "../include/header.php";
-$log=get_collection_log($ref, $offset+$per_page);
-$results=count($log);
+$log     = get_collection_log($ref, $offset+$per_page);
+$results = $log["total"];
+$log     = $log["data"];
 $totalpages=ceil($results/$per_page);
 $curpage=floor($offset/$per_page)+1;
 
@@ -72,7 +73,7 @@ for ($n=$offset;(($n<count($log)) && ($n<($offset+$per_page)));$n++)
 	<!--List Item-->
 	<tr>
 	<td><?php echo htmlspecialchars(nicedate($log[$n]["date"],true, true, true)) ?></td>
-	<td><?php echo htmlspecialchars($log[$n]["fullname"])?></td>
+	<td><?php echo htmlspecialchars((string) $log[$n]["fullname"])?></td>
 	<td><?php 
 		echo $lang["collectionlog-" . $log[$n]["type"]] ;
 		if ($log[$n]["notes"] != "" ) { 
@@ -81,7 +82,7 @@ for ($n=$offset;(($n<count($log)) && ($n<($offset+$per_page)));$n++)
 			$standard = array('#all_users', '#new_resource');
 			$translated   = array($lang["all_users"], $lang["new_resource"]);
 			$newnotes = " - " . str_replace($standard, $translated, $log[$n]["notes"]);
-			echo $newnotes;
+			echo htmlspecialchars($newnotes);
 		}
 		?></td>
 	<td><?php if ($log[$n]['resource']!=0){?><a onClick="return CentralSpaceLoad(this,true);" href='<?php echo $baseurl_short?>pages/view.php?ref=<?php echo urlencode($log[$n]["resource"]) ?>'><?php echo $log[$n]["resource"]?></a><?php } ?></td>

@@ -28,8 +28,7 @@ class EMuAPI
     protected $terms;
     protected $columns = array();
 
-    // Constants
-    private $_MIME_TYPES = array('application', 'audio', 'image', 'text', 'video');
+    private const MIME_TYPES = ['application', 'audio', 'image', 'text', 'video'];
 
 
     /**
@@ -45,6 +44,10 @@ class EMuAPI
     public function __construct($server_address, $server_port)
         {
         $this->session = new IMuSession($server_address, $server_port);
+
+        // IMPORTANT: connecting now will throw an exception if connection is refused. Calling code should deal with it
+        // as appropriate for the context
+        $this->session->connect();
 
         return;
         }
@@ -270,7 +273,7 @@ class EMuAPI
             return false;
             }
 
-        return in_array($mime, $_MIME_TYPES);
+        return in_array($mime, EMuAPI::MIME_TYPES);
         }
 
 

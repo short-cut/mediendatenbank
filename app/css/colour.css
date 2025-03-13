@@ -7,7 +7,7 @@
  */
 
 /* Default text and background colour */
-body,html {color:#474747;background: #f2f2f2;}
+body,html {color:#474747;background: #efefef;}
 
 h1, h2 {color: #000000;}
 a:link {color:#666666;}
@@ -22,8 +22,8 @@ input[readonly] {
 }
 
 /* Header styling */
-#Header {background: rgba(0, 0, 0, 0.6);transform: translate3d(0, 0, 0);border: none;}
-#Header li a {color:#fff; opacity:0.7;}
+#Header {background: #fff;transform: translate3d(0, 0, 0);border: none;}
+#Header li a {color:#000; opacity:0.7;}
 #Header .SearchResultsDisabled,
 #Header .SearchResultsDisabled:hover,
 .DisabledLink,
@@ -32,6 +32,7 @@ input[readonly] {
 #Header .current {opacity:1;text-decoration: none}
 /* links in Header overflow dropdown menu */
 #HiddenLinks li a {color:#fff; opacity:0.7;}
+#Header .UploadButton a {color: #fff;}
 
 /* Colours for $header_text_title */
 #TextHeader, #TextHeader a, #TextDesc {color:#fff;}
@@ -53,18 +54,19 @@ input[readonly] {
 /* Search Bar */
 #SearchBoxPanel a:link, #SearchBoxPanel a:visited, #SearchBoxPanel a:hover,
 #ResearchBoxPanel a:link, #ResearchBoxPanel a:visited, #ResearchBoxPanel a:hover, #ResearchBoxPanel a:active,
-.SearchSpace a:link, .SearchSpace a:visited, .SearchSpace a:hover, .SearchSpace a:active {
+.SearchSpace a:link, .SearchSpace a:visited, .SearchSpace a:hover, .SearchSpace a:active,
+.PoweredByPanel a:link, .PoweredByPanel a:visited, .PoweredByPanel a:hover {
     color:#fff;text-decoration:none;
 }
 
-.RecordPanel, .ResourcePanelSmall, .ResourcePanelLarge{background: #eee;}
+.RecordPanel, .ResourcePanelSmall, .ResourcePanelLarge, div#Metadata div.Title { background: #eee; }
 #ResearchBoxPanel, .HomePanelIN, .RecordPanel .RecordDownload, .RecordPanel, .ResourcePanelLarge {
-    border-radius:4px;
+    border-radius:8px;
     overflow: hidden;
 }
 .ResourcePanel {
     background-color: white;
-    border-radius: 4px;
+    border-radius: 6px;
     transition: all 0.1s ease-in-out;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     border: 3px solid rgba(255, 255, 255, 0);
@@ -73,8 +75,16 @@ input[readonly] {
     box-shadow: 0 1px 10px 0 rgba(0,0,0,0.3);
     z-index: 100;
 }
+.ResourcePanelInfo {
+    color: #727272;
+}
+.ResourcePanelInfo a {
+    color: #414141;
+}
 .ResourcePanel.Selected { border: 3px solid #2E99E6; }
 tr[id^="ResourceShell"].Selected { background-color: #d5eafa; /* Used a tint of #2e99e6 which is used for .ResourcePanel.Selected */ }
+
+.ResourcePanelIcons a.fa-minus-circle { color: #e91d1d }
 
 #SearchBoxPanel h2, #ThemeBoxPanel h2, #ResearchBoxPanel h2, .SearchSpace h2{color: #fff;}
 
@@ -103,8 +113,8 @@ tr[id^="ResourceShell"].Selected { background-color: #d5eafa; /* Used a tint of 
 #SlideshowContainer #HomeSiteText.dashtext {background:transparent;border:none;color:#373737;}
 
 /* Default colours for search, dash tiles, browse bar etc */
-#SearchBox, #HomeSiteText.dashtext, .HomePanelIN, .PopupCategoryTree, #BrowseBar, #BrowseBarTab {
-    background: rgba(0, 0, 0, 0.47);
+#SearchBox, #HomeSiteText.dashtext, .HomePanelIN, .PopupCategoryTree {
+    background: rgba(0, 0, 0, 0.51);
     color:#FFF;
 }
 
@@ -116,7 +126,7 @@ tr[id^="ResourceShell"].Selected { background-color: #d5eafa; /* Used a tint of 
 
 /* Table header styling */
 .ListviewStyle thead, .ListviewTitleStyle {
-    background: gray;
+    background: #6a6a6a;
     text-transform: uppercase;
 }
 .ListviewTitleStyle td, .ListviewTitleStyle th, .ListviewTitleStyle a, .ListviewTitleStyle a:visited {
@@ -145,10 +155,10 @@ div.autocomplete ul li {color: #000;}
 .NoFind .highlight {color:#000000;font-weight: bold;}
 .NoFind a:link, .NoFind a:visited, .NoFind a:hover, .NoFind a:active {color:#2e99e6;text-decoration:underline;}
 .ViewPanelTitles .Title { border-bottom: 0; }
-.RecordDownload {  background: #fff;}
-.RecordPanel .RecordDownload .DownloadDBlend td {border-top: 1px solid #ddd;color: #333;padding: 0.4rem 0.2rem;}
+.RecordDownloadSpace {  background: #fff;}
+.RecordPanel .RecordDownload .DownloadDBlend td {border-top: 1px solid #ddd;color: #333;}
 .RecordPanel .RecordDownloadSpace .DownloadDBlend .DownloadButton {background-color: transparent;}
-.RecordPanel .RecordDownloadSpace .DownloadDBlend p {color: #888;text-align: left;font-size: 0.75rem;}
+.RecordPanel .RecordDownloadSpace .DownloadDBlend p {color: #757575;text-align: left;font-size: 0.75rem;}
 .RecordPanel .RecordDownloadSpace .DownloadDBlend, .toolbox {background: #fff; border-color: #6D6D6D;}
 .ArchiveResourceTitle, .ResourcePendingSubmissionTitle, .ResourcePendingReviewTitle {color: #888;}
 .DeletedResourceTitle {color: #FF0000;}
@@ -159,7 +169,7 @@ div.autocomplete ul li {color: #000;}
 .BasicsBox .HorizontalNav li {border-right:1px solid #B5C3D4;border-top-style: none;border-bottom-style: none;border-left-style: none;}
 .ThemeBox {border-bottom: 1px solid #BBBBBB;}
 .CategoryBox {border:1px solid rgba(0,0,0,0.25);background-color:#ffffff;color: black;font-weight: normal; border-radius: 4px;}
-.MiniCategoryBox {border:1px solid rgba(0,0,0,0.25);background-color:#ffffff;color: black;font-weight: normal; border-radius: 4px;}
+.MiniCategoryBox {box-shadow: 0 1px 3px 1px rgba(0,0,0,0.1);background-color:#ffffff;color: black;font-weight: normal; border-radius: 5px;}
 .CategoryTree {border-top:1px solid #737373;border-left:1px solid #999999;border-bottom:1px solid #999999;border-right:1px solid #999999;background-color:white;color: black;font-weight: normal;}
 
 /* Star Ratings */
@@ -177,6 +187,8 @@ div.autocomplete ul li {color: #000;}
 .Listview {background-color: white;border-radius:6px;}
 .highlight {color: #000;background-color: #ff0;}
 .Tab a {padding: 8px 1rem;background: rgba(255, 255, 255, 0.4);}
+.TabBar { background-color: #ededed; }
+#BasicsBoxTabs > .TabBar { background-color: #f2f2f2;} /* On Edit page w/ $tabs_on_edit  */
 .StyledTabbedPanel {background: #fff;}
 .TabSelected {border-left: #bbbbbb;}
 .TabSelected a {background: #ffffff; color: #666666; border-bottom: 1px solid #ffffff; }
@@ -288,7 +300,7 @@ div.autocomplete ul li {color: #000;}
 /* Messaging */
 span.Pill {
     color: white;
-    background: red;
+    background: #e41e3f;
 }
 div.MessageBox {
     border: 1px solid darkgray;
@@ -336,11 +348,12 @@ input:checked + .customFieldLabel, .keywordselected {
 .ReportSummary {background-color:white;color:black;border-collapse:collapse;}
 .ReportSummary td {border:1px solid #888;color:black;}
 .ReportMetric {color:black;}
-
-.BreadcrumbsBox {color:#FFF;}
-.BreadcrumbsBox a, .BreadcrumbsBox a:link, .BreadcrumbsBox a:visited { color: #FFF; }
-.BreadcrumbsBoxTheme {background-color: rgba(0, 0, 0, 0.65);margin: 0 1em 1em 0;}
-
+.SearchBreadcrumbs > span {color: #6a6a6a;}
+.BreadcrumbsBox a, .BreadcrumbsBox a:link, .BreadcrumbsBox a:visited { color: #474747; }
+.BreadcrumbsBoxTheme {background-color: rgba(0, 0, 0, 0.51);margin: 0 1em 1em 0; padding: 6px 8px; color: white;border-radius:6px;}
+.BreadcrumbsBoxTheme.BreadcrumbsBox a,
+.BreadcrumbsBoxTheme.BreadcrumbsBox a:link,
+.BreadcrumbsBoxTheme.BreadcrumbsBox a:visited {color: white;}
 .TopInpageNav select {
     background-color: #fff;
 }
@@ -359,37 +372,9 @@ input:checked + .customFieldLabel, .keywordselected {
 }
 
 /* Browse bar */
-#BrowseBar a, #BrowseBarTab, #BrowseBarTab a:hover {color: #fff;}
+#BrowseBar a {color: #fff;}
 .BrowseBarText {color: #fff;}
 .BrowseBarItem.ui-droppable-hover a .BrowseBarLink{border: 2px solid #FFF;}
-
-/* Upload buttons */
-a.ui-button.plupload_button {
-    background-color: #2e99e6;
-    color: white;
-    border-radius: 4px;
-    font-size: 1.2em;
-    border: none;
-    padding: 6px 14px;
-}
-a.ui-button.plupload_button:hover {
-    border: none;
-    opacity: 0.8;
-}
-a.ui-button.plupload_button.ui-button-disabled {
-    background-color: white;
-    color: gray;
-}
-.plupload_button .ui-icon.ui-icon-circle-plus,
-.plupload_button .ui-icon.ui-icon-circle-arrow-e,
-.plupload_button .ui-icon.ui-icon-circle-close {
-    background-image: url("smoothness/images/ui-icons_ffffff_256x240.png");
-}
-.plupload_button .ui-button-disabled .ui-icon.ui-icon-circle-plus,
-.plupload_button .ui-button-disabled .ui-icon.ui-icon.ui-icon-circle-arrow-e,
-.plupload_button .ui-button-disabled .ui-icon.ui-icon-circle-close {
-    background-image: url("smoothness/images/ui-icons_777777_256x240.png");
-}
 
 /* Firefox on macOS optgroup background styling fix */
 @supports (-moz-osx-font-smoothing: auto) {
@@ -423,3 +408,17 @@ a.ui-button.plupload_button.ui-button-disabled {
 .SelectionCollectionLink, .SelectionCollectionLink:link, .SelectionCollectionLink:visited, .MessageBox { color: #474747; }
 .ClearSelectedButton { background-color: #ff2b2b; }
 .ClearSelectedButton:hover { background-color: #b71c1c; }
+
+.codecomment
+    {
+    color:#090;
+    }
+.codeexample
+    {
+    background-color:white;
+    color:black;
+    }
+.codeoutput
+    {
+    background-color:black;color:white;border-left:10px solid #666;
+    }

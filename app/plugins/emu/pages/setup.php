@@ -15,7 +15,7 @@ if(!in_array($plugin_name, $plugins))
     plugin_activate_for_setup($plugin_name);
     }
 
-$emu_rs_mappings               = unserialize(base64_decode($emu_rs_saved_mappings));
+$emu_rs_mappings               = plugin_decode_complex_configs($emu_rs_saved_mappings);
 $emu_script_last_ran           = '';
 $emu_config_modified_timestamp = time();
 
@@ -25,9 +25,9 @@ check_script_last_ran('last_emu_import', $emu_script_failure_notify_days, $emu_s
 // Save module - column - rs_field mappings
 if('' != getval('submit', '') || '' != getval('save', ''))
     {
-    $emu_module          = getvalescaped('emu_module', array());
-    $emu_column          = getvalescaped('emu_column', array());
-    $rs_field            = getvalescaped('rs_field', array());
+    $emu_module          = getval('emu_module', array());
+    $emu_column          = getval('emu_column', array());
+    $rs_field            = getval('rs_field', array());
     $emu_rs_mappings_new = array();
 
     // There should always be the same number of values in each array
@@ -59,7 +59,7 @@ if('' != getval('submit', '') || '' != getval('save', ''))
         }
 
     $emu_rs_mappings       = $emu_rs_mappings_new;
-    $emu_rs_saved_mappings = base64_encode(serialize($emu_rs_mappings_new));
+    $emu_rs_saved_mappings = plugin_encode_complex_configs($emu_rs_mappings_new);
     }
 
 // Add test script functionality
@@ -68,10 +68,20 @@ if(EMU_SCRIPT_MODE_SYNC == $emu_script_mode)
     {
     $scripts_test_functionality = '<button type="button" onclick="testScript(document.getElementById(\'emu_script_mode\').value);" style="font-size: 1em;">Test script</button>';
     }
-$script_last_ran_content = str_replace('%script_last_ran%', $emu_script_last_ran, $lang['emu_last_run_date']);
-$script_last_ran_content = str_replace('%scripts_test_functionality%', (isset($scripts_test_functionality) ? $scripts_test_functionality : ''), $script_last_ran_content);
 
-
+$script_last_ran_content =sprintf(
+    "<div class=\"Question\">
+    <label>
+        <strong>%s</strong>
+    </label>
+    <input name=\"script_last_ran\" type=\"text\" value=\"%s\" disabled style=\"width: 300px;\">
+    %s
+    </div>
+    <div class=\"clearerleft\"></div>",
+    htmlspecialchars($lang['emu_last_run_date']),
+    escape($emu_script_last_ran),
+    escape($scripts_test_functionality??"")
+);
 
 // API server settings
 $page_def[] = config_add_section_header($lang['emu_api_settings']);
@@ -90,7 +100,6 @@ $page_def[] = config_add_single_select('emu_script_mode',
 $page_def[] = config_add_boolean_select('emu_enable_script', $lang['emu_enable_script']);
 $page_def[] = config_add_boolean_select('emu_test_mode', $lang['emu_test_mode']);
 $page_def[] = config_add_text_input('emu_interval_run', $lang['emu_interval_run']);
-$page_def[] = config_add_text_input('emu_email_notify', $lang['emu_email_notify']);
 $page_def[] = config_add_text_input('emu_script_failure_notify_days', $lang['emu_script_failure_notify_days']);
 $page_def[] = config_add_text_input('emu_log_directory', $lang['emu_log_directory']);
 $page_def[] = config_add_single_ftype_select('emu_created_by_script_field', $lang['emu_created_by_script_field']);
@@ -169,13 +178,13 @@ if(!isset($php_path) || '' == $php_path)
     $error = '$php_path config option MUST be set in order for testing scripts functionality to work!';
     }
 
-$upload_status = config_gen_setup_post($page_def, $plugin_name);
+config_gen_setup_post($page_def, $plugin_name);
 include '../../../include/header.php';
 if(isset($error))
     {
     echo "<div class=\"PageInformal\">{$error}</div>";
     }
-config_gen_setup_html($page_def, $plugin_name, $upload_status, $lang['emu_configuration']);
+config_gen_setup_html($page_def, $plugin_name, null, $lang['emu_configuration']);
 ?>
 <script>
 function addEmuRsMappingRow()

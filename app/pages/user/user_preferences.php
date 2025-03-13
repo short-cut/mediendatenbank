@@ -125,6 +125,7 @@ include "../../include/header.php";
         '',
         true
     );
+    $page_def[] = config_add_single_select('default_sort_direction', $lang['userpreference_default_sort_order_label'], ['ASC' => 'Ascending', 'DESC' => 'Descending'], true, 300, '', true);
     $page_def[] = config_add_single_select('default_perpage', $lang['userpreference_default_perpage_label'], array(24, 48, 72, 120, 240), false, 300, '', true);
 
     // Default Display
@@ -174,22 +175,36 @@ include "../../include/header.php";
         300,
         '',
         true);
+    $page_def[] = config_add_boolean_select(
+        'high_contrast_mode',
+        $lang['userpreference_high_contrast_mode'],
+        $enable_disable_options,
+        300,
+        '',
+        true,
+        null,
+        false,
+        '',
+        true);
     $page_def[] = config_add_html('</div>');
 
 
     // Email section, only show if user has got an email address
 	if ($useremail!="")
-		{
-		$page_def[] = config_add_html('<h2 class="CollapsibleSectionHead">' . $lang['email'] . '</h2><div id="UserPreferenceEmailSection" class="CollapsibleSection">');
-		$page_def[] = config_add_boolean_select('cc_me', $lang['userpreference_cc_me_label'], $enable_disable_options, 300, '', true);
-		$page_def[] = config_add_boolean_select('email_user_notifications', $lang['userpreference_email_me_label'], $enable_disable_options, 300, '', true);
-		$page_def[] = config_add_boolean_select('email_and_user_notifications', $lang['user_pref_email_and_user_notifications'], $enable_disable_options, 300, '', true);
-		$page_def[] = config_add_boolean_select('user_pref_daily_digest', $lang['user_pref_daily_digest'], $enable_disable_options, 300, '', true);
-		$page_def[] = config_add_boolean_select('user_pref_inactive_digest', str_replace("%%DAYS%%",(string)(int)$inactive_message_auto_digest_period,$lang['user_pref_inactive_digest']), $enable_disable_options, 300, '', true);
+        {
+        $page_def[] = config_add_html('<h2 class="CollapsibleSectionHead">' . $lang['email'] . '</h2><div id="UserPreferenceEmailSection" class="CollapsibleSection">');
+        $page_def[] = config_add_boolean_select('cc_me', $lang['userpreference_cc_me_label'], $enable_disable_options, 300, '', true);
+        $page_def[] = config_add_boolean_select('email_user_notifications', $lang['userpreference_email_me_label'], $enable_disable_options, 300, '', true);
+        $page_def[] = config_add_boolean_select('email_and_user_notifications', $lang['user_pref_email_and_user_notifications'], $enable_disable_options, 300, '', true);
+        if($actions_on && $new_action_email_interval > 0)
+            {
+            $page_def[] = config_add_boolean_select('user_pref_new_action_emails', $lang['user_pref_new_action_emails'], $enable_disable_options, 300, '', true);
+            }
+        $page_def[] = config_add_boolean_select('user_pref_daily_digest', $lang['user_pref_daily_digest'], $enable_disable_options, 300, '', true);
+        $page_def[] = config_add_boolean_select('user_pref_inactive_digest', str_replace("%%DAYS%%",(string)(int)$inactive_message_auto_digest_period,$lang['user_pref_inactive_digest']), $enable_disable_options, 300, '', true);
         $page_def[] = config_add_boolean_select('user_pref_daily_digest_mark_read', $lang['user_pref_daily_digest_mark_read'], $enable_disable_options, 300, '', true);
-		$page_def[] = config_add_html('</div>');
-		}
-
+        $page_def[] = config_add_html('</div>');
+        }
 
 	// System notifications section - used to disable system generated messages 
 	$page_def[] = config_add_html('<h2 class="CollapsibleSectionHead">' . $lang['mymessages'] . '</h2><div id="UserPreferenceMessageSection" class="CollapsibleSection">');
@@ -245,12 +260,12 @@ include "../../include/header.php";
             $actionrestypes[$rtype["ref"]]=$rtype["name"];
             }
 		$page_def[] = config_add_checkbox_select('actions_resource_types_hide',$lang['actions_resource_types_hide'],$actionrestypes,true,300,1,true,null);
-		
+
 		$page_def[] = config_add_boolean_select('actions_modal', $lang['actions_modal'], $enable_disable_options, 300, '', true);
-		
+
 		$page_def[] = "AFTER_ACTIONS_MARKER"; // Added so that hook add_user_preference_page_def can locate this position in array
 		$page_def[] = config_add_html('</div>');
-		
+
 		// End of actions section
 		}
 		
@@ -301,8 +316,8 @@ include "../../include/header.php";
         $response['success'] = true;
         $response['message'] = '';
 
-        $autosave_option_name  = getvalescaped('autosave_option_name', '');
-        $autosave_option_value = getvalescaped('autosave_option_value', '');
+        $autosave_option_name  = getval('autosave_option_name', '');
+        $autosave_option_value = getval('autosave_option_value', '');
 
         if($autosave_option_name == 'user_local_timezone') # If '$autosave_option_name' = 'user_local_timezone' - save to cookie
             {

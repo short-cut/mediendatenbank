@@ -3,25 +3,25 @@ include "../include/db.php";
 include "../include/authenticate.php";
 
 
-$collection_url	= getvalescaped("collection","");
-$find			= getvalescaped('find', '');
-$offset 		= getvalescaped("offset",0,true);
-$order_by 		= getvalescaped("order_by","");
-$sort 			= getvalescaped("sort","");
-$search 		= getvalescaped("search","");
-$starsearch		= getvalescaped('starsearch', '', true);
-$ref			= getvalescaped("ref", 0, true);
+$collection_url	= getval("collection","");
+$find			= getval('find', '');
+$offset 		= getval("offset",0,true);
+$order_by 		= getval("order_by","");
+$sort 			= getval("sort","");
+$search 		= getval("search","");
+$ref			= getval("ref", 0, true);
 
 // Share options
-$expires        = getvalescaped("expires","");
+$expires        = getval("expires","");
 $access         = getval("access",-1, true);	
 $group          = getval("usergroup",0,true);
-$sharepwd       = getvalescaped('sharepassword', '');
+$sharepwd       = getval('sharepassword', '');
 
 $collection = get_collection($ref);
 if($collection === false)
     {
-    exit(error_alert($lang["error-collectionnotfound"], true, 403));
+    error_alert($lang["error-collectionnotfound"], true, 403);
+    exit();
     }
 
 if($collection["type"] == COLLECTION_TYPE_FEATURED)
@@ -41,11 +41,13 @@ else if(
     && !allow_featured_collection_share($collection)
 )
     {
-    exit(error_alert($lang["error-permissiondenied"], true, 403));
+    error_alert($lang["error-permissiondenied"], true, 403);
+    exit();
     }
 if(!$allow_share || checkperm("b"))
     {
-    exit(error_alert($lang["error-permissiondenied"], true, 403));
+    error_alert($lang["error-permissiondenied"], true, 403);
+    exit();
     }
 
 $themeshare = false;
@@ -59,7 +61,8 @@ if(is_featured_collection_category($collection))
     // Check this is not an empty FC category
     if(empty(get_featured_collection_resources($collection, array("limit" => 1))))
         {
-        exit(error_alert($lang["cannotshareemptythemecategory"], true, 403));
+        error_alert($lang["cannotshareemptythemecategory"], true, 403);
+        exit();
         }
 
     // Further checks at collection-resource level. Recurse through category's sub FCs
@@ -70,7 +73,7 @@ if(is_featured_collection_category($collection))
     else
         {
         $sub_fcs = get_featured_collections($collection["ref"], array());
-        $sub_fcs = array_filter($sub_fcs, function($fc) { return !is_featured_collection_category($fc, array()); });
+        $sub_fcs = array_filter($sub_fcs, function($fc) { return !is_featured_collection_category($fc); });
         $sub_fcs = array_values(array_column($sub_fcs, "ref"));
         }
     $collection["sub_fcs"] = $sub_fcs;
@@ -133,16 +136,16 @@ if (getval("save","")!="" && enforcePostRequest(getval("ajax", false)))
 	{
 	# Email / share collection
 	# Build a new list and insert
-	$users=getvalescaped("users","");
-	$message=getvalescaped("message","");
-	$add_internal_access=(getvalescaped("grant_internal_access","")!="");
-	$feedback=getvalescaped("request_feedback","");	if ($feedback=="") {$feedback=false;} else {$feedback=true;}
-	$list_recipients=getvalescaped("list_recipients",""); if ($list_recipients=="") {$list_recipients=false;} else {$list_recipients=true;}
-	
-	$use_user_email=getvalescaped("use_user_email",false);
+	$users=getval("users","");
+	$message=getval("message","");
+	$add_internal_access=(getval("grant_internal_access","")!="");
+	$feedback=getval("request_feedback","");	if ($feedback=="") {$feedback=false;} else {$feedback=true;}
+	$list_recipients=getval("list_recipients",""); if ($list_recipients=="") {$list_recipients=false;} else {$list_recipients=true;}
+
+	$use_user_email=getval("use_user_email",false);
 	if ($use_user_email){$user_email=$useremail;} else {$user_email="";} // if use_user_email, set reply-to address
 	if (!$use_user_email){$from_name=$applicationname;} else {$from_name=$userfullname;} // make sure from_name matches email
-	
+
 	if (getval("ccme",false)){ $cc=$useremail;} else {$cc="";}
 
     $errors = email_collection($ref,i18n_get_collection_name($collection),$userfullname,$users,$message,$feedback,$access,$expires,$user_email,$from_name,$cc,$themeshare,$themename, "?parent=" . $collection["ref"],$list_recipients,$add_internal_access,$group, $sharepwd);
@@ -160,11 +163,6 @@ if (getval("save","")!="" && enforcePostRequest(getval("ajax", false)))
 		}
 	}
 
-
-if ($collection_dropdown_user_access_mode){
-$users=get_users();
-}
-
 include "../include/header.php";
 ?>
 <div class="BasicsBox">
@@ -179,7 +177,6 @@ include "../include/header.php";
 		"order_by"		=>	$order_by,
 		"sort"			=>	$sort,
 		"collection"	=>	$collection_url,
-		"starsearch"	=>	$starsearch,
 		"find"			=>	$find,
 		"k"				=>	$k
 	);
@@ -221,40 +218,17 @@ else
 		if (!$themeshare) { 
 			echo i18n_get_collection_name($collection);
 		} else { ##  this select copied from collections.php 
-			
+
 			?>		
 			<select name="collection" multiple size="10" class="stdwidth MultiSelect" style="height:100%;" 
 				onchange="document.getElementById('ref').value = getSelected(this); " >
 			<?php
-			
+
 			$list=get_user_collections($userref);
 			$found=false;
 			for ($n=0;$n<count($list);$n++)
-				{
-
-				if ($collection_dropdown_user_access_mode){    
-					foreach ($users as $user){
-						if ($user['ref']==$list[$n]['user']){$colusername=$user['fullname'];}
-					}
-					# Work out the correct access mode to display
-					if (!hook('collectionaccessmode')) {
-						if ($list[$n]["public"]==0){
-							$accessmode= $lang["private"];
-						}
-						else{
-							if (strlen($list[$n]["theme"])>0){
-								$accessmode= $lang["theme"];
-							}
-						else{
-								$accessmode= $lang["public"];
-							}
-						}
-					}
-				}
-
-
-					?>	
-				<option value="<?php echo $list[$n]["ref"]?>" <?php if ($ref==$list[$n]["ref"]) {?> 	selected<?php $found=true;} ?>><?php echo i18n_get_collection_name($list[$n]) ?><?php if ($collection_dropdown_user_access_mode){echo "&nbsp;&nbsp;".htmlspecialchars("(". $colusername."/".$accessmode.")"); } ?></option>
+				{?>	
+				<option value="<?php echo $list[$n]["ref"]?>" <?php if ($ref==$list[$n]["ref"]) {?> 	selected<?php $found=true;} ?>><?php echo i18n_get_collection_name($list[$n]) ?></option>
 				<?php 
 				}
 			if ($found==false)
@@ -268,7 +242,7 @@ else
 					<?php
 					}
 				}
-			
+
 			?>
 			</select> <?php } ?>
 			</div>
@@ -319,7 +293,7 @@ if(!$internal_share_only)
         );
 	render_share_options($shareoptions);
 	}
-	
+
 	hook("collectionemailafterexternal");
 	?>
 
@@ -333,7 +307,7 @@ if(!$internal_share_only)
 <?php } # end hook replaceemailrequestfeedback ?>
 <?php } ?>
 
-<?php if ($email_from_user && !$always_email_from_user){?>
+<?php if ($email_from_user){?>
 <?php if ($useremail!="") { # Only allow this option if there is an email address available for the user.
 ?>
 <div class="Question">
@@ -354,7 +328,6 @@ if(!$internal_share_only)
 
 <?php if(!hook("replaceemailsubmitbutton")){?>
 <div class="QuestionSubmit">
-<label for="buttons"> </label>			
 <input name="save" type="submit" value="&nbsp;&nbsp;<?php if ($themeshare){echo $lang["email_theme_category"];} else {echo $lang["emailcollectiontitle"];}?>&nbsp;&nbsp;" />
 </div>
 <?php } # end hook replaceemailsubmitbutton ?>

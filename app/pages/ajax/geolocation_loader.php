@@ -1,8 +1,8 @@
 <?php
 include "../../include/db.php";
 
-$ref = getvalescaped("ref", "", true);
-$k = getvalescaped("k", "");
+$ref = getval("ref", "", true);
+$k = getval("k", "");
 if (($k == "") || (!check_access_key($ref, $k)))
     {
     include "../../include/authenticate.php";
@@ -19,7 +19,7 @@ if ($resource === false)
 // Load resource field data.
 $fields=get_resource_field_data($ref, false, !hook("customgetresourceperms"), null ,$k != "", $use_order_by_tab_view);
 
-$edit_access = get_edit_access($ref, $resource["archive"], $fields, $resource);
+$edit_access = get_edit_access($ref, $resource["archive"], $resource);
 if ($k != "")
     {
     $edit_access = 0;

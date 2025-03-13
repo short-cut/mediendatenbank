@@ -1,0 +1,25 @@
+includes:
+    - phpstan-baseline.neon
+
+parameters:
+    level: 0
+    paths:
+        - api
+        - batch
+        - css
+        - include
+        - languages
+        - pages
+        - plugins
+        - tests
+        - upgrade
+
+    scanDirectories:
+      - lib/html2pdf/
+      - lib/Diff/
+      - lib/PHPMailer/
+      - lib/tus/
+
+    excludePaths:
+        analyse:
+            - plugins/*/lib/*

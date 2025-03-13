@@ -2,7 +2,7 @@
 
 include_once dirname(__FILE__) . "/../include/utility.php";
 
-function HookFormat_chooserAllGetdownloadurl($ref, $size, $ext, $page = 1, $alternative = -1)
+function HookFormat_chooserAllGetdownloadurl($ref, $size, $ext, $page = 1, $alternative = -1, $usage = -1, $usagecomment = "")
 	{
 	global $baseurl_short,$imagemagick_preserve_profiles, $format_chooser_input_formats, $format_chooser_output_formats, $k;
 
@@ -20,6 +20,8 @@ function HookFormat_chooserAllGetdownloadurl($ref, $size, $ext, $page = 1, $alte
         'ext' => $ext,
         'page' => $page,
         'alt' => $alternative,
+        'usage' => $usage,
+        'usagecomment' => $usagecomment,
     ];
     $resource_data = get_resource_data($ref);
 
@@ -28,7 +30,7 @@ function HookFormat_chooserAllGetdownloadurl($ref, $size, $ext, $page = 1, $alte
     if(!in_array(strtoupper($original_ext),$format_chooser_input_formats))
         {return false;}
     
-    $profile = getvalescaped('profile' , null);
+    $profile = getval('profile' , null);
 	if (!empty($profile))
         {
         $url_qs['profile'] = $profile;
@@ -36,10 +38,18 @@ function HookFormat_chooserAllGetdownloadurl($ref, $size, $ext, $page = 1, $alte
 	else
 		{
 		$path = get_resource_path($ref, true, $size, false, $ext, -1, $page,$size=="scr" && checkperm("w") && $alternative==-1, '', $alternative);
-		if (file_exists($path) && (!$imagemagick_preserve_profiles || in_array($size,array("hpr","lpr")))) // We can use the existing previews unless we need to preserve the colour profiles (these are likely to have been removed from scr size and below) 
+        // We can use the existing previews unless we need to preserve the colour profiles,
+        // these are likely to have been removed from scr size and below.
+        // Alternative files not being converted can also use the existing file
+        if (file_exists($path) 
+            && (!$imagemagick_preserve_profiles 
+                || in_array($size,array("hpr","lpr")) 
+                || $alternative !== -1
+                )
+            )
 		return false;
 		}
-
+    
     return generateURL($baseurl_short . 'plugins/format_chooser/pages/convert.php', $url_qs);
 	}
 
@@ -53,7 +63,7 @@ function HookFormat_chooserAllReplaceuseoriginal()
 	if (is_ecommerce_user()) { return false; }
 
 	$disabled = '';
-	$submitted = getvalescaped('submitted', null);
+	$submitted = getval('submitted', null);
 	if (!empty($submitted))
 		$disabled = ' disabled="disabled"';
 
@@ -63,7 +73,7 @@ function HookFormat_chooserAllReplaceuseoriginal()
 		?><script>
 			var originalDownloadFunction = ajax_download;
 			ajax_download = function(download_offline) {
-				originalDownloadFunction(download_offline);
+				originalDownloadFunction(download_offline,tar);
 				jQuery('#downloadformat').attr('disabled', 'disabled');
 				jQuery('#profile').attr('disabled', 'disabled');
 			}
@@ -159,7 +169,7 @@ function HookFormat_chooserAllReplacedownloadfile($resource, $size, $ext,
 		return false;
 		}
 
-	$profile = getProfileFileName(getvalescaped('profile', null));
+	$profile = getProfileFileName(getval('profile', null));
 	if ($profile === null && $fileExists)
 		{
 		# Just serve the original file
@@ -190,7 +200,7 @@ function HookFormat_chooserAllCollection_download_modify_job($job_data=array())
 	// Disable for e-commerce
 	if (is_ecommerce_user()) { return false; }
 
-    $ext = getvalescaped("ext","");
+    $ext = getval("ext","");
     if(trim($ext) != "")
         {
         // Add requested extension to offline job data

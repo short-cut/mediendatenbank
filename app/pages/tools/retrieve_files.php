@@ -26,15 +26,9 @@
 *  **** CAUTION SHOULD BE USED IF SERVER IS ON AN INTERNAL NETWORK ****
 */
 
-
-if('cli' != PHP_SAPI)
-    {
-    header('HTTP/1.1 401 Unauthorized');
-    exit('Access denied - Command line only!');
-    }
-
 include __DIR__ . '/../../include/db.php';
 include_once __DIR__ . '/../../include/resource_functions.php';
+command_line_only();
 set_time_limit(0);
 $use_error_exception = true;
 
@@ -79,30 +73,31 @@ else
 
 $filtersql = "";
 $joinsql = "";
+$params = [];
 
 if (!isset($collectionid))
     {
-    $filtersql .= " r.ref >='" . escape_check($min) . "'";
+    $filtersql .= " r.ref >= ?"; $params[] = 'i'; $params[] = $min;
     if (isset($max))
         {
-        $filtersql .= "AND r.ref <='" . escape_check($max) . "'";
+        $filtersql .= " AND r.ref <= ?"; $params[] = 'i'; $params[] = $max;
         }
     }
 else
     {
     $joinsql .= "RIGHT JOIN collection_resource cr ON cr.resource=r.ref";
-    $filtersql .= "cr.collection='" . escape_check($collectionid) . "'";
+    $filtersql .= "cr.collection= ?"; $params[] = 'i'; $params[] = $collectionid;
     }
     
-$resources = sql_query("SELECT r.ref, r.file_path, r.file_extension  FROM resource r {$joinsql} WHERE {$filtersql} ORDER BY r.ref $orderby");
+$resources = ps_query("SELECT r.ref, r.file_path, r.file_extension  FROM resource r {$joinsql} WHERE {$filtersql} ORDER BY r.ref $orderby", $params);
 
 $errors = array();
 $missingfiles = array();
 $copied = array();
-$sizearray = sql_array("select id value from preview_size",false);
+$sizearray = ps_array("select id value from preview_size",[],false);
 $sizearray[] = ""; // Add jpg version of original if present
 
-$hide_real_filepath = (isset($remote_hidden_paths) && $remote_hidden_paths) ? true : false;
+$hide_real_filepath = isset($remote_hidden_paths) && $remote_hidden_paths;
 
 foreach($resources as $resource)
     {
@@ -132,22 +127,34 @@ foreach($resources as $resource)
     foreach($altfiles as $altfile)
         {
         // Primary alternative file
-        $resfiles[$n]["local"]  = get_resource_path($resource["ref"],true,'',false,$altfile["file_extension"],true,-1,1,false,'',$altfile["ref"]);
-        $resfiles[$n]["url"]    = get_resource_path($resource["ref"],false,'',false,$altfile["file_extension"],true,-1,1,false,'',$altfile["ref"]);
+        $resfiles[$n]["local"]  = get_resource_path($resource["ref"],true,'',false,$altfile["file_extension"],true, 1, false, '', $altfile["ref"]);
+        $resfiles[$n]["url"]    = get_resource_path($resource["ref"],false,'',false,$altfile["file_extension"],true, 1, false, '', $altfile["ref"]);
         $n++;
-        
-        $resfiles[$n]["local"]  = get_resource_path($resource["ref"],true,'',false,'icc',true,-1,1,false,'',$altfile["ref"]);
-        $resfiles[$n]["url"]    = get_resource_path($resource["ref"],false,'',false,'icc',true,-1,1,false,'',$altfile["ref"]);
+
+        $resfiles[$n]["local"]  = get_resource_path($resource["ref"],true,'',false,$altfile["file_extension"],true, 1, true, '', $altfile["ref"]);
+        $resfiles[$n]["url"]    = get_resource_path($resource["ref"],false,'',false,$altfile["file_extension"],true, 1, true, '', $altfile["ref"]);
         $n++;
-        
+
+        $resfiles[$n]["local"]  = get_resource_path($resource["ref"],true,'',false,'icc',true, 1, false, '', $altfile["ref"]);
+        $resfiles[$n]["url"]    = get_resource_path($resource["ref"],false,'',false,'icc',true, 1, false, '', $altfile["ref"]);
+        $n++;
+
+        $resfiles[$n]["local"]  = get_resource_path($resource["ref"],true,'',false,'icc',true, 1, true, '', $altfile["ref"]);
+        $resfiles[$n]["url"]    = get_resource_path($resource["ref"],false,'',false,'icc',true, 1, true, '', $altfile["ref"]);
+        $n++;
+
         foreach($sizearray as $size)
             {
-            $resfiles[$n]["local"]  = get_resource_path($resource["ref"],true,$size,false,"jpg",true,-1,1,false,"",$altfile["ref"]);
-            $resfiles[$n]["url"]    = get_resource_path($resource["ref"],false,$size,false,"jpg",true,-1,1,false,"",$altfile["ref"]);
+            $resfiles[$n]["local"]  = get_resource_path($resource["ref"],true,$size,false,"jpg",true, 1, false, '', $altfile["ref"]);
+            $resfiles[$n]["url"]    = get_resource_path($resource["ref"],false,$size,false,"jpg",true, 1, false, '', $altfile["ref"]);
+            $n++;
+
+            $resfiles[$n]["local"]  = get_resource_path($resource["ref"],true,$size,false,"jpg",true, 1, true, '', $altfile["ref"]);
+            $resfiles[$n]["url"]    = get_resource_path($resource["ref"],false,$size,false,"jpg",true, 1, true, '', $altfile["ref"]);
             $n++;
             }
         }
-    
+
     // Now check if files exist
     $i=0;    
     for($i=0;$i<$n;$i++)

@@ -8,12 +8,12 @@ function HookGrant_editEditeditbeforeheader()
 	if(!in_array($usergroup, $grant_edit_groups) || $ref<0){return;}
 		
 	// Check for Ajax POST to delete users
-	$grant_edit_action=getvalescaped("grant_edit_action","");
+	$grant_edit_action=getval("grant_edit_action","");
 	if($grant_edit_action!="")
 		{
 		if($grant_edit_action=="delete")
 			{
-			$remove_user=escape_check(getvalescaped("remove_user","",TRUE));
+			$remove_user=getval("remove_user","",TRUE);
 			if($remove_user!="")
 				{
 				ps_query("delete from grant_edit where resource = ? and user = ?", array("i",$ref,"i",$remove_user));
@@ -25,19 +25,18 @@ function HookGrant_editEditeditbeforeheader()
 	
 	# If 'users' is specified (i.e. access is private) then rebuild users list
 	
-	$users=getvalescaped("users",false);
+	$users=getval("users",false);
 	if ($users!=false)
 		{
 		
 		# Build a new list and insert
 		$users=resolve_userlist_groups($users);
 		$ulist=array_unique(trim_array(explode(",",$users)));
-        $ulist = array_map("escape_check",$ulist);
 		$urefs = ps_array("select ref value from user where username in (" . ps_param_insert(count($ulist)) . ")", ps_param_fill($ulist,"s"));
 		
 		if (count($urefs)>0)
 			{
-			$grant_edit_expiry=getvalescaped("grant_edit_expiry","");
+			$grant_edit_expiry=getval("grant_edit_expiry","");
 			if ((int)$collection > 0)
 				{
 				global $items;							
@@ -100,8 +99,7 @@ function HookGrant_editEditAppendcustomfields()
 	if(!in_array($usergroup, $grant_edit_groups) || $ref<0){return;}
 	
 	$grant_editusers=ps_query("select ea.user, u.fullname, u.username, ea.expiry from grant_edit ea left join user u on u.ref = ea.user where ea.resource = ? and (ea.expiry is NULL or ea.expiry >= NOW()) order by expiry, u.username", array("i",$ref));
-	//print_r($grant_editusers);
-	//exit();
+
 	?>
     <h2 id="resource_custom_access" <?php echo ($collapsible_sections) ? ' class="CollapsibleSectionHead"' : ''; ?>><?php echo $lang["grant_edit_title"]?></h2>
     <?php
@@ -128,7 +126,6 @@ function HookGrant_editEditAppendcustomfields()
 			<?php
 			foreach($grant_editusers as $grant_edituser)
 				{
-				//print_r($grant_edituser);
 				echo "<tr id='grant_edit" . $grant_edituser['user'] . "'>
 						<td>" . (($grant_edituser['fullname']!="")?$grant_edituser['fullname']:$grant_edituser['username']) . "</td>
 						<td>" . (($grant_edituser['expiry']!="")?nicedate($grant_edituser['expiry']):$lang['never'])  . "</td>
@@ -184,7 +181,7 @@ function HookGrant_editEditAppendcustomfields()
 			<?php for ($n=1;$n<=150;$n++)
 				{
 				$date=time()+(60*60*24*$n);
-				?><option <?php $d=date("D",$date);if (($d=="Sun") || ($d=="Sat")) { ?>style="background-color:#cccccc"<?php } ?> value="<?php echo date("Y-m-d",$date)?>" <?php if(substr(getvalescaped("editexpiration",""),0,10)==date("Y-m-d",$date)){echo "selected";}?>><?php echo nicedate(date("Y-m-d",$date),false,true)?></option>
+				?><option <?php $d=date("D",$date);if (($d=="Sun") || ($d=="Sat")) { ?>style="background-color:#cccccc"<?php } ?> value="<?php echo date("Y-m-d",$date)?>" <?php if(substr(getval("editexpiration",""),0,10)==date("Y-m-d",$date)){echo "selected";}?>><?php echo nicedate(date("Y-m-d",$date),false,true)?></option>
 				<?php
 				}
 			?>

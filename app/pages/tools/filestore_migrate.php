@@ -1,10 +1,7 @@
 <?php
 include "../../include/db.php";
+command_line_only();
 
-if (php_sapi_name() != "cli")
-    {
-    exit("Permission denied");
-    }
 
 
 // This script moves resources from old locations to new locations if settings are changed after initial setup
@@ -52,7 +49,7 @@ function migrate_files($ref, $alternative, $extension, $sizes, $redistribute_mod
             $path = get_resource_path($ref,true,$sizes[$m]["id"],false,$sizes[$m]["extension"],true,$page,false,'',$alternative);
             echo " - Size: " . $sizes[$m]["id"] . ", extension: " . $sizes[$m]["extension"] . " Snew path: " . $newpath . PHP_EOL;
             echo " - Checking old path: " . $path . PHP_EOL;
-            if (file_exists($path) && !($sizes[$m]["id"] == "" && strpos($path, $syncdir)!==false))
+            if (file_exists($path) && !($sizes[$m]["id"] == "" && ($syncdir != "" && strpos($path, $syncdir) !== false)))
                 {
                 echo " - Found file at old path : " . $path . PHP_EOL;	
                 if(!file_exists($newpath))
@@ -98,7 +95,7 @@ function migrate_files($ref, $alternative, $extension, $sizes, $redistribute_mod
 
 set_time_limit(0);
 
-$resources=sql_query("SELECT ref,file_extension FROM resource WHERE ref>0 ORDER BY ref DESC");
+$resources=ps_query("SELECT ref,file_extension FROM resource WHERE ref>0 ORDER BY ref DESC");
 $migratedfiles = 0;
 $totalresources = count($resources);
 for ($n=0;$n<$totalresources;$n++)

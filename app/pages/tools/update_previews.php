@@ -28,9 +28,9 @@ include_once "../../include/image_processing.php";
  * @param $ref Resource ref to update
  * @return bool True is resource exists
  */
-function update_preview($ref){
+function update_previews($ref){
     global $previewbased;
-    $resourceinfo=sql_query("select * from resource where ref='$ref'");
+    $resourceinfo=ps_query("select " . columns_in("resource") . " from resource where ref=?",array("i",$ref));
     if (count($resourceinfo)>0 && !hook("replaceupdatepreview", '', array($ref, $resourceinfo[0]))){
     	if(!empty($resourceinfo[0]['file_path'])){$ingested=false;}
     	else{$ingested=true;}
@@ -40,14 +40,14 @@ function update_preview($ref){
     }
     return false;
 }
-$collectionid=getvalescaped("col", false);
-$max=sql_value("select max(ref) value from resource",0);
-$ref=getvalescaped("ref",false);
-$previewbased=getvalescaped("previewbased",false);
+$collectionid=getval("col", false);
+$max=ps_value("select max(ref) value from resource",array(),0);
+$ref=getval("ref",false);
+$previewbased=getval("previewbased",false);
 
 if ($collectionid == false){
     if (!(is_numeric($ref) && $ref > 0)) $ref = 1;
-    if (update_preview($ref)){
+    if (update_previews($ref)){
     	?>
     	<img src="<?php echo get_resource_path($ref,false,"pre",false)?>">
     	<?php
@@ -82,7 +82,7 @@ else {
     else {
         $key = array_search($ref, $collection);
     }
-    if (update_preview($ref)){
+    if (update_previews($ref)){
         ?>
         <img src="<?php echo get_resource_path($ref,false,"pre",false)?>">
         <?php 

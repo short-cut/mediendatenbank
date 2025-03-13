@@ -1,11 +1,5 @@
 <?php
-
-
-if (php_sapi_name()!=="cli") {exit("This utility is command line only.");}
-
-// Save current settings
-$saved_search_filter_nodes = $search_filter_nodes;
-$search_filter_nodes = true;
+command_line_only();
 
 $allresources = do_search('');
 $pre_count = is_array($allresources) ? count($allresources) : 0;
@@ -50,7 +44,7 @@ debug("eldoradonode: " . $eldoradonode . "\n");
 debug("atlantisnode: " . $atlantisnode . "\n");
 debug("marketingnode: " . $marketingnode . "\n");
 debug("publicnode: " . $publicnode . "\n");
-debug("sensitivenode: " . $sensitivenode . "\n");;
+debug("sensitivenode: " . $sensitivenode . "\n");
 debug("happynode: " . $happynode . "\n");
 
 // Add nodes to resource a
@@ -148,9 +142,3 @@ if(count($results) != ($pre_count + 1) || !in_array($resourced,array_column($res
     echo "SUBTEST C";
     return false;
     }
-
-
-// Reset before next script
-$usersearchfilter = '';
-$search_filter_nodes = $saved_search_filter_nodes;
-return true;

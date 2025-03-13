@@ -3,35 +3,36 @@ include "../include/db.php";
 
 include "../include/authenticate.php";
 
-$ref        = getvalescaped('ref', '', true);
-$user_group = getvalescaped('usergroup', '', true);
+$ref        = getval('ref', '', true);
+$user_group = getval('usergroup', '', true);
 
 # fetch the current search (for finding simlar matches)
-$search       = getvalescaped("search", "");
-$order_by     = getvalescaped("order_by", "relevance");
-$offset       = getvalescaped("offset", 0, true);
-$restypes     = getvalescaped("restypes", "");
+$search       = getval("search", "");
+$order_by     = getval("order_by", "relevance");
+$offset       = getval("offset", 0, true);
+$restypes     = getval("restypes", "");
 if (strpos($search,"!") !== false) { $restypes = ""; }
-$archive      = getvalescaped("archive", 0, true);
-$starsearch   = getvalescaped("starsearch", "");
+$archive      = getval("archive", 0, true);
 $default_sort_direction = (substr($order_by,0,5) == "field") ? "ASC" : "DESC";
 $sort         = getval("sort", $default_sort_direction);
 $ajax         = filter_var(getval("ajax", false), FILTER_VALIDATE_BOOLEAN);
 $modal        = (getval("modal", "") == "true");
-$backurl      = getvalescaped('backurl', '');
+$backurl      = getval('backurl', '');
 
 # Check if editing existing external share
-$editaccess   = getvalescaped("editaccess", "");
-$deleteaccess = getvalescaped('deleteaccess', '');
+$editaccess   = getval("editaccess", "");
+$deleteaccess = getval('deleteaccess', '');
 $editing      = ($editaccess != "" && $deleteaccess == "") ? true : false;
 
 $editexternalurl = (getval("editexternalurl","") != "");
 $generateurl  = getval("generateurl","") != "";
 
+$share_user = getval("share_user", 0);
+
 // Share options
 if($editing)
     {
-    $shareinfo      = get_external_shares(array("share_resource"=>$ref, "access_key"=>$editaccess));
+    $shareinfo      = get_external_shares(array("share_resource"=>$ref, "access_key"=>$editaccess, "share_user"=>(int)$share_user));
     if(isset($shareinfo[0]))
         {
         $shareinfo  = $shareinfo[0];
@@ -41,17 +42,17 @@ if($editing)
         error_alert($lang["error_invalid_key"],true);
         exit();        
         }
-    $expires        = getvalescaped("expires",$shareinfo["expires"]);
+    $expires        = getval("expires",$shareinfo["expires"]);
     $access         = getval("access",$shareinfo["access"], true);	
     $group          = getval("usergroup",$shareinfo["usergroup"],true);
-    $sharepwd       = getvalescaped('sharepassword', ($shareinfo["password_hash"] != "" ? "true" : ""));
+    $sharepwd       = getval('sharepassword', ($shareinfo["password_hash"] != "" ? "true" : ""));
     }
 else
     {
-    $expires        = getvalescaped("expires","");
+    $expires        = getval("expires","");
     $access         = getval("access",-1, true);	
     $group          = getval("usergroup",0,true);
-    $sharepwd       = getvalescaped('sharepassword', '');
+    $sharepwd       = getval('sharepassword', '');
     }
 
 $minaccess=get_resource_access($ref);
@@ -72,8 +73,8 @@ if ('' != $deleteaccess && enforcePostRequest($ajax))
     }
 
 # Process deletion of custom user access
-$deleteusercustomaccess = getvalescaped('deleteusercustomaccess', '');
-$user = getvalescaped('user', '');
+$deleteusercustomaccess = getval('deleteusercustomaccess', '');
+$user = getval('user', '');
 if ($deleteusercustomaccess=='yes' && checkperm('v') && enforcePostRequest($ajax))
     {
     delete_resource_custom_user_access($ref, $user);
@@ -93,7 +94,7 @@ if (isset($show_error))
     exit();
     }
 
-$query_string = 'ref=' . urlencode($ref) . '&search=' . urlencode($search) . '&offset=' . urlencode($offset) . '&order_by=' . urlencode($order_by) . '&sort=' .urlencode($sort) . '&archive=' . urlencode($archive);
+$query_string = 'ref=' . urlencode($ref) . '&search=' . urlencode($search) . '&offset=' . urlencode($offset) . '&order_by=' . urlencode($order_by) . '&sort=' .urlencode($sort) . '&archive=' . urlencode($archive) . '&modal=' . $modal;
 $urlparams    = array(
     'ref'      => $ref,
     'search'   => $search,
@@ -117,7 +118,7 @@ if($editing && !$editexternalurl)
             if($modal)
                 {
                 ?>
-                <a href="#" class="closeLink fa fa-times" onclick="ModalClose();"></a>
+                <a href="#" class="closeLink fa fa-times" onclick="ModalClose();" title="<?php echo escape($lang["close"]); ?>"></a>
                 <?php
                 }
                 ?>
@@ -129,7 +130,8 @@ if($editing && !$editexternalurl)
             $links_trail = array(
                 array(
                     'title' => $lang["teamcentre"],
-                    'href'  => $baseurl_short . "pages/team/team_home.php"
+                    'href'  => $baseurl_short . "pages/team/team_home.php",
+                    'menu' =>  true
                 ),
                 array(
                     'title' => $lang["manage_external_shares"],
@@ -198,7 +200,7 @@ if($editing && !$editexternalurl)
                     {
                     if ($email_sharing) 
                         { ?>
-                        <li><i aria-hidden="true" class="fa fa-fw fa-envelope"></i>&nbsp;<a href="<?php echo $baseurl_short . 'pages/resource_email.php?' . $query_string ?>" onclick="return CentralSpaceLoad(this, true);"><?php echo $lang["emailresourcetitle"]?></a></li> 
+                        <li><i aria-hidden="true" class="fa fa-fw fa-envelope"></i>&nbsp;<a href="<?php echo $baseurl_short . 'pages/resource_email.php?' . $query_string ?>" onclick="return <?php echo ($modal?'ModalLoad':'CentralSpaceLoad');?>(this, true);"><?php echo $lang["emailresourcetitle"]?></a></li> 
                         <?php 
                         }
                     }
@@ -281,11 +283,7 @@ if($editing && !$editexternalurl)
                     # Process editing of external share
                     if ($editexternalurl && $access > -1 && enforcePostRequest(false))
                         {
-                        $editsuccess = edit_resource_external_access($editaccess,$access,$expires,$user_group,$sharepwd);
-                        if($editsuccess)
-                            {
-                            echo "<span style='font-weight:bold;'>".$lang['changessaved']." - <em>".$editaccess."</em>";
-                            }
+                        edit_resource_external_access($editaccess,$access,$expires,$user_group,$sharepwd);
                         }
                     }
                     ?>
@@ -354,7 +352,7 @@ if($editing && !$editexternalurl)
                             <td><div class="ListTitle"><a target="_blank" href="<?php echo $url ?>"><?php echo htmlspecialchars($key["access_key"]) ?></a></div></td>
                             <td><?php echo $type                                              ?></td>
                             <td><?php echo htmlspecialchars(resolve_users($key["users"]))     ?></td>
-                            <td><?php echo htmlspecialchars($key["emails"])                   ?></td>
+                            <td><?php echo htmlspecialchars($key["emails"]??"")                   ?></td>
                             <td><?php echo htmlspecialchars(nicedate($key["maxdate"],true));  ?></td>
                             <td><?php echo htmlspecialchars(nicedate($key["lastused"],true)); ?></td>
                             <td><?php echo htmlspecialchars($keyexpires)                         ?></td>
@@ -377,6 +375,7 @@ if($editing && !$editexternalurl)
                                         array(
                                             "ref"               => $key["collection"],
                                             "editaccess"        => $key["access_key"],
+                                            "share_user"        => $key["users"]
                                         ));
                                     
                                     $viewlink = generateurl($baseurl . "/", array("c"=> $key["collection"]));
@@ -391,6 +390,7 @@ if($editing && !$editexternalurl)
                                         array(
                                             "ref"               => $ref,
                                             "editaccess"        => $key["access_key"],
+                                            "share_user"        => $key["users"]
                                         ));
                                     ?>
                                     <a href="#" onClick="return resourceShareDeleteShare('<?php echo $key["access_key"] ?>');"><?php echo LINK_CARET ?><?php echo $lang["action-delete"]?></a>      
@@ -412,14 +412,14 @@ if($editing && !$editexternalurl)
             </div>
 			<script type="text/javascript">
 			    function resourceShareDeleteShare(access_key) {
-			        if (confirm('<?php echo $lang["confirmdeleteaccessresource"]?>')) {
+			        if (confirm('<?php echo escape($lang["confirmdeleteaccessresource"]) ?>')) {
 			            document.getElementById('deleteaccess').value = access_key;
                         <?php echo ($modal ? "Modal" : "CentralSpace"); ?>Post(document.getElementById('resourceshareform'),true);
 			        }
 			        return false;
 			    }
 				function resourceShareDeleteUserCustomAccess(user) {
-			        if (confirm('<?php echo $lang["confirmdeleteusercustomaccessresource"] ?>')) {
+			        if (confirm('<?php echo escape($lang["confirmdeleteusercustomaccessresource"]) ?>')) {
 			            document.getElementById('deleteusercustomaccess').value = 'yes';
 						document.getElementById('user').value = user;
 			            document.getElementById('resourceshareform').submit(); 
@@ -460,8 +460,8 @@ if($editing && !$editexternalurl)
 						$custexpires = ($ca["expires"] == "") ? $lang["never"] : nicedate($ca["expires"],false);
 						$custaccess  = ($ca["access"] == -1)  ? "" : $lang["access" . $ca["access"]];
 						?><tr>
-							<td><?php echo htmlspecialchars($ca["user"]); ?></td>
-							<td><?php echo htmlspecialchars($ca["usergroup"]); ?></td>
+							<td><?php echo htmlspecialchars($ca["user"]??""); ?></td>
+							<td><?php echo htmlspecialchars($ca["usergroup"]??""); ?></td>
 							<td><?php echo htmlspecialchars($custexpires); ?></td>
 							<td><?php echo htmlspecialchars($custaccess); ?></td>
 							<td><div class="ListTools"><a href="#" onClick="return resourceShareDeleteUserCustomAccess(<?php echo get_user_by_username($ca["user"]) ?>);"><?php echo LINK_CARET ?><?php echo $lang["action-delete"]?></a></div></td>

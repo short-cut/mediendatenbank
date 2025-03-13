@@ -2,7 +2,7 @@
 
 function HookTransformAllAdditionalheaderjs()
     {
-    global $baseurl,$baseurl_short, $css_reload_key;?>
+    global $baseurl_short, $css_reload_key;?>
     <link rel="stylesheet" href="<?php echo $baseurl_short?>plugins/transform/lib/jcrop/css/jquery.Jcrop.min.css?css_reload_key=<?php echo $css_reload_key; ?>" type="text/css" />
     <script type="text/javascript" src="<?php echo $baseurl_short ?>plugins/transform/lib/jcrop/js/jquery.Jcrop.min.js?css_reload_key=<?php echo $css_reload_key; ?>" language="javascript"></script>
     <script type="text/javascript" src="<?php echo $baseurl_short?>lib/jQueryRotate/jQueryRotate.js?css_reload_key=<?php echo $css_reload_key; ?>" language="javascript"></script>
@@ -12,14 +12,7 @@ function HookTransformAllAdditionalheaderjs()
 
 function HookTransformAllRender_actions_add_collection_option($top_actions,$options,$collection_data, array $urlparams)
     {
-	global $cropper_enable_batch,$count_result,$lang, $baseurl, $userref, $internal_share_access;
-
-    $k = trim((isset($urlparams["k"]) ? $urlparams["k"] : ""));
-
-    if($k != "" && $internal_share_access === false)
-        {
-        return false;
-        }
+	global $cropper_transform_original, $cropper_enable_batch,$count_result,$lang, $baseurl, $userref, $internal_share_access;
     
     // Make sure this check takes place before $GLOBALS["hook_return_value"] can be unset by subsequent calls to hook()
     if(isset($GLOBALS["hook_return_value"]) && is_array($GLOBALS["hook_return_value"]))
@@ -28,7 +21,15 @@ function HookTransformAllRender_actions_add_collection_option($top_actions,$opti
         $options = $GLOBALS["hook_return_value"];
         }
 
-    if ($cropper_enable_batch
+    $k = trim((isset($urlparams["k"]) ? $urlparams["k"] : ""));
+
+    if($k != "" && $internal_share_access === false)
+        {
+        return $options;
+        }
+
+    if ($cropper_enable_batch 
+        && $cropper_transform_original
         && $count_result > 0
         &&  (
             $userref == $collection_data['user']
@@ -88,5 +89,18 @@ function HookTransformAllAdditional_title_pages()
         echo "<script language='javascript'>\n";
         echo "document.title = \"$applicationname - $pagetitle\";\n";
         echo "</script>";
+        }
+    }
+
+function HookTransformAllreplace_resource_file_extra($resource)
+    {
+    // Delete the original_copy alternative when replacing the file via upload_batch
+    if(getval('saveaction', '') === '')
+        {
+        $path = get_resource_path($resource['ref'],true,"original_copy",false,$resource['file_extension']);
+        if(file_exists($path))
+            {
+            unlink($path);
+            }
         }
     }

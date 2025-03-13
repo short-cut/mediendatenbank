@@ -18,6 +18,7 @@ $tms_link_script_failure_notify_days=3;
 
 $tms_link_log_directory="";
 $tms_link_log_expiry=7;
+$tms_link_write_to_debug_log = false;
 
 // Additional options for bidirectional syncing (ResourceSpace -> TMS)
 $tms_link_push_image=false;
@@ -38,6 +39,8 @@ $tms_link_object_id_field=0; # Field that is used to store TMS object ID
 $tms_link_field_mappings_saved=base64_encode(serialize(array()));
 $tms_link_text_columns=array("ObjectStatus","Department","Classification","Curator","Cataloguer","ObjectName","SubjectKeywords","Creators","Titles","StylePeriod","CulturalContext","Medium","Geography","CreditLine","Description","RelatedObjects","Inscription","Provenance","CurrLocDisplay","Copyright","Dimensions","Restrictions","CreditLineRepro","ObjRightsType");
 $tms_link_numeric_columns=array("ObjectID","ObjectNumber","CuratorRevISODate","Dated","RowChecksum");
+
+$tms_link_mediapaths_resource_reference_column = ""; # Column to store resource ID in for TMS media ID creation
 
 
 $tms_link_modules_saved_mappings = base64_encode(

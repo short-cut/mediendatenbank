@@ -3,10 +3,10 @@ include "../../../include/db.php";
 
 include "../../../include/authenticate.php";
 
-$ref=getvalescaped("ref","");
+$ref=getval("ref","");
 
 # Check access
-if (!checkperm("a")) {exit("Access denied");} # Should never arrive at this page without admin access
+if (!checkperm("a") && !checkperm("lm")) {exit("Access denied");} # Should never arrive at this page without admin access
 
 $url_params = array(
     'ref'        => $ref,
@@ -21,8 +21,8 @@ $redirect_url = generateURL($baseurl_short . "/plugins/licensemanager/pages/list
 
 if (getval("submitted","")!="" && enforcePostRequest(false))
 	{
-	sql_query("delete from license where ref='$ref'");
-	sql_query("delete from resource_license where license='$ref'");
+	ps_query("delete from license where ref= ?", ['i', $ref]);
+	ps_query("delete from resource_license where license= ?", ['i', $ref]);
 
 	redirect($redirect_url);
 	}
@@ -36,16 +36,15 @@ include "../../../include/header.php";
 
 <form method="post" action="<?php echo $baseurl_short?>plugins/licensemanager/pages/delete.php" onSubmit="return CentralSpacePost(this,true);">
 <input type=hidden name="submitted" value="true">
-<input type=hidden name="ref" value="<?php echo $ref?>">
+<input type=hidden name="ref" value="<?php echo escape($ref); ?>">
 <?php generateFormToken("licensemanager_delete"); ?>
 
-<div class="Question"><label><?php echo $lang["license_id"]?></label><div class="Fixed"><?php echo htmlspecialchars($ref)?></div>
+<div class="Question"><label><?php echo escape($lang["license_id"]); ?></label><div class="Fixed"><?php echo htmlspecialchars($ref)?></div>
 <div class="clearerleft"> </div></div>
 
 
-<div class="QuestionSubmit">
-<label for="buttons"> </label>			
-<input name="delete" type="submit" value="&nbsp;&nbsp;<?php echo $lang["action-delete"]?>&nbsp;&nbsp;" />
+<div class="QuestionSubmit">		
+<input name="delete" type="submit" value="&nbsp;&nbsp;<?php echo escape($lang["action-delete"]); ?>&nbsp;&nbsp;" />
 </div>
 </form>
 </div>

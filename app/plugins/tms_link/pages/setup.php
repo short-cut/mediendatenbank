@@ -5,7 +5,7 @@ include '../../../include/authenticate.php'; if (!checkperm('a')) {exit ($lang['
 
 $tms_link_modules_mappings = unserialize(base64_decode($tms_link_modules_saved_mappings));
 
-$scriptlastran=sql_value("select value from sysvars where name='last_tms_import'","");
+$scriptlastran=ps_value("select value from sysvars where name='last_tms_import'",array(), "");
 
 global $baseurl, $tms_link_field_mappings_saved;
 // Specify the name of this plugin and the heading to display for the page.
@@ -36,6 +36,7 @@ $page_def[] = config_add_text_input('tms_link_test_count',$lang['tms_link_test_c
 
 $page_def[] = config_add_text_input('tms_link_log_directory',$lang['tms_link_log_directory']);
 $page_def[] = config_add_text_input('tms_link_log_expiry',$lang['tms_link_log_expiry']);
+$page_def[] = config_add_boolean_select('tms_link_write_to_debug_log', $lang['tms_link_write_to_debug_log']);
 
 $page_def[] = config_add_section_header($lang['tms_link_bidirectional_options']);
 $page_def[] = config_add_boolean_select('tms_link_push_image', $lang['tms_link_push_image']);
@@ -46,6 +47,7 @@ $page_def[] = config_add_text_input('tms_link_mediatypeid',$lang['tms_link_media
 $page_def[] = config_add_text_input('tms_link_formatid',$lang['tms_link_formatid']);
 $page_def[] = config_add_text_input('tms_link_colordepthid',$lang['tms_link_colordepthid']);
 $page_def[] = config_add_text_input('tms_link_media_path',$lang['tms_link_media_path']);
+$page_def[] = config_add_text_input('tms_link_mediapaths_resource_reference_column',$lang['tms_link_mediapaths_resource_reference_column']);
 
 $page_def[] = config_add_section_header($lang['tms_link_modules_mappings']);
 $tms_modules_mappings_html = "
@@ -61,13 +63,13 @@ $tms_modules_mappings_html = "
 
 foreach($tms_link_modules_mappings as $tms_link_module_index => $tms_link_module)
     {
-    $tms_link_module_name = htmlspecialchars($tms_link_module['module_name']);
-    $tms_link_tms_uid_field = htmlspecialchars($tms_link_module['tms_uid_field']);
+    $tms_link_module_name = htmlspecialchars($tms_link_module['module_name']??"");
+    $tms_link_tms_uid_field = htmlspecialchars($tms_link_module['tms_uid_field']??"");
 
-    $tms_link_rs_uid_field = get_resource_type_field($tms_link_module['rs_uid_field']);
+    $tms_link_rs_uid_field = get_resource_type_field($tms_link_module['rs_uid_field']??"");
     if(false !== $tms_link_rs_uid_field)
         {
-        $tms_link_rs_uid_field = htmlspecialchars($tms_link_rs_uid_field['title']);
+        $tms_link_rs_uid_field = htmlspecialchars((string) $tms_link_rs_uid_field['title']);
         }
 
     $tms_link_applicable_resource_types = '';
@@ -168,7 +170,7 @@ $page_def[] = config_add_hidden("tms_link_modules_saved_mappings");
 
 
 // Do the page generation ritual -- don't change this section.
-$upload_status = config_gen_setup_post($page_def, $plugin_name);
+config_gen_setup_post($page_def, $plugin_name);
 
 if(trim($tms_link_log_directory)!="" && (getval("save","")!="" || getval("submit","")!=""))
 	{
@@ -183,7 +185,7 @@ if(trim($tms_link_log_directory)!="" && (getval("save","")!="" || getval("submit
 	else
 		{
 		$logfilepath=$tms_link_log_directory . DIRECTORY_SEPARATOR . "tms_import_log_test.log";
-		$logfile=@fopen($logfilepath,a);
+		$logfile=@fopen($logfilepath,'a');
 		if(!file_exists($logfilepath))
 			{
 			$errortext = 'Unable to create log file in directory: ' . htmlspecialchars($tms_link_log_directory);			
@@ -201,5 +203,5 @@ if(isset($errortext))
 	{
 	echo "<div class=\"PageInformal\">" . $errortext . "</div>";
 	}
-config_gen_setup_html($page_def, $plugin_name, $upload_status, $plugin_page_heading);
+config_gen_setup_html($page_def, $plugin_name, null, $plugin_page_heading);
 include '../../../include/footer.php';

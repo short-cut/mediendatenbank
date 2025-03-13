@@ -5,13 +5,19 @@
 
 /**
 * Generates the CSV content of the metadata for resources passed in the array
+* The CSV is echoed to output for direct download or saved to a file
 *
-* @param array $resources (array of resource ids)
-* @return string
+* @param array  $resources  array of resource ids to create a CSV for
+* @param bool   $personal   flag to include only fields expected to include personal data
+* @param bool   $alldata    flag to include extra data from the resource table
+* @param string $outputfile optional file path to output CSV to
+*
+* @return bool|void TRUE if the file has been created, void if the data has been sent as a direct download
 */
 function generateResourcesMetadataCSV(array $resources,$personal=false,$alldata=false,$outputfile="")
     {
-    global $lang, $csv_export_add_original_size_url_column, $file_checksums, $k, $scramble_key, $get_resource_data_cache;
+    global $lang, $csv_export_add_original_size_url_column, $file_checksums, $k, $scramble_key,
+        $get_resource_data_cache,$csv_export_add_data_fields;
     
     // Write the CSV to a disk to avoid memory issues with large result sets
     $tempcsv = trim($outputfile) != "" ? $outputfile : get_temp_dir() . "/csv_export_" . uniqid() . ".csv";
@@ -19,7 +25,7 @@ function generateResourcesMetadataCSV(array $resources,$personal=false,$alldata=
     $csv_field_headers      = array();
     $csvoptions = array("csvexport"=>true,"personal"=>$personal,"alldata"=>$alldata);
     $allfields = get_resource_type_fields("","order_by","asc");
-    $cache_location=get_query_cache_location();
+    $cache_location = get_temp_dir();
     $cache_data = array();
     $restypearr = get_resource_types();
     $resource_types = array();
@@ -28,6 +34,8 @@ function generateResourcesMetadataCSV(array $resources,$personal=false,$alldata=
         {
         $resource_types[$restype["ref"]] = $restype;
         }
+
+    $field_restypes = get_resource_type_field_resource_types();
 
     // Break resources up into smaller arrays to avoid hitting memory limits
     $resourcebatches = array_chunk($resources, 2000);
@@ -74,13 +82,25 @@ function generateResourcesMetadataCSV(array $resources,$personal=false,$alldata=
             $udata=get_user($resdata["created_by"]);
             if ($udata!==false)
                 {
-                $resources_fields_data[$resource]["created_by"] = (trim($udata["fullname"]) != "" ? $udata["fullname"] :  $udata["username"]);
+                $resources_fields_data[$resource]["created_by"] = (trim($udata["fullname"]??"") != "" ? $udata["fullname"] :  $udata["username"]);
                 }
 
-            if ($alldata && $file_checksums)
+            if ($alldata)
                 {
-                $resources_fields_data[$resource]["file_checksum"] = $resdata["file_checksum"];
-                }       
+                if (isset($csv_export_add_data_fields))
+                    {
+                    foreach($csv_export_add_data_fields as $addfield)
+                        {
+                        $resources_fields_data[$resource][$addfield["column"]] = $resdata[$addfield["column"]];
+                        $csv_field_headers[$addfield["column"]]=$addfield["title"];
+                        }
+                    }
+                if ($file_checksums)
+                    {
+                    $resources_fields_data[$resource]["file_checksum"] = $resdata["file_checksum"];
+                    }
+                }
+            
             foreach($allfields as $restypefield)
                 {
                 if  (
@@ -89,15 +109,9 @@ function generateResourcesMetadataCSV(array $resources,$personal=false,$alldata=
                         (!$personal || $restypefield["personal_data"])
                     && 
                         ($alldata || $restypefield["include_in_csv_export"])
-                    && 
-                        !(checkperm("T" . $restypefield["resource_type"]))
                     &&
                         (
-                        $restypefield["resource_type"] == $resdata["resource_type"]
-                        ||
-                        ($restypefield["resource_type"] == 0 && (bool)$resource_types[$resdata["resource_type"]]["inherit_global_fields"])
-                        ||
-                        ($restypefield["resource_type"] == 999 && $resdata["archive"] == 2)
+                        isset($field_restypes[$restypefield["ref"]]) && in_array($resdata["resource_type"],$field_restypes[$restypefield["ref"]])
                         )
                     )
                     {
@@ -118,7 +132,7 @@ function generateResourcesMetadataCSV(array $resources,$personal=false,$alldata=
             /*Provide the original URL only if we have access to the resource or the user group
             doesn't have restricted access to the original size*/
             $access = get_resource_access($resdata);
-            if(0 != $access || checkperm("T{$resdata['resource_type']}_"))
+            if(0 != $access || resource_has_access_denied_by_RT_size($resdata['resource_type'], ''))
                 {
                 continue;
                 }
@@ -219,11 +233,16 @@ function generateResourcesMetadataCSV(array $resources,$personal=false,$alldata=
 */
 function generateNodesExport(array $field, $parent = null, $send_headers = false)
     {
-    global $lang;
+    global $lang, $FIXED_LIST_FIELD_TYPES;
 
     if(0 === count($field) || !isset($field['ref']) || !isset($field['type']))
         {
         trigger_error('Field array cannot be empty. generateNodesExport() requires at least "ref" and "type" indexes!');
+        }
+
+    if(!in_array($field['type'],$FIXED_LIST_FIELD_TYPES))
+        {
+        return false;
         }
 
     $return = '';

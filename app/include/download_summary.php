@@ -24,11 +24,7 @@ $rl_params_override = array(
     "filter_by_usageoption" => null,
 );
 ?>
-<div class="RecordDownload" id="RecordDownloadSummary" style="margin-right:10px;">
-<div class="RecordDownloadSpace">
-
-<h2><?php echo $lang["usagehistory"] ?></h2>
-
+<div class="RecordDownloadSpace" id="RecordDownloadSummary" style="margin-right:10px; display: none;">
 
 <table cellpadding="0" cellspacing="0">
 <tr>
@@ -52,7 +48,7 @@ $rl_params_override = array(
 		?>
 		<tr>
 		<td>
-            <a href="<?php echo generateURL($rl_url, $rl_params, $rl_params_override); ?>" onclick="return ModalLoad(this, true);"><?php echo LINK_CARET . htmlspecialchars($download_usage_options[$usage["usageoption"]]); ?></a>
+            <a href="<?php echo generateURL($rl_url, $rl_params, $rl_params_override); ?>" onclick="return ModalLoad(this, true);"><?php echo LINK_CARET . htmlspecialchars(i18n_get_translated($download_usage_options[$usage["usageoption"]])); ?></a>
         </td>
 		<td width="20%"><?php echo $usage["c"]?></th>		
 		</tr>
@@ -62,5 +58,4 @@ $rl_params_override = array(
 ?>
 </table>
 <?php } ?>
-</div>
 </div>

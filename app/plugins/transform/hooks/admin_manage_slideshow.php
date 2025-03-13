@@ -6,7 +6,7 @@ function HookTransformAdmin_manage_slideshowRender_new_element_for_manage_slides
     if ($cropper_enable_replace_slideshow != 1)
         { 
             // if config option in transform plugin doesn't allow slideshow images to be edited, then do not show input field
-        
+
     print "<p><b>To add or replace slideshow images, update the setting 'Enable replacing the slideshow' in Admin > System > Manage plugins > transform > Options.</b></p>";
 
             return; // if config option in transform plugin doesn't allow slideshow images to be edited, then do not show input field
@@ -18,7 +18,6 @@ function HookTransformAdmin_manage_slideshowRender_new_element_for_manage_slides
     $new_slideshow_id = isset($last_slideshow_file["ref"]) ? ($last_slideshow_file["ref"] + 1) : 1;
     ?>
     <div id="add_new_slideshow" class="Question">
-        <label></label>
         <span class="stdwidth">
             <button type="submit" onclick="jQuery('#new_slideshow_form').fadeIn(); return false;"><?php echo $lang['action-add-new']; ?></button>
             <form
@@ -28,7 +27,6 @@ function HookTransformAdmin_manage_slideshowRender_new_element_for_manage_slides
                 onsubmit="return CentralSpacePost(this);"
             >
                 <?php generateFormToken("add_new_slideshow"); ?>
-                <label></label>
                 <input 
                     name="ref"
                     type="text"

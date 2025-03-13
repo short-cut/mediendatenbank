@@ -10,13 +10,13 @@ include "../../include/db.php";
 include "../../include/authenticate.php";if (!checkperm("o")) {exit ("Permission denied.");}
 include "../../include/research_functions.php";
 
-$offset=getvalescaped("offset",0,true);
+$offset=getval("offset",0,true);
 if (array_key_exists("findpage",$_POST) ||array_key_exists("findname",$_POST) || array_key_exists("findtext",$_POST)) {$offset=0;} # reset page counter when posting
-$findpage=getvalescaped("findpage","");
-$findname=getvalescaped("findname","");
-$findtext=getvalescaped("findtext","");
-$page=getvalescaped("page","");
-$name=getvalescaped("name","");
+$findpage=getval("findpage","");
+$findname=getval("findname","");
+$findtext=getval("findtext","");
+$page=getval("page","");
+$name=getval("name","");
 
 $extended=false;
 if ($findpage!="" || $findname!="" || $findtext!="")
@@ -38,11 +38,13 @@ include "../../include/header.php";
 
 
 <div class="BasicsBox" style="position:relative;">
+<h1><?php echo $lang["managecontent"]; ?></h1>
 <?php
 $links_trail = array(
     array(
         'title' => $lang["systemsetup"],
-        'href'  => $baseurl_short . "pages/admin/admin_home.php"
+        'href'  => $baseurl_short . "pages/admin/admin_home.php",
+		'menu' =>  true
     ),
     array(
         'title' => $lang["managecontent"],
@@ -56,7 +58,7 @@ echo empty($int_text)?"":"<p>".$int_text."</p>";
 $text=get_all_site_text($findpage, $findname,$findtext);
 
 # pager
-$per_page=15;
+$per_page = $default_perpage_list;
 $results=count($text);
 $totalpages=ceil($results/$per_page);
 $curpage=floor($offset/$per_page)+1;
@@ -81,12 +83,12 @@ $jumpcount=1;
 <?php
 for ($n=$offset;(($n<count($text)) && ($n<($offset+$per_page)));$n++)
 	{
-	$url=$baseurl_short . "pages/admin/admin_content_edit.php?page=" . urlencode($text[$n]["page"]) . "&name=" . urlencode($text[$n]["name"]) . "&editlanguage=" . urlencode($text[$n]["language"]) . "&editgroup=" . urlencode($text[$n]["group"]) . "&findpage=" . urlencode($findpage) . "&findname=" . urlencode($findname) . "&findtext=" . urlencode($findtext) . "&offset=" . urlencode($offset);
+	$url=$baseurl_short . "pages/admin/admin_content_edit.php?page=" . urlencode($text[$n]["page"]) . "&name=" . urlencode($text[$n]["name"]) . "&editlanguage=" . urlencode($text[$n]["language"]) . "&editgroup=" . (is_null($text[$n]["group"]) ? "" : urlencode($text[$n]["group"])) . "&findpage=" . urlencode($findpage) . "&findname=" . urlencode($findname) . "&findtext=" . urlencode($findtext) . "&offset=" . urlencode($offset);
 	?>
 	<tr>
-	<td><div class="ListTitle"><a href="<?php echo $url ?>"><?php echo highlightkeywords(($text[$n]["page"]==""||$text[$n]["page"]=="all"?$lang["all"]:$text[$n]["page"]),$findpage,true);?></a></div></td>
+	<td><div class="ListTitle"><a href="<?php echo $url ?>"><?php echo highlightkeywords(($text[$n]["page"]==""||$text[$n]["page"]=="all"?$lang["all"]:$text[$n]["page"]),htmlspecialchars($findpage),true);?></a></div></td>
 	
-	<td><div class="ListTitle"><a href="<?php echo $url ?>" onClick="return CentralSpaceLoad(this,true);"><?php echo highlightkeywords($text[$n]["name"],$findname,true)?></a></div></td>
+	<td><div class="ListTitle"><a href="<?php echo $url ?>" onClick="return CentralSpaceLoad(this,true);"><?php echo highlightkeywords($text[$n]["name"],htmlspecialchars($findname),true)?></a></div></td>
 	
 	<?php if ($extended) {
 	# Extended view. Show the language and group when searching, as these variants are expanded out when searching.
@@ -110,9 +112,9 @@ for ($n=$offset;(($n<count($text)) && ($n<($offset+$per_page)));$n++)
 	<td><?php echo $group_resolved ?></td>
 	<?php } ?>
 	
-	<td><a href="<?php echo $url ?>" onClick="return CentralSpaceLoad(this,true);"><?php echo highlightkeywords(tidy_trim(htmlspecialchars($text[$n]["text"]),100), $findtext, true, '', 1, STR_HIGHLIGHT_SIMPLE & STR_HIGHLIGHT_STRIPLINKS); ?></a></td>
+	<td><a href="<?php echo $url ?>" onClick="return CentralSpaceLoad(this,true);"><?php echo highlightkeywords(tidy_trim(htmlspecialchars($text[$n]["text"]),100), htmlspecialchars($findtext), true, '', 1, STR_HIGHLIGHT_SIMPLE & STR_HIGHLIGHT_STRIPLINKS); ?></a></td>
 	
-	<td><div class="ListTools"><a href="<?php echo $url ?>" onClick="return CentralSpaceLoad(this,true);"><?php echo LINK_CARET ?><?php echo $lang["action-edit"]?> </a></div></td>
+	<td><div class="ListTools"><a href="<?php echo $url ?>" onClick="return CentralSpaceLoad(this,true);"><i class="fa fa-edit"></i>&nbsp;<?php echo $lang["action-edit"]?> </a></div></td>
 	</tr>
 	<?php
 	}
@@ -135,11 +137,11 @@ for ($n=$offset;(($n<count($text)) && ($n<($offset+$per_page)));$n++)
     	<div class="Question">
 			<label for="find"><?php echo $lang["searchcontent"]?><br/><?php echo $lang["searchcontenteg"]?></label>
 			<div class="tickset">
-			 <div class="Inline"><input type=text placeholder="<?php echo $lang['searchbypage']?>" name="findpage" id="findpage" value="<?php echo $findpage?>" maxlength="100" class="shrtwidth" />
+			 <div class="Inline"><input type=text placeholder="<?php echo $lang['searchbypage']?>" name="findpage" id="findpage" value="<?php echo escape($findpage)?>" maxlength="100" class="shrtwidth" />
 			
-			<input type=text placeholder="<?php echo $lang['searchbyname']?>" name="findname" id="findname" value="<?php echo $findname?>" maxlength="100" class="shrtwidth" />
+			<input type=text placeholder="<?php echo $lang['searchbyname']?>" name="findname" id="findname" value="<?php echo escape($findname)?>" maxlength="100" class="shrtwidth" />
 		
-			<input type=text placeholder="<?php echo $lang['searchbytext']?>" name="findtext" id="findtext" value="<?php echo $findtext?>" maxlength="100" class="shrtwidth" />
+			<input type=text placeholder="<?php echo $lang['searchbytext']?>" name="findtext" id="findtext" value="<?php echo escape($findtext)?>" maxlength="100" class="shrtwidth" />
 			
 			<input type="button" value="<?php echo $lang['clearall']?>" onClick="jQuery('#findtext').val('');jQuery('#findpage').val('');jQuery('#findname').val('');form.submit();" />
 			<input name="Submit" type="submit" value="&nbsp;&nbsp;<?php echo $lang["searchbutton"]?>&nbsp;&nbsp;" />

@@ -12,7 +12,8 @@ if (php_sapi_name()!=="cli") {exit("This utility is command line only.");}
   */
 
 include_once "../include/db.php";
-
+include_once "../include/test_functions.php";
+include_once "../include/image_processing.php";
 
 $suppress_headers=true;
 define ("RS_TEST_MODE",1);
@@ -26,6 +27,7 @@ Command line paramaters:
 
 -nosetup        Do not setup the database, connect user in current state
 -noteardown     Do not drop the database once tests have completed
+-performance    Test performance
 -help or -?     This help information
 [n]...          Specific test number(s) to run
 <?php
@@ -34,11 +36,16 @@ Command line paramaters:
 
 # Create an array of tests that were passed from the command line
 $specific_tests=array();
+$performancetest=false;
 foreach($argv as $arg)
     {
     if(is_numeric($arg))
         {
         array_push($specific_tests, str_pad($arg,6,'0',STR_PAD_LEFT));
+        }
+    elseif($arg == "performance")
+        {
+        $performancetest =true;
         }
     }
     
@@ -61,10 +68,23 @@ function match_values( $arraya , $arrayb )
 	return $arraya == $arrayb; 
 	} 
 
+/**
+ * Generate a random alpha-numeric UID to use during testing. Helpful to prevent errors when running with 
+ * nosetup & noteardown caused by already having an identical record.
+ * 
+ * @param integer $size The length size of the ID
+ * @return string
+ * 
+ */
+function test_generate_random_ID(int $size): string {
+    return bin2hex(random_bytes($size));
+}
+
+
 $mysql_db = "rs_test_db";
 $test_user_name = "admin";
 $test_user_password = "admin123";
-$inst_plugins = sql_query('SELECT name FROM plugins WHERE inst_version>=0 order by name');
+$inst_plugins = ps_query('SELECT name FROM plugins WHERE inst_version>=0 order by name');
 
 if(array_search('nosetup',$argv)===false)
     {
@@ -81,9 +101,14 @@ foreach($savedconfigs as $savedconfig)
     $saved[$savedconfig] = $$savedconfig;
     }
     
+// Save existing $baseurl so tests will still use valid URLs
+
+$saved_url = $baseurl != "http://my.site/resourcespace" ? $baseurl : "http://localhost";
 include "../include/config.default.php";
 eval(file_get_contents("../include/config.new_installs.php"));
-   
+$baseurl = $saved_url;
+$query_cache_enabled = false;
+
 foreach($saved as $key => $savedsetting)    
     {
     $$key = $savedsetting;
@@ -100,12 +125,12 @@ if(array_search('nosetup',$argv)===false)
     echo "...done\n";
     # Insert a new user and run as them.
     $u = new_user($test_user_name);
-    sql_query("UPDATE `user` SET `password`='{$test_user_password }'");
+    ps_query("UPDATE `user` SET `password`=?",array("s",$test_user_password));
     }
 else
     {
     # Try to retrieve the ref of the existing user
-    $u = sql_value("SELECT `ref` AS value FROM `user` WHERE `username`='{$test_user_name}'",-1);
+    $u = ps_value("SELECT `ref` AS value FROM `user` WHERE `username`=?",array("s",$test_user_name),-1);
     if ($u==-1)
         {
         die("Could not find existing '{$test_user_name}' user");
@@ -137,8 +162,14 @@ mkdir($storagedir);
 $storageurl .= '/rs_test';
 echo "Filestore is now at $storagedir\n";
 
+// General environment configuration 
+$password_min_length = 7;
+$password_min_alpha = $password_min_numeric = 1;
+$password_min_uppercase = $password_min_special = 0;
+
+$test_dir = $performancetest ? "performance_tests" : "test_list";
 # Get a list of core tests
-$core_tests = scandir("test_list");
+$core_tests = scandir($test_dir);
 $core_tests = array_filter($core_tests, function ($string)
     {
     global $specific_tests;
@@ -161,37 +192,40 @@ $core_tests = array_filter($core_tests, function ($string)
     }); # PHP files only
 asort($core_tests);
 
-$core_tests = array('test_list' => $core_tests);
+$core_tests = array($test_dir => $core_tests);
+
 
 # Get a list of plugin tests
 $plugin_tests = array();
-foreach ($inst_plugins as $plugin)
+if(!$performancetest)
     {
-    if (file_exists('../plugins/' . $plugin['name'] . '/tests'))
+    foreach ($inst_plugins as $plugin)
         {
-        $plugin_tests['../plugins/' . $plugin['name'] . '/tests'] = scandir('../plugins/' . $plugin['name'] . '/tests');
+        if (file_exists('../plugins/' . $plugin['name'] . '/tests'))
+            {
+            $plugin_tests['../plugins/' . $plugin['name'] . '/tests'] = scandir('../plugins/' . $plugin['name'] . '/tests');
+            }
         }
-    }
-foreach ($plugin_tests as $key => $tests)
-    {
-    $plugin_tests[$key] = array_filter($tests, function ($string)
+    foreach ($plugin_tests as $key => $tests)
         {
-        global $specific_tests;
-        if (substr($string,-4,4) != ".php")
+        $plugin_tests[$key] = array_filter($tests, function ($string)
             {
+            global $specific_tests;
+            if (substr($string,-4,4) != ".php")
+                {
+                return false;
+                }
+            if (count($specific_tests)==0)
+                {
+                return true;
+                }
             return false;
-            }
-        if (count($specific_tests)==0)
-            {
-            return true;
-            }
-        return false;
-        });
-    asort($tests);
-    }
-	
-$plugin_tests = array_filter($plugin_tests); # Remove empty sub arrays
+            });
+        asort($tests);
+        }
 
+    $plugin_tests = array_filter($plugin_tests); # Remove empty sub arrays
+    }
 if (!empty($plugin_tests))
     {
     $tests = array_merge($core_tests, $plugin_tests);	
@@ -245,6 +279,6 @@ echo "All tests complete.\n";
 if(array_search('noteardown',$argv)===false)
     {
     # Remove database
-    sql_query("drop database `$mysql_db`");
+    ps_query("drop database `$mysql_db`");
     rcRmdir($storagedir);
     }

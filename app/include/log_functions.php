@@ -36,7 +36,7 @@ function log_activity($note=null, $log_code=LOG_CODE_UNSPECIFIED, $value_new=nul
 
 	if (is_null($value_old) && !is_null($remote_table) && !is_null($remote_column) && !is_null($remote_ref))	// only try and get the old value if not explicitly set and we have table details
 		{
-		$row = sql_query("SELECT * FROM `{$remote_table}` WHERE `" . (is_null($ref_column_override) ? 'ref' : escape_check($ref_column_override)) . "`='" . escape_check($remote_ref) . "'");
+		$row = ps_query("SELECT " . columns_in($remote_table) . " FROM `{$remote_table}` WHERE `" . (is_null($ref_column_override) ? 'ref' : $ref_column_override) . "` = ?",array("i",$remote_ref));
 		if (isset($row[0][$remote_column]))
 			{
 			$value_old = $row[0][$remote_column];
@@ -53,18 +53,17 @@ function log_activity($note=null, $log_code=LOG_CODE_UNSPECIFIED, $value_new=nul
 		return;
 		}
 
-	sql_query("INSERT INTO `activity_log` (`logged`,`user`,`log_code`,`note`,`value_old`,`value_new`,`value_diff`,`remote_table`,`remote_column`,`remote_ref`) VALUES (" .
-		"NOW()," .
-		"'{$user}'," .
-		"'" . (!LOG_CODE_validate($log_code) ? LOG_CODE_UNSPECIFIED : $log_code) . "'," .
-		"'" . (is_null($note) ? '' : escape_check($note)) . "'," .
-		"'" . (is_null($value_old) ? '' : escape_check($value_old)) . "'," .
-		"'" . (is_null($value_new) ? '' : escape_check($value_new)) . "'," .
-		"'" . (!is_null($value_old) && !is_null($value_new) && $generate_diff ? escape_check(log_diff($value_old,$value_new)) : '') . "'," .
-		"'" . (is_null($remote_table) ? '' : escape_check($remote_table)) . "'," .
-		"'" . (is_null($remote_column) ? '' : escape_check($remote_column)) . "'," .
-		"'" . (is_null($remote_ref) ? '' : escape_check(mb_strcut($remote_ref, 0, 100))) . "'" .
-		")");
+    $parameters=array("i",$user,"s",(!LOG_CODE_validate($log_code) ? LOG_CODE_UNSPECIFIED : $log_code));
+    $parameters[]="s"; $parameters[]=(is_null($note) ? null : $note);
+    $parameters[]="s"; $parameters[]=(is_null($value_old) ? null : $value_old);
+    $parameters[]="s"; $parameters[]=(is_null($value_new) ? null : $value_new);
+    $parameters[]="s"; $parameters[]=(!is_null($value_old) && !is_null($value_new) && $generate_diff ? log_diff($value_old,$value_new) : '');
+    $parameters[]="s"; $parameters[]=(is_null($remote_table) ? null : $remote_table);
+    $parameters[]="s"; $parameters[]=(is_null($remote_column) ? null : $remote_column);
+    $parameters[]="s"; $parameters[]=(is_null($remote_ref) ? null : mb_strcut($remote_ref, 0, 100));
+
+	ps_query("INSERT INTO `activity_log` (`logged`,`user`,`log_code`,`note`,`value_old`,`value_new`,`value_diff`,`remote_table`,`remote_column`,`remote_ref`) 
+              VALUES (NOW()," . ps_param_insert(count($parameters)/2) . ")", $parameters);
 	}
 
 
@@ -110,39 +109,58 @@ function logScript($message, $file = null)
 * @param integer   $minref      (Optional) Minimum ref of resource log entry to return (default 0)
 * @param integer   $days       (Optional) Number of days to return. e.g 3 = all results for today, yesterday and the day before. Default = 7 (ignored if minref supplied)
 * @param integer   $maxrecords  (Optional) Maximum number of records to return. Default = all rows (0)
+* @param array     $fields      (Optional) Limit results to particular metadata field(s)
+* @param array     $log_codes    (Optional) Limit results to particular log code(s)
 * 
 * @return array
 */   
- function resource_log_last_rows($minref = 0, $days = 7, $maxrecords = 0)
+function resource_log_last_rows($minref = 0, $days = 7, $maxrecords = 0, array $fields = [], array $log_codes = [])
     {
     if(!checkperm('v'))
         {
         return array();
         }
-        
+    
+    $parameters=array();
     $sql = "SELECT date, ref, resource, type, resource_type_field AS field, user, notes, diff, usageoption FROM resource_log WHERE type not in ('l', 't')";
     if($minref > 0)
         {
-        $sql .= " AND ref>=" . (int)$minref;
+        $sql .= " AND ref >= ?";
+        $parameters[]="i"; $parameters[]=(int)$minref;
         }
     else
         {
-        $sql .= " AND datediff(now(),date)<'" . (int)$days . "'";
+        $sql .= " AND datediff(now(),date) < ?";
+        $parameters[]="i"; $parameters[]=(int)$days;
         }
-        
+
+    $fields = array_filter($fields, 'is_positive_int_loose');
+    if($fields !== [])
+        {
+        $sql .= sprintf(' AND resource_type_field IN (%s)', ps_param_insert(count($fields)));
+        $parameters = array_merge($parameters, ps_param_fill($fields, 'i'));
+        }
+
+    $log_codes = array_filter($log_codes, 'LOG_CODE_validate');
+    if($log_codes !== [])
+        {
+        $sql .= sprintf(' AND BINARY `type` IN (%s)', ps_param_insert(count($log_codes)));
+        $parameters = array_merge($parameters, ps_param_fill($log_codes, 's'));
+        }
+
     if($maxrecords > 0)
         {
         $sql .= " LIMIT " . (int)$maxrecords;
         }
-        
-    $results = sql_query($sql);
+
+    $results = ps_query($sql,$parameters);
     return $results;
     }
  
 /**
 * Get activity log entries from log tables (e.g activity_log, resource_log and collection_log)
 * 
-* @uses sql_query()
+* @uses ps_query()
 * 
 * @param  string  $search  Search text to filter down results using fuzzy searching
 * @param  integer $offset  Specifies the offset of the first row to return
@@ -166,43 +184,50 @@ function get_activity_log($search, $offset, $rows, array $where_statements, $tab
         {
         $where_var = "where_{$ws_table}_statement";
 
+        # Create named where statement variable
         $$where_var = $where_statement;
         }
 
     $log_codes = array_values(LOG_CODE_get_all());
-    $when_statements  = "";
+    $col_when_statements = $res_when_statements = "";
+    $col_when_parameters = $res_when_parameters = [];
+    $res_log_codes_processed = [];
     foreach($log_codes as $log_code)
         {
-        $log_code_escaped = escape_check($log_code);
         $log_code_description = "";
 
-        if(!isset($GLOBALS['lang']["log_code_{$log_code}"]))
+        if(!isset($GLOBALS['lang']["log_code_{$log_code}"]) || in_array($log_code, $res_log_codes_processed))
             {
             if(!isset($GLOBALS['lang']["collectionlog-{$log_code}"]))
                 {
                 continue;
                 }
 
-            $log_code_description = escape_check($GLOBALS['lang']["collectionlog-{$log_code}"]);
-
-            $when_statements .= " WHEN BINARY('{$log_code_escaped}') THEN '{$log_code_description}'";
+            $log_code_description = $GLOBALS['lang']["collectionlog-{$log_code}"];
+            $col_when_statements .= " WHEN BINARY(?) THEN ?";
+            $col_when_parameters  = array_merge($col_when_parameters, ['s', $log_code, 's', $log_code_description]);
 
             continue;
             }
 
-        $log_code_description = escape_check($GLOBALS['lang']["log_code_{$log_code}"]);
+        $log_code_description = $GLOBALS['lang']["log_code_{$log_code}"];
 
-        $when_statements .= " WHEN BINARY('{$log_code_escaped}') THEN '{$log_code_description}'";
+        $res_when_statements .= " WHEN BINARY(?) THEN ?";
+        $res_when_parameters  = array_merge($res_when_parameters, ['s', $log_code, 's', $log_code_description]);
+
+        $res_log_codes_processed[] = $log_code;
         }
 
     $count_statement_start = "";
     $count_statement_end = "";
 
-    $sql_query = "
-                 SELECT
+    $sql_query = new PreparedStatementQuery();
+
+    $sql_query->sql  = "
+                    SELECT
                         `activity_log`.`logged` AS 'datetime',
                         `user`.`username` AS 'user',
-                        CASE BINARY(`activity_log`.`log_code`) {$when_statements} ELSE `activity_log`.`log_code` END AS 'operation',
+                        CASE BINARY(`activity_log`.`log_code`) ".$res_when_statements.$col_when_statements." ELSE `activity_log`.`log_code` END AS 'operation',
                         `activity_log`.`note` AS 'notes',
                         NULL AS 'resource_field',
                         `activity_log`.`value_old` AS 'old_value',
@@ -215,27 +240,33 @@ function get_activity_log($search, $offset, $rows, array $where_statements, $tab
                    FROM `activity_log`
         LEFT OUTER JOIN `user` ON `activity_log`.`user`=`user`.`ref`
                   WHERE
-                        {$where_activity_log_statement}
-                        (
-                            `activity_log`.`ref` LIKE '%{$search}%'
-                            OR `activity_log`.`logged` LIKE '%{$search}%'
-                            OR `user`.`username` LIKE '%{$search}%'
-                            OR `activity_log`.`note` LIKE '%{$search}%'
-                            OR `activity_log`.`value_old` LIKE '%{$search}%'
-                            OR `activity_log`.`value_new` LIKE '%{$search}%'
-                            OR `activity_log`.`value_diff` LIKE '%{$search}%'
-                            OR `activity_log`.`remote_table` LIKE '%{$search}%'
-                            OR `activity_log`.`remote_column` LIKE '%{$search}%'
-                            OR `activity_log`.`remote_ref` LIKE '%{$search}%'
-                            OR (CASE BINARY(`activity_log`.`log_code`) {$when_statements} ELSE `activity_log`.`log_code` END) LIKE '%{$search}%'
-                        )
+                    {$where_activity_log_statement}";
+    $sql_query->parameters = array_merge($sql_query->parameters, array_merge($res_when_parameters,$col_when_parameters));
 
-                  UNION
+    $search_block = 
+                       "`activity_log`.`ref` LIKE ?
+                        OR `activity_log`.`logged` LIKE ?
+                        OR `user`.`username` LIKE ?
+                        OR `activity_log`.`note` LIKE ?
+                        OR `activity_log`.`value_old` LIKE ?
+                        OR `activity_log`.`value_new` LIKE ?
+                        OR `activity_log`.`value_diff` LIKE ?
+                        OR `activity_log`.`remote_table` LIKE ?
+                        OR `activity_log`.`remote_column` LIKE ?
+                        OR `activity_log`.`remote_ref` LIKE ?
+                        OR ? LIKE (CASE BINARY(`activity_log`.`log_code`)";
+    
+
+    $sql_query->sql .=  "(" . $search_block . " ".$res_when_statements.$col_when_statements." ELSE `activity_log`.`log_code` END) )";
+    $sql_query->parameters = array_merge($sql_query->parameters, ps_fill_param_array($search_block, "%{$search}%", 's'), array_merge($res_when_parameters,$col_when_parameters));
+
+    $sql_query->sql .=
+                  "UNION
 
                  SELECT
                         `resource_log`.`date` AS 'datetime',
                         `user`.`username` AS 'user',
-                        CASE BINARY(`resource_log`.`type`) {$when_statements} ELSE `resource_log`.`type` END AS 'operation',
+                        CASE BINARY(`resource_log`.`type`) {$res_when_statements} ELSE `resource_log`.`type` END AS 'operation',
                         `resource_log`.`notes` AS 'notes',
                         `resource_type_field`.`title` AS 'resource_field',
                         `resource_log`.`previous_value` AS 'old_value',
@@ -249,25 +280,31 @@ function get_activity_log($search, $offset, $rows, array $where_statements, $tab
         LEFT OUTER JOIN `user` ON `resource_log`.`user`=`user`.`ref`
         LEFT OUTER JOIN `resource_type_field` ON `resource_log`.`resource_type_field`=`resource_type_field`.`ref`
                   WHERE
-                        {$where_resource_log_statement}
-                        (
-                            `resource_log`.`ref` LIKE '%{$search}%'
-                            OR `resource_log`.`date` LIKE '%{$search}%'
-                            OR `user`.`username` LIKE '%{$search}%'
-                            OR `resource_log`.`notes` LIKE '%{$search}%'
-                            OR `resource_log`.`previous_value` LIKE '%{$search}%'
-                            OR 'resource' LIKE '%{$search}%'
-                            OR 'ref' LIKE '%{$search}%'
-                            OR `resource_log`.`resource` LIKE '%{$search}%'
-                            OR (CASE BINARY(`resource_log`.`type`) {$when_statements} ELSE `resource_log`.`type` END) LIKE '%{$search}%'
-                        )
+                        {$where_resource_log_statement}";
+    $sql_query->parameters = array_merge($sql_query->parameters, $res_when_parameters);
 
-                  UNION
+        $search_block =
+                          "`resource_log`.`ref` LIKE ?
+                            OR `resource_log`.`date` LIKE ?
+                            OR `user`.`username` LIKE ?
+                            OR `resource_log`.`notes` LIKE ?
+                            OR `resource_log`.`previous_value` LIKE ?
+                            OR 'resource' LIKE ?
+                            OR 'ref' LIKE ?
+                            OR `resource_log`.`resource` LIKE ?
+                            OR ? LIKE (CASE BINARY(`resource_log`.`type`)"; 
+                            
+    $sql_query->sql .= "(" . $search_block . " {$res_when_statements} ELSE `resource_log`.`type` END) )";
+    $sql_query->parameters = array_merge($sql_query->parameters, ps_fill_param_array($search_block, "%{$search}%", 's'), $res_when_parameters);
+
+
+    $sql_query->sql .=
+                  "UNION
 
                  SELECT
                         `collection_log`.`date` AS 'datetime',
                         `user`.`username` AS 'user',
-                        CASE BINARY(`collection_log`.`type`) $when_statements ELSE `collection_log`.`type` END AS 'operation',
+                        CASE BINARY(`collection_log`.`type`) {$col_when_statements} ELSE `collection_log`.`type` END AS 'operation',
                         `collection_log`.`notes` AS 'notes',
                         NULL AS 'resource_field',
                         '' AS 'old_value',
@@ -281,31 +318,35 @@ function get_activity_log($search, $offset, $rows, array $where_statements, $tab
         LEFT OUTER JOIN `user` ON `collection_log`.`user`=`user`.`ref`
         LEFT OUTER JOIN `collection` ON `collection_log`.`collection`=`collection`.`ref`
                   WHERE
-                        {$where_collection_log_statement}
-                        (
-                            `collection_log`.`collection` LIKE '%{$search}%'
-                            OR `collection_log`.`date` LIKE '%{$search}%'
-                            OR `collection_log`.`notes` LIKE '%{$search}%'
-                            OR `collection_log`.`resource` LIKE '%{$search}%'
-                            OR `collection`.`name` LIKE '%{$search}%'
-                            OR `user`.`username` LIKE '%{$search}%'
-                            OR (CASE BINARY(`collection_log`.`type`) {$when_statements} ELSE `collection_log`.`type` END) LIKE '%{$search}%'
-                        )
+                        {$where_collection_log_statement}";
+    $sql_query->parameters = array_merge($sql_query->parameters, $col_when_parameters);
 
-        ORDER BY `datetime` DESC
-    ";
+    $search_block = 
+                           "`collection_log`.`collection` LIKE ?
+                            OR `collection_log`.`date` LIKE ?
+                            OR `collection_log`.`notes` LIKE ?
+                            OR `collection_log`.`resource` LIKE ?
+                            OR `collection`.`name` LIKE ?
+                            OR `user`.`username` LIKE ?
+                            OR ? LIKE (CASE BINARY(`collection_log`.`type`)";
+    
+    $sql_query->sql .= "(" . $search_block . " {$col_when_statements} ELSE `collection_log`.`type` END) )";
+    $sql_query->parameters = array_merge($sql_query->parameters, ps_fill_param_array($search_block, "%{$search}%", 's'), $col_when_parameters);
 
+    $sql_query->sql .= "ORDER BY `datetime` DESC";
+
+    # Wrap the query as a subquery within a table selection if necessary
     if(trim($table) !== '')
         {
-        $table = escape_check($table);
-        $outer_sql_query = "SELECT * FROM ({$sql_query}) AS `logs` WHERE `logs`.`table` = '{$table}' ";
+
+        $sql_query->sql = "SELECT * FROM ({$sql_query->sql}) AS `logs` WHERE `logs`.`table` = ? ";
+        $sql_query->parameters = array_merge($sql_query->parameters, ['s', $table]);
 
         if(is_numeric($table_reference) && $table_reference > 0)
             {
-            $outer_sql_query .= "AND `logs`.`table_reference` = '{$table_reference}'";
+            $sql_query->sql .= "AND `logs`.`table_reference` = ?";
+            $sql_query->parameters = array_merge($sql_query->parameters, ['i', $table_reference]);
             }
-
-        $sql_query = $outer_sql_query;
         }
 
     $limit = sql_limit($offset, $rows);
@@ -314,12 +355,13 @@ function get_activity_log($search, $offset, $rows, array $where_statements, $tab
         {
         $count_statement_start = "SELECT COUNT(*) AS value FROM (";
         $count_statement_end = ") AS count_select";
-        $sql_query = $count_statement_start . $sql_query . $count_statement_end;
-        return sql_value($sql_query, 0);
+        $sql_query->sql = $count_statement_start . $sql_query->sql . $count_statement_end;
+        return ps_value($sql_query->sql, $sql_query->parameters,0);
         }
     else
         {
-        return sql_query("{$sql_query} {$limit}");
+        $sql_query->sql .= " ".$limit;
+        return ps_query($sql_query->sql, $sql_query->parameters);
         }
     }
 
@@ -334,11 +376,13 @@ function get_activity_log($search, $offset, $rows, array $where_statements, $tab
 function get_user_downloads($userref,$user_dl_days)
     {
     $daylimit = (int)$user_dl_days != 0 ? (int)$user_dl_days : 99999;
-    $count = sql_value("SELECT COUNT(DISTINCT resource) value 
+    $parameters=array("i",(int)$userref, "i",$daylimit*60*60*24);
+
+    $count = ps_value("SELECT COUNT(DISTINCT resource) value 
         FROM resource_log rl
         WHERE rl.type='d'
-        AND rl.user = '" . (int)$userref . "'
-        AND TIMESTAMPDIFF(SECOND,date,now()) <=" . $daylimit*60*60*24,0);
+        AND rl.user = ?
+        AND TIMESTAMPDIFF(SECOND,date,now()) <= ?",$parameters,0);
         
     return $count;
     }
@@ -346,49 +390,93 @@ function get_user_downloads($userref,$user_dl_days)
 
 /**
 * Add detail of node changes to resource log
+*
+* Note that this function originally required only the added and removed nodes to be passed. 
+* This was prior to node reversion changes, which requires the logging of all the existing resource nodes
 * 
 * @param integer $resource          Resource ID
-* @param array   $nodes_added       Array of node IDs that have been added
-* @param array   $nodes_removed     Array of node IDs that have been removed
+* @param array   $nodes_new         Array of new node IDs
+* @param array   $nodes_current     Array of old node IDs
 * @param string  $lognote           Optional note to add to log entry
+* @param array   $nodes_renamed     Optional array of old node names with node id as key e.g. [345 => 'oldname',678 => "pastname"]
 * 
 * @return boolean                   Success/failure
 */
-function log_node_changes($resource,$nodes_added,$nodes_removed,$lognote = "")
+function log_node_changes($resource,$nodes_new,$nodes_current,$lognote = "",$nodes_renamed = [])
     {
     if((string)(int)$resource !== (string)$resource)
         {
         return false;
         }
+    // Find treefields - required so that old value will be logged with full path
+    $treefields = array_column(get_resource_type_fields("","ref","asc","",[FIELD_TYPE_CATEGORY_TREE]),"ref");
     $nodefieldchanges = array();
-    foreach ($nodes_removed as $node)
+    if(count($nodes_current) != count($nodes_new) || array_diff($nodes_new, $nodes_current) != array_diff($nodes_current, $nodes_new))
         {
-        $nodedata = array();
-        if(get_node($node, $nodedata))
+        foreach ($nodes_current as $node)
             {
-            $nodefieldchanges[$nodedata["resource_type_field"]][0][] = $nodedata["name"];
+            $nodedata = array();
+            if(get_node($node, $nodedata, false))
+                {
+                if(in_array($nodedata["resource_type_field"],$treefields) && $nodedata["parent"] > 0)
+                    {
+                    $parents = get_node_strings(get_parent_nodes($nodedata["ref"],true,true),false,false);
+                    $nodefieldchanges[$nodedata["resource_type_field"]][0][] = reset($parents);
+                    }
+                else
+                    {
+                    $nodefieldchanges[$nodedata["resource_type_field"]][0][] = $nodedata["name"];
+                    }
+                }
+            }
+        foreach ($nodes_new as $node)
+            {
+            $nodedata = array();
+            if(get_node($node, $nodedata, false))
+                {
+                if(in_array($nodedata["resource_type_field"],$treefields) && $nodedata["parent"] > 0)
+                    {
+                    $parentnodes = get_parent_nodes($nodedata["ref"],true,true);
+                    $parents = get_node_strings($parentnodes,false,false);
+                    $nodefieldchanges[$nodedata["resource_type_field"]][1][] = reset($parents);
+                    }
+                else
+                    {
+                    $nodefieldchanges[$nodedata["resource_type_field"]][1][] = $nodedata["name"];
+                    }
+                }
             }
         }
-    foreach ($nodes_added as $node)
+    foreach ($nodes_renamed as $nodeid=>$oldname)
         {
-        $nodedata = array();
-        if(get_node($node, $nodedata))
+        if (!in_array($nodeid, $nodes_new))
             {
+            // $nodes_renamed contains a node that's not being used.
+            // This could be after changing from unique node to one used elsewhere.
+            continue;
+            }
+        $nodedata = array();
+        if(get_node($nodeid, $nodedata, false)) // Don't use cache - always get the latest node name when writing to the log
+            {
+            $nodefieldchanges[$nodedata["resource_type_field"]][0][] = $oldname;
             $nodefieldchanges[$nodedata["resource_type_field"]][1][] = $nodedata["name"];
             }
         }
+
     foreach ($nodefieldchanges as $key => $value)
         {
+        if(isset($value[0]) && isset($value[1]) && array_diff($value[0],$value[1])==array_diff($value[1],$value[0]))
+            {
+            // No difference
+            continue;
+            }
         // Log changes to each field separately
-        // Prefix with a comma so that log_diff() can log each node change correctly
-        $fromvalue  = isset($value[0]) ? "," . implode(",",$value[0]) : "";
-        $tovalue    = isset($value[1]) ? "," . implode(",",$value[1]) : "";
+        $fromvalue  = isset($value[0]) ? implode(NODE_NAME_STRING_SEPARATOR,$value[0]) : "";
+        $tovalue    = isset($value[1]) ? implode(NODE_NAME_STRING_SEPARATOR,$value[1]) : "";
         resource_log($resource,LOG_CODE_EDITED,$key,$lognote,$fromvalue,$tovalue);
-        return true;
         }
 
-    // Nothing to log
-    return false;
+    return true;
     }
 
 /**
@@ -408,13 +496,23 @@ function log_search_event(string $search, array $resource_types, array $archive_
     $resource_types = array_filter($resource_types, 'is_int_loose');
     $archive_states = array_filter($archive_states, 'is_int_loose');
 
-    $q = sprintf(
-        'INSERT INTO search_log (search_string, resource_types, archive_states, `user`, result_count) VALUES (%s, %s, %s, %s, \'%s\')',
-        sql_null_or_val($search, $search === ''),
-        sql_null_or_val(implode(', ', $resource_types), empty($resource_types)),
-        sql_null_or_val(implode(', ', $archive_states), empty($archive_states)),
-        sql_null_or_val((string) $userref, is_null($userref)),
-        (is_int_loose($result_count) ? escape_check($result_count) : '0')
-    );
-    return sql_query($q);
+    $parameters=array();
+    $parameters[]="s";$parameters[]=($search === '' ? NULL : $search);
+    $parameters[]="s";$parameters[]=(empty($resource_types) ? NULL : implode(', ', $resource_types));
+    $parameters[]="s";$parameters[]=(empty($archive_states) ? NULL : implode(', ', $archive_states));
+    $parameters[]="i";$parameters[]=(is_null($userref) ? NULL : (int)$userref);
+    $parameters[]="i";$parameters[]=(is_int_loose($result_count) ? (int)$result_count : 0);
+
+    $q = "INSERT INTO search_log (search_string, resource_types, archive_states, `user`, result_count) VALUES (?,?,?,?,?)";
+    return ps_query($q,$parameters);
+    }
+
+/**
+ * Generate a fingerprint which could then be used as a trace ID for event correlation purposes.
+ * 
+ * @param array $components Data making up our fingerprint.
+ */
+function generate_trace_id(array $components): string
+    {
+    return md5(implode('--', $components));
     }

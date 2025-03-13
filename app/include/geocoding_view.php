@@ -119,8 +119,6 @@ if ($resource['geo_lat'] != '' && $resource['geo_long'] != '')
 
         jQuery(document).ready(function ()
             {
-            var LeafletView = L.noConflict();
-
             <!--Setup and define the Leaflet map with the initial view using leaflet.js and L.Control.Zoomslider.js-->
             var <?php echo $map_container_obj; ?>_geo_lat = <?php echo $resource['geo_lat']; ?>;
             var <?php echo $map_container_obj; ?>_geo_long = <?php echo $resource['geo_long']; ?>;
@@ -130,9 +128,9 @@ if ($resource['geo_lat'] != '' && $resource['geo_long'] != '')
                 {
                 <?php echo $map_container_obj; ?>.remove();
                 }
-            var <?php echo $map_container_obj; ?> = new LeafletView.map(<?php echo $map_container; ?>, {
+            var <?php echo $map_container_obj; ?> = new L.map(<?php echo $map_container; ?>, {
             preferCanvas: true,
-                renderer: LeafletView.canvas(),
+                renderer: L.canvas(),
                 zoomsliderControl: <?php echo $zoomslider?>,
                 zoomControl: <?php echo $zoomcontrol?>
                 }).setView([<?php echo $map_container_obj; ?>_geo_lat, <?php echo $map_container_obj; ?>_geo_long], <?php echo $map_container_obj; ?>_zoom);
@@ -142,7 +140,7 @@ if ($resource['geo_lat'] != '' && $resource['geo_long'] != '')
 
             <!--Define default Leaflet basemap layer using leaflet.js, leaflet.providers.js, and L.TileLayer.PouchDBCached.js-->
     
-            var defaultLayer = new LeafletView.tileLayer.provider('<?php echo $map_default;?>', {
+            var defaultLayer = new L.tileLayer.provider('<?php echo $map_default;?>', {
                 useCache: '<?php echo $map_default_cache;?>', <!--Use browser caching of tiles (recommended)?-->
                 detectRetina: '<?php echo $map_retina;?>', <!--Use retina high resolution map tiles?-->
                 attribution: default_attribute
@@ -156,17 +154,17 @@ if ($resource['geo_lat'] != '' && $resource['geo_long'] != '')
                 exclusive: false
             };
 
-            var control = LeafletView.Control.styledLayerControl(baseMaps,options);
+            var control = L.Control.styledLayerControl(baseMaps,options);
             <?php echo $map_container_obj; ?>.addControl(control);
 
             <!--Show zoom history navigation bar and add to Leaflet map using Leaflet.NavBar.min.js-->
             <?php if ($map_zoomnavbar && $view_mapheight >= 400)
                 { ?>
-                LeafletView.control.navbar().addTo(<?php echo $map_container_obj; ?>); <?php
+                L.control.navbar().addTo(<?php echo $map_container_obj; ?>); <?php
                 } ?>
 
             <!--Add a scale bar to the Leaflet map using leaflet.min.js-->
-            new LeafletView.control.scale().addTo(<?php echo $map_container_obj; ?>);
+            new L.control.scale().addTo(<?php echo $map_container_obj; ?>);
 
             <!--Add a KML overlay to the Leaflet map using leaflet-omnivore.min.js-->
             <?php if ($map_kml)
@@ -180,7 +178,7 @@ if ($resource['geo_lat'] != '' && $resource['geo_long'] != '')
             }
 
             <!--Add a marker for the resource-->
-            LeafletView.marker([<?php echo $map_container_obj; ?>_geo_lat, <?php echo $map_container_obj; ?>_geo_long], {
+            L.marker([<?php echo $map_container_obj; ?>_geo_lat, <?php echo $map_container_obj; ?>_geo_long], {
                 <?php
                 $maprestype = get_resource_types($resource['resource_type']);
                 $markercolour = (isset($maprestype[0]) && isset($MARKER_COLORS[$maprestype[0]["colour"]])) ? (int)$maprestype[0]["colour"] : ($resource['resource_type'] % count($MARKER_COLORS));
@@ -195,7 +193,7 @@ if ($resource['geo_lat'] != '' && $resource['geo_long'] != '')
                 $polygon = leaflet_polygon_parsing($fields, false);
                 if (!is_null($polygon['values']) && $polygon['values'] != "" && $polygon['values'] != "[]")
                     { ?>
-                    var refPolygon = LeafletView.polygon([<?php echo $polygon['values']; ?>]).addTo(<?php echo $map_container_obj; ?>);
+                    var refPolygon = L.polygon([<?php echo $polygon['values']; ?>]).addTo(<?php echo $map_container_obj; ?>);
                     <?php echo $map_container_obj; ?>.fitBounds(refPolygon.getBounds(), {
                         padding: [25, 25]
                     }); <?php
@@ -229,20 +227,22 @@ if($view_panels)
     <script>
     jQuery(document).ready(function ()
         {
-        jQuery("#GeolocationData").children(".Title").attr("panel", "GeolocationData").appendTo("#Titles1");
-        removePanel = jQuery("#GeolocationData").parent().parent(".RecordBox");
-        jQuery("#GeolocationData").appendTo("#Panel1").addClass("TabPanel").hide();
+        let parent_element = jQuery('#<?php echo ($modal?'modal':'CentralSpace')?>');
+        parent_element.find("#GeolocationData").children(".Title").attr("panel", "GeolocationData").appendTo(parent_element.find("#Titles1"));
+        removePanel = parent_element.find("#GeolocationData").parent().parent(".RecordBox");
+        parent_element.find("#GeolocationData").appendTo(parent_element.find("#Panel1")).addClass("TabPanel").hide();
         removePanel.remove();
 
-        <!--Function to switch tab panels-->
+        //Function to switch tab panels
         jQuery('.ViewPanelTitles').children('.Title').click(function()
             {
-            jQuery(this).parent().parent().children('.TabPanel').hide();
-            jQuery(this).parent().children('.Title').removeClass('Selected');
-            jQuery(this).addClass('Selected');
-            jQuery('#' + jQuery(this).attr('panel')).show();
-            <?php echo $map_container_obj; ?>.invalidateSize(true);
+            parent_element.find(this).parent().parent().children('.TabPanel').hide();
+            parent_element.find(this).parent().children('.Title').removeClass('Selected');
+            parent_element.find(this).addClass('Selected');
+            parent_element.find('#' + jQuery(this).attr('panel')).show();
+            <?php if(isset($map_container_obj)) echo $map_container_obj??"" . ".invalidateSize(true);";?>
             });
+        });
         </script> <?php
         } ?>
     </div> <?php

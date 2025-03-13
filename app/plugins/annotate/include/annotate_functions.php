@@ -1,4 +1,44 @@
 <?php
+include_once(dirname(__FILE__) . '/../../../lib/html2pdf/vendor/tecnickcom/tcpdf/tcpdf.php');
+
+class MYPDF extends TCPDF {
+		
+	public function MultiRow($left, $right) {
+		
+		$page_start = $this->getPage();
+		$y_start = $this->GetY();
+	
+		// write the left cell
+		$this->MultiCell(.5, 0, $left, 1, 'C', 1, 2, '', '', true, 0);
+	
+		$page_end_1 = $this->getPage();
+		$y_end_1 = $this->GetY();
+	
+		$this->setPage($page_start);
+	
+		// write the right cell
+		$right=str_replace("<br />","\n",$right);
+		$this->MultiCell(0, 0, $right, 1, 'L', 0, 1, $this->GetX() ,$y_start, true, 0);
+	
+		$page_end_2 = $this->getPage();
+		$y_end_2 = $this->GetY();
+	
+		// set the new row position by case
+		if (max($page_end_1,$page_end_2) == $page_start) {
+			$ynew = max($y_end_1, $y_end_2);
+		} elseif ($page_end_1 == $page_end_2) {
+			$ynew = max($y_end_1, $y_end_2);
+		} elseif ($page_end_1 > $page_end_2) {
+			$ynew = $y_end_1;
+		} else {
+			$ynew = $y_end_2;
+		}
+		
+		$this->setPage(max($page_end_1,$page_end_2));
+		$this->SetXY($this->GetX(),$ynew);
+	}
+
+}
 
 function clear_annotate_temp($ref,$annotateid)
     {
@@ -16,7 +56,7 @@ function clear_annotate_temp($ref,$annotateid)
 function get_annotate_file_path($ref,$getfilepath,$extension)
     {
     global $username, $scramble_key, $baseurl, $annotateid;
-    $annotateid=getvalescaped("annotateid",$annotateid); //or if sent through a request
+    $annotateid=getval("annotateid",$annotateid); //or if sent through a request
     if($getfilepath)
         {
         $path = get_temp_dir(false,'') . "/annotate_" . $ref . "_" . md5($username . $annotateid . $scramble_key) . "." . $extension;
@@ -38,51 +78,12 @@ function create_annotated_pdf($ref,$is_collection=false,$size="letter",$cleanup=
 	$date= date("m-d-Y h:i a");
 	
 	include_once(dirname(__FILE__) . '/../../../include/image_processing.php');
-	include_once(dirname(__FILE__) . '/../../../lib/html2pdf/vendor/tecnickcom/tcpdf/tcpdf.php');
 
 	$pdfstoragepath=get_annotate_file_path($ref,true,"pdf");
 	$jpgstoragepath=get_annotate_file_path($ref,true,"jpg");
 	$pdfhttppath=get_annotate_file_path($ref,false,"pdf");
 	$jpghttppath=get_annotate_file_path($ref,false,"jpg");
 	
-	class MYPDF extends TCPDF {
-		
-		public function MultiRow($left, $right) {
-			
-			$page_start = $this->getPage();
-			$y_start = $this->GetY();
-		
-			// write the left cell
-			$this->MultiCell(.5, 0, $left, 1, 'C', 1, 2, '', '', true, 0);
-		
-			$page_end_1 = $this->getPage();
-			$y_end_1 = $this->GetY();
-		
-			$this->setPage($page_start);
-		
-			// write the right cell
-			$right=str_replace("<br />","\n",$right);
-			$this->MultiCell(0, 0, $right, 1, 'L', 0, 1, $this->GetX() ,$y_start, true, 0);
-		
-			$page_end_2 = $this->getPage();
-			$y_end_2 = $this->GetY();
-		
-			// set the new row position by case
-			if (max($page_end_1,$page_end_2) == $page_start) {
-				$ynew = max($y_end_1, $y_end_2);
-			} elseif ($page_end_1 == $page_end_2) {
-				$ynew = max($y_end_1, $y_end_2);
-			} elseif ($page_end_1 > $page_end_2) {
-				$ynew = $y_end_1;
-			} else {
-				$ynew = $y_end_2;
-			}
-			
-			$this->setPage(max($page_end_1,$page_end_2));
-			$this->SetXY($this->GetX(),$ynew);
-		}
-
-	}
 	if ($is_collection){
 		$collectiondata=get_collection($ref);
 		$resources=do_search("!collection$ref");
@@ -181,7 +182,8 @@ function create_annotated_pdf($ref,$is_collection=false,$size="letter",$cleanup=
 			unset($notes);
 			if ($resources[$n]['annotation_count']!=0)
 				{
-				$notes=sql_query("select * from annotate_notes where ref='$ref' and page='$page'");
+				$notes=ps_query("SELECT a.ref,top_pos,left_pos,width,height,preview_width,preview_height,note,note_id,user,page, name `value` 
+                                FROM annotate_notes a JOIN node n ON a.node = n.ref WHERE a.ref=? AND page=?",array("i",$ref,"i",$page));
 				$notepages=1; // Normally notes will all fit on one page, but may not
 				foreach ($notes as $note)
 					{
@@ -204,7 +206,7 @@ function create_annotated_pdf($ref,$is_collection=false,$size="letter",$cleanup=
 					$pdf->SetY($ypos);
 					$note_user=get_user($note['user']);
 					$pdf->SetLineStyle($style);
-					$noteparts=explode(":",$note['note'],2);
+					$noteparts=explode(":",$note['value'],2);
 					// If the notes went over the page, we  went back to image for annotation, so we need to return to the page with the last row of the table before adding next row
 					if($notepages>1){$pdf->setPage($currentpdfpage+($notepages-1));}
 					

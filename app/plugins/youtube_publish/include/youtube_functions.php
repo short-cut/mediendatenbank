@@ -35,7 +35,7 @@ function youtube_publish_initialize()
             { 
             global $youtube_publish_client_id, $youtube_publish_client_secret;
           
-            $authresponse=$client->authenticate(getvalescaped("code",""));
+            $authresponse=$client->authenticate(getval("code",""));
             
             $access_token_array = json_decode($authresponse);
             
@@ -105,7 +105,7 @@ function youtube_publish_initialize()
                  'mine' => 'true',
               ));
 
-        $youtube_username = escape_check($listResponse[0]['snippet']['title']);
+        $youtube_username = $listResponse[0]['snippet']['title'];
         ps_query("UPDATE user SET youtube_username = ? WHERE ref = ?", array("s", $youtube_username, "i", $userref));
         }
     catch (Google_ServiceException $e)
@@ -236,17 +236,7 @@ function upload_video()
         $htmlBody = sprintf('<p>A client error occurred: <code>%s</code></p>',
         htmlspecialchars($e->getMessage()));
         exit($htmlBody);
-        }
-    catch (Google_ServiceException $e)
-        {
-        $errortext = sprintf('<p>A service error occurred: <code>%s</code></p>',
-        htmlspecialchars($e->getMessage()));
-        }
-    catch (Google_Exception $e)
-        {
-        $errortext = sprintf('<p>A client error occurred: <code>%s</code></p>',
-        htmlspecialchars($e->getMessage()));
-        }        
+        }     
         
     if(isset($errortext))
         {

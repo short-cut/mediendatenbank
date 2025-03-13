@@ -5,12 +5,12 @@ function HookNewsHomeHomebeforepanels()
 	include_once dirname(__FILE__)."/../inc/news_functions.php";
 	$recent = 3;
 	$findtext = "";
-	$news = get_news_headlines("",$recent,"");
+	$news = get_news_headlines("",$recent);
 	$results=count($news);
    	?>
 
-	<div id="NewsPanel">
-    	<h2><span class="fa fa-newspaper-o"></span>&nbsp;<?php echo $lang['title']; ?></h2>
+	<div class="BasicsBox" id="NewsPanel">
+		<h2><span class="fa fa-newspaper-o"></span>&nbsp;<?php echo $lang['title']; ?></h2>
 		<?php
 			if($results > 0)
 			{

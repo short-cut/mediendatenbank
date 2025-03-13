@@ -6,7 +6,7 @@ if ($access==0 || $alt_files_visible_when_restricted) $alt_access=true; # open a
 
 if ($alt_access) 
 	{
-	global $use_larger_layout;
+	global $use_larger_layout, $request_adds_to_collection;
 	$alt_order_by="";$alt_sort="";
 	if ($alt_types_organize){$alt_order_by="alt_type";$alt_sort="asc";}
 	if(!isset($altfiles))
@@ -39,6 +39,7 @@ if ($alt_access)
 			<?php
 			}
 
+        global $alt_thm;
         $alt_thm = '';
         $alt_pre = '';
         if($alternative_file_previews)
@@ -57,21 +58,58 @@ if ($alt_access)
                 $alt_pre = get_resource_path($ref, false, 'pre', false, 'jpg', true, 1, $use_watermark, $altfiles[$n]['creation_date'], $altfiles[$n]['ref']);
                 }
             }
-            ?>
-		<tr class="DownloadDBlend" <?php if ($alt_pre!="" && $alternative_file_previews_mouseover) { ?>onMouseOver="orig_preview=jQuery('#previewimage').attr('src');orig_height=jQuery('#previewimage').height();jQuery('#previewimage').attr('src','<?php echo $alt_pre ?>');jQuery('#previewimage').height(orig_height);" onMouseOut="jQuery('#previewimage').attr('src',orig_preview);"<?php } ?>>
-		<td class="DownloadFileName AlternativeFile"<?php echo $use_larger_layout ? ' colspan="2"' : ''; ?>>
-		<?php if(!hook("renderaltthumb")): ?>
-		<?php if ($alt_thm!="") { ?><a href="<?php echo $baseurl_short?>pages/preview.php?ref=<?php echo urlencode($ref)?>&alternative=<?php echo $altfiles[$n]["ref"]?>&k=<?php echo urlencode($k)?>&search=<?php echo urlencode($search)?>&offset=<?php echo urlencode($offset)?>&order_by=<?php echo urlencode($order_by)?>&sort=<?php echo urlencode($sort)?>&archive=<?php echo urlencode($archive)?>&<?php echo hook("previewextraurl") ?>"><img src="<?php echo $alt_thm?>" class="AltThumb"></a><?php } ?>
-		<?php endif; ?>
-		<h2 class="breakall"><?php echo htmlspecialchars($altfiles[$n]["name"])?></h2>
+
+        $enable_alt_file_preview_mouseover = $alt_pre != '' && $alternative_file_previews_mouseover;
+        $css_PointerEventsNone = $enable_alt_file_preview_mouseover ? ' PointerEventsNone' : '';
+        $rowspan = 1;
+        if(in_array(strtolower($altfiles[$n]["file_extension"]),VIEW_IN_BROWSER_EXTENSIONS) && resource_download_allowed($ref,"",$resource["resource_type"],$altfiles[$n]["ref"]))
+            {
+            $rowspan = 2;
+            }
+
+        ?>
+		<tr class="DownloadDBlend" id="alt_file_preview_<?php echo $altfiles[$n]['ref'] ?>">
+        <?php if ($enable_alt_file_preview_mouseover)
+            { ?>
+            <script>
+            jQuery(document).ready(function() {
+                orig_preview=jQuery('#previewimage').attr('src');
+                orig_height=jQuery('#previewimage').height();
+                jQuery("#alt_file_preview_<?php echo $altfiles[$n]['ref'] ?>").mouseenter(function() {
+                    orig_preview=jQuery('#previewimage').attr('src');
+                    orig_height=jQuery('#previewimage').height();
+                    jQuery('#previewimage').attr('src','<?php echo $alt_pre ?>');
+                    if(orig_height!=0) {
+                        jQuery('#previewimage').height(orig_height); 
+                    }
+                }).mouseleave(function() {
+                    jQuery('#previewimage').attr('src',orig_preview);
+                });
+            });
+            </script>
+        <?php
+            } ?>
+		<td class="DownloadFileName AlternativeFile"<?php echo $use_larger_layout ? ' colspan="2"' : ''; ?> rowspan="<?php echo escape((string)$rowspan);?>">
+		<?php
+        if(!hook("renderaltthumb","",[$n,$altfiles[$n]]))
+            {
+            if ($alt_thm!="")
+                {
+                ?>
+                <div class="AlternativeFileImage <?php echo $css_PointerEventsNone; ?>" ><a href="<?php echo $baseurl_short?>pages/preview.php?ref=<?php echo urlencode($ref)?>&alternative=<?php echo $altfiles[$n]["ref"]?>&k=<?php echo urlencode($k)?>&search=<?php echo urlencode($search)?>&offset=<?php echo urlencode($offset)?>&order_by=<?php echo urlencode($order_by)?>&sort=<?php echo urlencode($sort)?>&archive=<?php echo urlencode($archive)?>&<?php echo hook("previewextraurl") ?>"><img src="<?php echo $alt_thm?>" class="AltThumb"></a></div><?php
+                }
+            }        
+        ?>
+		<div class="AlternativeFileText"><h2><?php echo htmlspecialchars($altfiles[$n]["name"])?></h2>
 		<p><?php echo htmlspecialchars($altfiles[$n]["description"])?></p>
+        <div>
 		</td>
         <?php hook('view_altfiles_table', '', array($altfiles[$n])); ?>
-		<td class="DownloadFileSize"><?php echo formatfilesize($altfiles[$n]["file_size"])?></td>
-		
+		<td class="DownloadFileSize" rowspan="<?php echo escape((string)$rowspan);?>"><?php echo escape(str_replace('&nbsp;', ' ',formatfilesize($altfiles[$n]["file_size"])))?></td>
+
 		<?php if ($userrequestmode==2 || $userrequestmode==3) { ?><td></td><?php } # Blank spacer column if displaying a price above (basket mode).
 		?>
-		
+
 		<?php if ($access==0 && resource_download_allowed($ref,"",$resource["resource_type"],$altfiles[$n]["ref"])){?>
 		<td <?php hook("modifydownloadbutton") ?> class="DownloadButton">
 		<?php 		
@@ -108,7 +146,7 @@ if ($alt_access)
 		<td class="DownloadButton"><?php
 			if ($request_adds_to_collection && ($k=="" || $internal_share_access) && !checkperm('b')) // We can't add to a collection if we are accessing an external share, unless we are a logged in user
 				{
-				echo add_to_collection_link($ref,$search,"alert('" . addslashes($lang["requestaddedtocollection"]) . "');");
+				echo add_to_collection_link($ref,"alert('" . addslashes($lang["requestaddedtocollection"]) . "');");
 				}
 			else
 				{
@@ -119,9 +157,32 @@ if ($alt_access)
 		else
 		    {
 		    ?><td class="DownloadButton DownloadDisabled"><?php echo $lang["access1"]?></td><?php
-		    } ?>
-		</tr>
-		<?php	
+		    } 
+        ?>
+        </tr>
+        <?php    
+        if($rowspan === 2)
+            {
+            ?>
+            <tr class="DownloadDBlend">
+            <?php
+            $preview_url = generateURL($baseurl . "/pages/download.php", ["ref" => $ref, "ext" => $altfiles[$n]["file_extension"], "alternative" => $altfiles[$n]["ref"], "noattach" => "true", 'k' => $k]);
+
+            if($terms_download)
+                {
+                $preview_url = generateURL($baseurl . "/pages/terms.php", ['ref'=>$ref, 'url'=>$preview_url, 'alternative'=>$altfiles[$n]['ref'], 'k' => $k]);
+                }
+            elseif($download_usage)
+                {
+                $preview_url = generateURL($baseurl . "/pages/download_usage.php", ['ref'=>$ref, 'url'=>$preview_url, 'alternative'=>$altfiles[$n]['ref'], 'k' => $k]);
+                }
+            ?>
+            <td colspan="2" class="DownloadButton"><a href="<?php echo $preview_url;?>" target="_blank"><?php echo htmlspecialchars($lang["view_in_browser"]);?></a></td>
+            </tr>
+            <?php
+            }    
+        ?>
+<?php	
 		}
         hook("morealtdownload");
 	}

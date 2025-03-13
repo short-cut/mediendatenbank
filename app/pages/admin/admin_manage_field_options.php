@@ -12,21 +12,21 @@ include_once '../../include/node_functions.php';
 
 
 // Initialize
-$ajax       = getvalescaped('ajax', '');
-$action     = getvalescaped('action', '');
+$ajax       = getval('ajax', '');
+$action     = getval('action', '');
 
-$field      = getvalescaped('field', '');
+$field      = getval('field', '');
 $field_data = get_field($field);
 
-$node_ref   = getvalescaped('node_ref', '');
+$node_ref   = getval('node_ref', '');
 $nodes      = array();
 
 // Array of nodes to expand immediately upon page load
 $expand_nodes = getval("expand_nodes","");
 
-$import_export_parent = getvalescaped('import_export_parent', null);
+$import_export_parent = getval('import_export_parent', null);
 
-$filter_by_name = unescape(getvalescaped('filter_by_name', ''));
+$filter_by_name = unescape(getval('filter_by_name', ''));
 
 $chosencsslink ='<link type="text/css" rel="stylesheet" href="' . $baseurl_short . 'lib/chosen/chosen.min.css"></link>';
 $chosenjslink = '<script type="text/javascript" src="' . $baseurl_short . 'lib/chosen/chosen.jquery.min.js"></script>';
@@ -44,7 +44,7 @@ $new_node_record_form_action = '/pages/admin/admin_manage_field_options.php?fiel
 if('true' === $ajax && !(trim($node_ref)=="") && 0 < $node_ref)
     {
     $option_name     = trim(getval('option_name', ''));
-    $option_parent   = getval('option_parent', '');
+    $option_parent   = trim(getval('option_parent', ''));
     $option_new_index = getval('node_order_by', '', true);
     if ($option_new_index != "")
         {
@@ -57,10 +57,31 @@ if('true' === $ajax && !(trim($node_ref)=="") && 0 < $node_ref)
         $response['refresh_page'] = false;
         $node_ref_data            = array();
 
-        if(trim($option_parent) != '' || (get_node($node_ref, $node_ref_data) && $node_ref_data['parent'] != $option_parent))
-            {
-            $response['refresh_page'] = true;
+        // If node baing saved has a parent and the parent changes then we need to reload
+        $existing_parent="";
+        if (get_node($node_ref, $node_ref_data)) { 
+            $existing_parent=$node_ref_data["parent"]; 
+        }
+
+        if ($option_parent != '') { // Incoming parent is populated
+            if ($option_parent == $existing_parent) {
+                // Parent unchanged; no need to refresh
             }
+            else {
+                // Parent being changed; refresh
+                $response['refresh_page'] = true;
+            }
+        }
+        else { // Incoming parent is blank
+            if ($option_parent == $existing_parent) {
+                // No parent being established; no need to refresh
+            }
+            else {
+                // Parent being removed; refresh
+                $response['refresh_page'] = true;
+            }
+
+        }
 
         // Option order_by is not being sent because that can be asynchronously changed and we might not know about it,
         // thus this will be checked upon saving the data. If order_by is null / empty string, then we will use the current value
@@ -70,6 +91,9 @@ if('true' === $ajax && !(trim($node_ref)=="") && 0 < $node_ref)
         update_fieldx($field); 
         
         echo json_encode($response);
+
+        clear_query_cache("schema");
+
         exit();
         }
 
@@ -153,7 +177,7 @@ if('true' === $ajax && !(trim($node_ref)=="") && 0 < $node_ref)
 
                     if($field_data['type'] != 7) // Not a category tree
                         {
-                        $per_page    = (int) getvalescaped('per_page_list', $default_perpage_list, true);
+                        $per_page    = (int) getval('per_page_list', $default_perpage_list, true);
                         $move_to_page_offset = floor($option_new_index/$per_page)*$per_page;
                         $url_parameters['offset'] = $move_to_page_offset;
                         }
@@ -183,6 +207,7 @@ if('true' === $ajax && !(trim($node_ref)=="") && 0 < $node_ref)
         {
         delete_node($node_ref);
         }
+    clear_query_cache("schema");
     }
 
 // [Toggle tree node]
@@ -206,7 +231,7 @@ if('true' === $ajax && 'true' === getval('draw_tree_node_table', '') && 7 == $fi
     }
 
 // [New Option]
-$submit_new_option = getvalescaped('submit_new_option', '');
+$submit_new_option = getval('submit_new_option', '');
 if('true' === $ajax && '' != trim($submit_new_option) && 'add_new' === $submit_new_option && enforcePostRequest($ajax))
     {
     $new_option_name     = trim(getval('new_option_name', ''));
@@ -215,7 +240,7 @@ if('true' === $ajax && '' != trim($submit_new_option) && 'add_new' === $submit_n
     $new_node_index      = $new_option_order_by/10;
 
     $new_record_ref = set_node(NULL, $field, $new_option_name, $new_option_parent, $new_option_order_by);
-
+    clear_query_cache("schema");
     if(getval("reload","") == "")
         {
         if(isset($new_record_ref) && !(trim($new_record_ref)==""))
@@ -225,7 +250,7 @@ if('true' === $ajax && '' != trim($submit_new_option) && 'add_new' === $submit_n
                 ?>
                 <tr id="node_<?php echo $new_record_ref; ?>">
                     <td>
-                        <input type="text" class="stdwidth" name="option_name" form="option_<?php echo $new_record_ref; ?>" value="<?php echo htmlspecialchars($new_option_name); ?>" onblur="this.value=this.value.trim()" >
+                        <input type="text" class="stdwidth" name="option_name" form="option_<?php echo $new_record_ref; ?>" value="<?php echo escape($new_option_name); ?>" onblur="this.value=this.value.trim()" >
                     </td>
                     <td align="left">0</td>
                     
@@ -256,7 +281,7 @@ if('true' === $ajax && '' != trim($submit_new_option) && 'add_new' === $submit_n
                                             EnableMoveTo(<?php echo $new_record_ref; ?>);
                                             return false;
                                         ">
-                                        <?php echo $lang['action-move-to']; ?>
+                                        <?php echo htmlspecialchars($lang['action-move-to']); ?>
                                     </button>
                                     <button 
                                         type="submit"
@@ -267,17 +292,17 @@ if('true' === $ajax && '' != trim($submit_new_option) && 'add_new' === $submit_n
                                         "
                                         style="display: none;"
                                     >
-                                    <?php echo $lang['action-title_apply']; ?>
+                                    <?php echo htmlspecialchars($lang['action-title_apply']); ?>
                                     </button>
-                                    <button type="submit" onclick="ReorderNode(<?php echo $new_record_ref; ?>, 'moveup'); return false;"><?php echo $lang['action-move-up']; ?></button>
-                                    <button type="submit" onclick="ReorderNode(<?php echo $new_record_ref; ?>, 'movedown'); return false;"><?php echo $lang['action-move-down']; ?></button>
+                                    <button type="submit" onclick="ReorderNode(<?php echo $new_record_ref; ?>, 'moveup'); return false;"><?php echo htmlspecialchars($lang['action-move-up']); ?></button>
+                                    <button type="submit" onclick="ReorderNode(<?php echo $new_record_ref; ?>, 'movedown'); return false;"><?php echo htmlspecialchars($lang['action-move-down']); ?></button>
                                 </td>
                                 <?php
                                 }
                                 ?>
                             <td> <!-- Action buttons -->
-                                <button type="submit" onclick="SaveNode(<?php echo $new_record_ref; ?>); return false;"><?php echo $lang['save']; ?></button>
-                                <button type="submit" onclick="DeleteNode(<?php echo $new_record_ref; ?>); return false;"><?php echo $lang['action-delete']; ?></button>
+                                <button type="submit" onclick="SaveNode(<?php echo $new_record_ref; ?>); return false;"><?php echo htmlspecialchars($lang['save']); ?></button>
+                                <button type="submit" onclick="DeleteNode(<?php echo $new_record_ref; ?>); return false;"><?php echo htmlspecialchars($lang['action-delete']); ?></button>
                             </td>
                                 
                             <?php generateFormToken("option_{$new_record_ref}"); ?>
@@ -385,6 +410,8 @@ if('' !== getval('upload_import_nodes', '') && isset($_FILES['import_nodes']['tm
             reorder_node($new_nodes_order);
             }
         }
+    
+    clear_query_cache("schema");
     }
 
 // [Export nodes]
@@ -404,8 +431,8 @@ $url         = generateURL("{$baseurl_short}pages/admin/admin_manage_field_optio
                             'filter_by_name' => $filter_by_name
                         )
                     );
-$offset      = (int) getvalescaped('offset', 0, true);
-$per_page    = (int) getvalescaped('per_page_list', $default_perpage_list, true);
+$offset      = (int) getval('offset', 0, true);
+$per_page    = (int) getval('per_page_list', $default_perpage_list, true);
 $count_nodes = get_nodes_count($field, $filter_by_name);
 $totalpages  = ceil($count_nodes / $per_page);
 $curpage     = floor($offset / $per_page) + 1;
@@ -447,7 +474,8 @@ if($ajax)
     $links_trail = array(
         array(
             'title' => $lang["systemsetup"],
-            'href'  => $baseurl_short . "pages/admin/admin_home.php"
+            'href'  => $baseurl_short . "pages/admin/admin_home.php",
+		    'menu' =>  true
         ),
         array(
             'title' => $lang["admin_resource_type_fields"],
@@ -465,33 +493,22 @@ if($ajax)
     renderBreadcrumbs($links_trail);
 ?>
 
-    <p><?php echo $lang['manage_metadata_text']; render_help_link("resourceadmin/modifying-field-options");?></p>
-    <?php
-    if(in_array($field, $default_to_first_node_for_fields))
-        {
-        ?>
-        <p><?php echo $lang["metadata_first_option_is_default"]; ?>
-        <p>
-            <a href="<?php echo $baseurl; ?>/pages/tools/update_empty_field_with_default.php?field=<?php echo $field?>" onClick="CentralSpaceLoad(this,true);"><?php echo $lang['metadata_populate_default_node_for_empty_values']; ?></a>
-        </p>
-        <?php
-        }
-        ?>
+    <p><?php echo htmlspecialchars($lang['manage_metadata_text']); render_help_link("resourceadmin/modifying-field-options");?></p>
     <div id="AdminManageMetadataFieldOptions" class="ListView">
     <?php
     if(7 != $field_data['type'])
         {
         ?>
         <form id="FilterNodeOptions" class="FormFilter" method="GET" action="<?php echo $baseurl; ?>/pages/admin/admin_manage_field_options.php">
-            <input type="hidden" name="field" value="<?php echo htmlspecialchars($field); ?>">
+            <input type="hidden" name="field" value="<?php echo escape($field); ?>">
             <fieldset>
-                <legend><?php echo $lang['filter_label']; ?></legend>
+                <legend><?php echo htmlspecialchars($lang['filter_label']); ?></legend>
                 <div class="FilterItemContainer">
-                    <label><?php echo $lang['name']; ?></label>
-                    <input type="text" name="filter_by_name" value="<?php echo htmlspecialchars($filter_by_name); ?>">
+                    <label><?php echo htmlspecialchars($lang['name']); ?></label>
+                    <input type="text" name="filter_by_name" value="<?php echo escape($filter_by_name); ?>">
                 </div>
-                <button type="submit"><?php echo $lang['filterbutton']; ?></button>
-                <button class="ClearButton" type="submit" onCLick="ClearFilterForm('FilterNodeOptions'); return false;"><?php echo $lang['clearbutton']; ?></button>
+                <button type="submit"><?php echo htmlspecialchars($lang['filterbutton']); ?></button>
+                <button class="ClearButton" type="submit" onCLick="ClearFilterForm('FilterNodeOptions'); return false;"><?php echo htmlspecialchars($lang['clearbutton']); ?></button>
             </fieldset>
         </form>
         <!-- Pager -->
@@ -518,10 +535,10 @@ if($ajax)
             ?>
             <thead>
                 <tr class="ListviewTitleStyle">
-                    <td><?php echo $lang['name']; ?></td>
-                    <td><?php echo $lang['resources']; ?></td>
-                    <td><?php echo $lang['property-order_by']; ?></td>
-                    <td><?php echo $lang['actions']; ?></td>
+                    <td><?php echo htmlspecialchars($lang['name']); ?></td>
+                    <td><?php echo htmlspecialchars($lang['resources']); ?></td>
+                    <td><?php echo htmlspecialchars($lang['property-order_by']); ?></td>
+                    <td><?php echo htmlspecialchars($lang['actions']); ?></td>
                     <td> </td>
                     <td> </td>
                 </tr>
@@ -540,7 +557,7 @@ if($ajax)
             $nodes = get_nodes($field, null, false, $offset, $per_page, $filter_by_name, true);
             }
 
-        $node_index=getvalescaped('offset',0,true);
+        $node_index=getval('offset',0,true);
         foreach($nodes as $node)
             {
             check_node_indexed($node, $field_data['partial_index']);
@@ -548,7 +565,7 @@ if($ajax)
             ?>
             <tr id="node_<?php echo $node['ref']; ?>">
                 <td>
-                    <input type="text" class="stdwidth" name="option_name" form="option_<?php echo $node['ref']; ?>" value="<?php echo htmlspecialchars($node['name']); ?>" onblur="this.value=this.value.trim()" >
+                    <input type="text" class="stdwidth" name="option_name" form="option_<?php echo $node['ref']; ?>" value="<?php echo escape($node['name']); ?>" onblur="this.value=this.value.trim()" >
                 </td>
                 <td align="left">
                     <?php echo $node['use_count'] ?>
@@ -583,7 +600,7 @@ if($ajax)
                                         
                                         return false;
                                     ">
-                                    <?php echo $lang['action-move-to']; ?>
+                                    <?php echo htmlspecialchars($lang['action-move-to']); ?>
                                 </button>
                                 <button 
                                     type="submit"
@@ -594,18 +611,18 @@ if($ajax)
                                     "
                                     style="display: none;"
                                 >
-                                <?php echo $lang['action-title_apply']; ?>
+                                <?php echo htmlspecialchars($lang['action-title_apply']); ?>
                                 </button>
-                                <button type="submit" onclick="ReorderNode(<?php echo $node['ref']; ?>, 'moveup'); return false;"><?php echo $lang['action-move-up']; ?></button>
-                                <button type="submit" onclick="ReorderNode(<?php echo $node['ref']; ?>, 'movedown'); return false;"><?php echo $lang['action-move-down']; ?></button>
+                                <button type="submit" onclick="ReorderNode(<?php echo $node['ref']; ?>, 'moveup'); return false;"><?php echo htmlspecialchars($lang['action-move-up']); ?></button>
+                                <button type="submit" onclick="ReorderNode(<?php echo $node['ref']; ?>, 'movedown'); return false;"><?php echo htmlspecialchars($lang['action-move-down']); ?></button>
                                 </td>
                             <?php
                             }
                             ?>
                         <!-- Action buttons -->
                         <td>
-                            <button type="submit" onclick="SaveNode(<?php echo $node['ref']; ?>); return false;"><?php echo $lang['save']; ?></button>
-                            <button type="submit" onclick="DeleteNode(<?php echo $node['ref']; ?>); return false;"><?php echo $lang['action-delete']; ?></button>
+                            <button type="submit" onclick="SaveNode(<?php echo $node['ref']; ?>); return false;"><?php echo htmlspecialchars($lang['save']); ?></button>
+                            <button type="submit" onclick="DeleteNode(<?php echo $node['ref']; ?>); return false;"><?php echo htmlspecialchars($lang['action-delete']); ?></button>
                         </td>
                             
                         <?php generateFormToken("option_{$node['ref']}"); ?>
@@ -649,6 +666,18 @@ if($ajax)
 $tree_nodes = get_nodes($field,null,false,null,null,'',true,'',true);
 if($field_data['type'] == 7 && !($tree_nodes==""))
     {
+    $all_nodes = get_nodes($field, NULL, TRUE, NULL, NULL, '', TRUE);
+
+    ?>
+    <select id="node_master_list" class="DisplayNone">
+    <?php
+    foreach($all_nodes as $node)
+        {
+        ?><option value="<?php echo escape($node['ref'])?>" id="master_node_<?php echo escape($node['ref'])?>"><?php echo htmlspecialchars($node['name'])?></option><?php
+        }
+    ?>
+    </select>
+    <?php
     $nodes_counter = count($tree_nodes);
     $i             = 0;
     $node_index    = 0;
@@ -681,6 +710,46 @@ if($field_data['type'] == 7 && !$tree_nodes)
 ?>
 </div><!-- end of BasicBox -->
 <script>
+
+jQuery(document).on('focus', '[id*="_parent_select_chosen"]', function(){  
+    fill_select(jQuery(this).parent().find('select'));
+});
+
+
+jQuery('#CentralSpace .BasicsBox table').find('select').each(function(i, ele){load_parent(jQuery(ele))});
+
+function fill_select(node_element)
+    {
+    let total_nodes = node_element.find('option').length
+    //Skip the select if there are already options in the list, should be 2 by default 'Select Parent' and the parent node.
+    if(total_nodes > 2){return;}
+    if(total_nodes == 2){node_element.children().last().remove()}
+
+    //Get the node master list that was genereated on page load
+    let node_list = jQuery('#node_master_list').clone();
+    node_list.children().appendTo(node_element);
+
+    //Find and select the parent node from the dropdown list
+    node_element.find('[value="'+ node_element.attr('parent_node') +'"]').attr('selected', true)
+
+    //Get node ref from element id
+    let id_parts = node_element.attr('id').split('_');
+    //Hide the node in its own dropdown
+    node_element.find('option[value="'+id_parts[2]+'"]').hide();
+    node_element.trigger('chosen:updated');
+    }
+
+function load_parent(node_element)
+    {
+    //Don't need to add the parent if the node already has options
+    if(node_element.find('option').length != 1){return;}
+    let parent = node_element.attr('parent_node');
+    if(parent != '')
+        {
+        jQuery('#master_node_' + node_element.attr('parent_node')).clone().attr('selected', true).appendTo(node_element);
+        }
+    }
+
 function AddNode(parent)
     {
     var new_node_children     = jQuery('#new_node_' + parent + '_children');
@@ -716,7 +785,6 @@ function AddNode(parent)
             if(new_node_parent_children.length == 0)
                 {
                 node_parent_children.append(response);
-
                 // Mark node as parent on the UI
                 jQuery('#node_' + new_option_parent_val).data('toggleNodeMode', 'ex');
                 jQuery('#node_' + new_option_parent_val + '_toggle_button').attr('src', '<?php echo $baseurl_short; ?>gfx/interface/node_ex.gif');
@@ -737,6 +805,14 @@ function AddNode(parent)
                     ?>
 
                 new_node_parent_children.before(response);
+                }
+            if(new_option_parent_val == 0)
+                {
+                jQuery('#CentralSpace .BasicsBox table').find('select').each(function(i, ele){load_parent(jQuery(ele))});
+                }
+            else
+                {
+                jQuery('#node_' + new_option_parent_val + '_children').find('select').each(function(i, ele){load_parent(jQuery(ele))});
                 }
 
             initial_new_option_name = new_option_name.val();
@@ -841,20 +917,26 @@ function ReorderNode(ref, direction, move_to)
 
     jQuery.post(post_url, post_data, function(response)
         {
-        if(direction == 'moveup' && response.sibling && response.sibling.length > 0)
+        if(direction == 'moveup') 
             {
-            node.insertBefore('#node_' + response.sibling);
-            node_children.insertBefore('#node_' + response.sibling);
-            document.getElementById('option_' + ref + '_order_by').value --;
-            document.getElementById('option_' + response.sibling + '_order_by').value ++;
+            if (response.sibling) 
+                {
+                node.insertBefore('#node_' + response.sibling);
+                node_children.insertBefore('#node_' + response.sibling);
+                document.getElementById('option_' + ref + '_order_by').value --;
+                document.getElementById('option_' + response.sibling + '_order_by').value ++;
+                }
             }
 
-        else if(direction == 'movedown' && response.sibling && response.sibling.length > 0)
+        else if(direction == 'movedown') 
             {
-            node.insertAfter('#node_' + response.sibling);
-            node_children.insertAfter('#node_' + response.sibling);
-            document.getElementById('option_' + ref + '_order_by').value ++;
-            document.getElementById('option_' + response.sibling + '_order_by').value --;
+            if (response.sibling) 
+                {
+                node.insertAfter('#node_' + response.sibling);
+                node_children.insertAfter('#node_' + response.sibling);
+                document.getElementById('option_' + ref + '_order_by').value ++;
+                document.getElementById('option_' + response.sibling + '_order_by').value --;
+                }
             }
 
         else if(response.refresh_page=true)
@@ -906,6 +988,7 @@ function ToggleTreeNode(ref, field_ref)
         if(typeof response !== 'undefined')
             {
             node_children.html(response);
+            node_children.find('select').each(function(i,ele){load_parent(jQuery(ele))});
             jQuery('.node_parent_chosen_selector').chosen({});
 
             jQuery(table_node).data('toggleNodeMode', 'ex');
@@ -994,7 +1077,7 @@ if(FIELD_TYPE_CATEGORY_TREE == $field_data['type'])
         jQuery('.node_parent_chosen_selector').trigger("chosen:updated");
         });
     <?php
-    
+
     if($expand_nodes != "")
         {
         echo "jQuery(document).ready(function(){";
@@ -1011,16 +1094,31 @@ if(FIELD_TYPE_CATEGORY_TREE == $field_data['type'])
 </script>
 
 <div class="BasicsBox">
-    <h3><?php echo $lang['import_export']; ?></h3>
+    <h3><?php echo htmlspecialchars($lang['import_export']); ?></h3>
 
     <?php 
-    // Select a parent node to import for
-    if(7 == $field_data['type'])
+    if($field_data['type'] == FIELD_TYPE_CATEGORY_TREE)
         {
+        // Select a parent node to import for
         $import_export_parent_nodes = array('' => '');
+        $level = 0;
         foreach(get_nodes($field, null, true) as $import_export_parent_node)
             {
-            $import_export_parent_nodes[$import_export_parent_node['ref']] = $import_export_parent_node['name'];
+            if(is_null($import_export_parent_node['parent']))
+                {
+                $level = 0;
+                }
+            elseif(isset($lastnode["ref"]) && $lastnode["ref"] == $import_export_parent_node['parent'])
+                {
+                $level++;
+                }
+            elseif(isset($lastnode["ref"]) && $lastnode["parent"] != $import_export_parent_node['parent'])
+                {
+                $level--;
+                }
+            // Otherwise level stays the same
+            $import_export_parent_nodes[$import_export_parent_node['ref']] = (str_repeat("-",$level)) . $import_export_parent_node['name'];
+            $lastnode = $import_export_parent_node;
             }
 
         render_dropdown_question(
@@ -1046,17 +1144,17 @@ if(FIELD_TYPE_CATEGORY_TREE == $field_data['type'])
 
     <div class="Question">
         <form id="import_nodes_form" method="POST" action="<?php echo $baseurl; ?>/pages/admin/admin_manage_field_options.php?field=<?php echo $field; ?>" enctype="multipart/form-data">
-            <label for="import_nodes"><?php echo $lang['import']; ?></label>
+            <label for="import_nodes"><?php echo htmlspecialchars($lang['import']); ?></label>
             <?php generateFormToken("import_nodes_form"); ?>
             <input type="file" name="import_nodes">
-            <input type="submit" name="upload_import_nodes" value="<?php echo $lang['import']; ?>">
+            <input type="submit" name="upload_import_nodes" value="<?php echo escape($lang['import']); ?>">
         </form>
         <div class="clearerleft"></div>
     </div>
 
     <div class="Question">
-        <label><?php echo $lang['export']; ?></label>
-        <button type="submit" onclick="ExportNodes();"><?php echo $lang['export']; ?></button>
+        <label><?php echo htmlspecialchars($lang['export']); ?></label>
+        <button type="submit" onclick="ExportNodes();"><?php echo htmlspecialchars($lang['export']); ?></button>
         <script>
         function ExportNodes()
             {

@@ -1,7 +1,7 @@
 <?php
 
 // current upgrade level of ResourceSpace (used for migration scripts, will set sysvar using this if not already defined)
-define('SYSTEM_UPGRADE_LEVEL', 18);
+define('SYSTEM_UPGRADE_LEVEL', 26);
 
 // PHP VERSION AND MINIMUM SUPPORTED
 if (!defined('PHP_VERSION_ID'))
@@ -10,7 +10,7 @@ if (!defined('PHP_VERSION_ID'))
     $version = explode('.', PHP_VERSION);
     define('PHP_VERSION_ID', ($version[0] * 10000 + $version[1] * 100 + $version[2]));
     }
-define('PHP_VERSION_SUPPORTED', 70205); // 7.2.5 is the minimum supported, a requirement for Uppy.
+define('PHP_VERSION_SUPPORTED', 70400); // 7.4.0 is the minimum version supported
 
 // ------------------------- FIELD TYPES -------------------------
 
@@ -69,13 +69,17 @@ $DATE_FIELD_TYPES = array(
     FIELD_TYPE_DATE_RANGE
 );
 
-// Array of fields that do not have fixed value options but data is stil stored using node/resource_node rather than resource_data. 
-// This is now the default for new fields and will include all fields once node development is complete.
-$NODE_MIGRATED_FIELD_TYPES = array(
-    FIELD_TYPE_DATE_RANGE                 
-);
+/*
+From version 10, ResourceSpace converted all non-fixed list types (e.g text & date fields) to use nodes. Resources 
+with values in these field types, will always have only one node associated. The field may have multiple nodes in order
+to handle changes to a resource value.
 
-$NODE_FIELDS=array_merge($FIXED_LIST_FIELD_TYPES,$NODE_MIGRATED_FIELD_TYPES);
+Note: date ranges were already using nodes so they've been excluded from having this behaviour. In addition, for date ranges,
+a resource will have up to 2 nodes associated (the start and/or end dates).
+*/
+define('NON_FIXED_LIST_SINGULAR_RESOURCE_VALUE_FIELD_TYPES', array_merge($TEXT_FIELD_TYPES, array_diff($DATE_FIELD_TYPES, [FIELD_TYPE_DATE_RANGE])));
+
+$NODE_FIELDS = array_merge($FIXED_LIST_FIELD_TYPES, [FIELD_TYPE_DATE_RANGE], NON_FIXED_LIST_SINGULAR_RESOURCE_VALUE_FIELD_TYPES);
 
 // ------------------------- LOG_CODE_ -------------------------
 
@@ -104,7 +108,8 @@ define ('LOG_CODE_UPLOADED',			'u');
 define ('LOG_CODE_UNSPECIFIED',			'U');
 define ('LOG_CODE_VIEWED',				'v');
 define ('LOG_CODE_DELETED',				'x');
-define ('LOG_CODE_DELETED_ALTERNATIVE',	'y');
+define ('LOG_CODE_DELETED_PERMANENTLY', 'xx');
+define ('LOG_CODE_DELETED_ALTERNATIVE', 'y');
 define ('LOG_CODE_ENABLED',             '+');
 define ('LOG_CODE_DISABLED',            '-');
 define ('LOG_CODE_LOCKED',              'X');
@@ -189,7 +194,8 @@ define('LINK_PLUS','<i aria-hidden="true" class="fa fa-plus"></i>&nbsp;');
 define('LINK_PLUS_CIRCLE','<i aria-hidden="true" class="fa fa-plus-circle"></i>&nbsp;');
 define('LINK_CHEVRON_RIGHT','<i aria-hidden="true" class="fa fa-chevron-right"></i>&nbsp;');
 define('UPLOAD_ICON','<i aria-hidden="true" class="fa fa-fw fa-upload"></i>&nbsp;');
-define('DASH_ICON','<i aria-hidden="true" class="fa fa-fw fa-th"></i>&nbsp;');
+define('CONTRIBUTIONS_ICON', '<i aria-hidden="true" class="fa fa-fw fa-user-plus"></i>&nbsp;');
+define('DASH_ICON','<i aria-hidden="true" class="fa fa-fw fa-grip"></i>&nbsp;');
 define('FEATURED_COLLECTION_ICON','<i aria-hidden="true" class="fa fa-fw fa-folder"></i>&nbsp;');
 define('RECENT_ICON','<i aria-hidden="true" class="fa fa-fw fa-clock"></i>&nbsp;');
 define('HELP_ICON','<i aria-hidden="true" class="fa fa-fw fa-book"></i>&nbsp;');
@@ -203,6 +209,11 @@ define('ICON_CUBE', '<i class="fas fa-cube" aria-hidden="true"></i>&nbsp;');
 define ('NODE_TOKEN_PREFIX','@@');
 define ('NODE_TOKEN_OR','|');
 define ('NODE_TOKEN_NOT','!');
+define ('NODE_NAME_STRING_SEPARATOR','@@|@@');
+
+// Full text search prefix
+define ('FULLTEXT_SEARCH_PREFIX', '@FULL_TEXT');
+define ('FULLTEXT_SEARCH_QUOTES_PLACEHOLDER', '[QUOTES]');
 
 // Simple Search pills' delimiter
 define ('TAG_EDITOR_DELIMITER', '~');
@@ -285,7 +296,7 @@ $permitted_html_attributes = array('id', 'class', 'style');
 
 // Standard paths (e.g libraries)
 $jquery_path = "/lib/js/jquery-3.6.0.min.js";
-$jquery_ui_path = "/lib/js/jquery-ui-1.12.1.min.js";
+$jquery_ui_path = "/lib/js/jquery-ui-1.13.2.min.js";
 define('LIB_OPENSEADRAGON', '/lib/openseadragon_2.4.2');
 
 // Define dropdown action categories
@@ -310,7 +321,6 @@ $corefields = array(
         'download_filename_field',
         'extracted_text_field',
         'facial_recognition_tag_field',
-        'speedtaggingfield',
         'staticsync_filepath_to_field',
         'staticsync_extension_mapping_append_values_fields',
         'portrait_landscape_field',
@@ -330,8 +340,8 @@ $corefields = array(
         'iiif_description_field',
         'iiif_license_field',
         'iiif_sequence_field',
-        'facial_recognition_tag_field',
-        'join_fields'
+        'join_fields',
+        'annotate_fields',
         )
     );
 
@@ -344,12 +354,13 @@ $core_field_refs = [];
 // ----------------------------------------------
 // COLLECTIONS
 // ----------------------------------------------
-define("COLLECTION_TYPE_STANDARD",  0);
-define("COLLECTION_TYPE_UPLOAD",    1); # for collections used in upload then edit mode
-define("COLLECTION_TYPE_SELECTION", 2); # selecting resources to be edited in batch for the active user (allowed only one per user)
-define("COLLECTION_TYPE_FEATURED",  3); # featured collections (used for both parents and children featured collections)
-define("COLLECTION_TYPE_PUBLIC",    4); # public collections
-define("COLLECTION_SHARE_UPLOAD",   5); # public collections
+define("COLLECTION_TYPE_STANDARD",      0);
+define("COLLECTION_TYPE_UPLOAD",        1); # for collections used in upload then edit mode
+define("COLLECTION_TYPE_SELECTION",     2); # selecting resources to be edited in batch for the active user (allowed only one per user)
+define("COLLECTION_TYPE_FEATURED",      3); # featured collections (used for both parents and children featured collections)
+define("COLLECTION_TYPE_PUBLIC",        4); # public collections
+define("COLLECTION_TYPE_SHARE_UPLOAD",  5); # External upload share
+define("COLLECTION_TYPE_REQUEST",       6); # Resource requests - can't be edited
 
 
 $FEATURED_COLLECTION_BG_IMG_SELECTION_OPTIONS = array(
@@ -402,6 +413,10 @@ define('STR_HIGHLIGHT_WHOLEWD', 2);
 define('STR_HIGHLIGHT_CASESENS', 4);
 define('STR_HIGHLIGHT_STRIPLINKS', 8);
 
+// ----------------------------------------------
+// DEPRECATED PARAMETERS
+// ----------------------------------------------
+define('DEPRECATED_STARSEARCH', 0);
 
 # Keyboard control codes
 # Previous/next resource: left/right arrows
@@ -452,7 +467,10 @@ $MARKER_COLORS = array(
 // Reports
 const REPORT_PLACEHOLDER_NON_CORRELATED_SQL = '[non_correlated_sql]';
 
+
+// ----------------------------------------------
 // SYSTEM - GENERAL
+// ----------------------------------------------
 const SYSTEM_REQUIRED_PHP_MODULES = [
     'curl' => 'curl_init',
     'gd' => 'imagecrop',
@@ -462,6 +480,282 @@ const SYSTEM_REQUIRED_PHP_MODULES = [
     'json' => 'json_decode',
     'zip' => 'zip_open',
     'apcu' => 'apcu_fetch',
+    'dom' => 'dom_import_simplexml',
+    'mysqli' => 'mysqli_init',
+];
+
+// Chunking a list of IDs (with the highest ID length) in batches of this size should be well within the default max_allowed_packet size
+const SYSTEM_DATABASE_IDS_CHUNK_SIZE = 500;
+
+// How many times should we retry our previous action before giving up?
+// NOTE: don't set too high or your script may sit and wait for minutes depending on database configuration.
+const SYSTEM_DATABASE_MAX_RETRIES = 2;
+
+/*
+List of ResourceSpace system utilities (core and optional). If adding a new entry, make sure get_utility_path() is updated
+as well to handle the new entry.
+
+A system utility structure will have the following keys/properties:-
+- required = is this utility core to ResourceSpace?
+- path_var_name = the variable name holding the utility path {@see get_utility_path()}
+- display_name = self explanatory
+- show_on_check_page = when we use multiple components of a bigger "package" (e.g IM has convert, identify, composite and mogrify)
+- version_check - argument = the argument used to get the version out (NB: some utilities do this on STDERR). Default: -version
+- version_check - callback = function used to verify we got the expected version. It should return an array as expected 
+    by the check.php page:
+    * - utility - Updated utility structure (if required to do so)
+    * - found - PHP bool representing whether we've found what we were expecting in the version output.
+
+Example:
+'utilityname' => [
+    'required' => false,
+    'path_var_name' => 'utilityname_path',
+    'display_name' => 'utilityname',
+    'show_on_check_page' => true,
+    'version_check' => [
+        'argument' => '',
+        'callback' => [
+            'fct_name' => 'check_utility_cli_version_found_by_name',
+            'args' => [['utilityname', 'anyOtherRelevantString']],
+        ],
+    ],
+],
+*/
+const RS_SYSTEM_UTILITIES = [
+    'im-convert' => [
+        'required' => true,
+        'path_var_name' => 'imagemagick_path',
+        'display_name' => 'ImageMagick/GraphicsMagick - convert',
+        'show_on_check_page' => true,
+        'version_check' => [
+            'argument' => '',
+            'callback' => [
+                'fct_name' => 'check_imagemagick_cli_version_found',
+                'args' => [],
+            ],
+        ],
+    ],
+    'im-identify' => [
+        'required' => true,
+        'path_var_name' => 'imagemagick_path',
+        'display_name' => 'ImageMagick/GraphicsMagick - identify',
+        'show_on_check_page' => false,
+        'version_check' => [
+            'argument' => '',
+            'callback' => [
+                'fct_name' => 'check_imagemagick_cli_version_found',
+                'args' => [],
+            ],
+        ],
+    ],
+    'im-composite' => [
+        'required' => true,
+        'path_var_name' => 'imagemagick_path',
+        'display_name' => 'ImageMagick/GraphicsMagick - composite',
+        'show_on_check_page' => false,
+        'version_check' => [
+            'argument' => '',
+            'callback' => [
+                'fct_name' => 'check_imagemagick_cli_version_found',
+                'args' => [],
+            ],
+        ],
+    ],
+    'im-mogrify' => [
+        'required' => true,
+        'path_var_name' => 'imagemagick_path',
+        'display_name' => 'ImageMagick/GraphicsMagick - mogrify',
+        'show_on_check_page' => false,
+        'version_check' => [
+            'argument' => '',
+            'callback' => [
+                'fct_name' => 'check_imagemagick_cli_version_found',
+                'args' => [],
+            ],
+        ],
+    ],
+    'ghostscript' => [
+        'required' => true,
+        'path_var_name' => 'ghostscript_path',
+        'display_name' => 'Ghostscript',
+        'show_on_check_page' => true,
+        'version_check' => [
+            'argument' => '',
+            'callback' => [
+                'fct_name' => 'check_utility_cli_version_found_by_name',
+                'args' => [['ghostscript']],
+            ],
+        ],
+    ],
+    'ffmpeg' => [
+        'required' => true,
+        'path_var_name' => 'ffmpeg_path',
+        'display_name' => 'FFmpeg',
+        'show_on_check_page' => true,
+        'version_check' => [
+            'argument' => '',
+            'callback' => [
+                'fct_name' => 'check_utility_cli_version_found_by_name',
+                'args' => [['ffmpeg', 'avconv']],
+            ],
+        ],
+    ],
+    'ffprobe' => [
+        'required' => true,
+        'path_var_name' => 'ffmpeg_path',
+        'display_name' => 'ffprobe',
+        'show_on_check_page' => false,
+        'version_check' => [
+            'argument' => '',
+            'callback' => [
+                'fct_name' => 'check_utility_cli_version_found_by_name',
+                'args' => [['ffprobe', 'avprobe']],
+            ],
+        ],
+    ],
+    'exiftool' => [
+        'required' => true,
+        'path_var_name' => 'exiftool_path',
+        'display_name' => 'ExifTool',
+        'show_on_check_page' => true,
+        'version_check' => [
+            'argument' => '-ver',
+            'callback' => [
+                'fct_name' => 'check_numeric_cli_version_found',
+                'args' => [],
+            ],
+        ],
+    ],
+    'php' => [
+        'required' => false,
+        'path_var_name' => 'php_path',
+        'display_name' => 'PHP',
+        'show_on_check_page' => false,
+        'version_check' => [
+            'argument' => '',
+            'callback' => [
+                'fct_name' => '',
+                'args' => [],
+            ],
+        ],
+    ],
+    'python' => [
+        'required' => false,
+        'path_var_name' => 'python_path',
+        'display_name' => 'Python',
+        'show_on_check_page' => true,
+        'version_check' => [
+            'argument' => '--version',
+            'callback' => [
+                'fct_name' => 'check_utility_cli_version_found_by_name',
+                'args' => [['Python']],
+            ],
+        ],
+    ],
+    'opencv' => [
+        'required' => false,
+        'path_var_name' => 'python_path',
+        'display_name' => 'OpenCV (Python module)',
+        'show_on_check_page' => true,
+        'version_check' => [
+            'argument' => '-c "import cv2; print(cv2.__version__)"',
+            'callback' => [
+                'fct_name' => 'check_numeric_cli_version_found',
+                'args' => [],
+            ],
+        ],
+    ],
+    'archiver' => [
+        'required' => false,
+        'path_var_name' => 'archiver_path',
+        'display_name' => 'Archiver',
+        'show_on_check_page' => true,
+        'version_check' => [
+            'argument' => '-h',
+            'callback' => [
+                'fct_name' => 'check_utility_cli_version_found_by_name',
+                'args' => [['zip', '7z']],
+            ],
+        ],
+    ],
+    'fits' => [
+        'required' => false,
+        'path_var_name' => 'fits_path',
+        'display_name' => 'File Information Tool Set (FITS)',
+        'show_on_check_page' => true,
+        'version_check' => [
+            'argument' => '-v',
+            'callback' => [
+                'fct_name' => 'check_numeric_cli_version_found',
+                'args' => [],
+            ],
+        ],
+    ],
+    'antiword' => [
+        'required' => false,
+        'path_var_name' => 'antiword_path',
+        'display_name' => 'Antiword',
+        'show_on_check_page' => true,
+        'version_check' => [
+            'argument' => '-help', # it doesn't seem to have a version flag, help is the closest we can get
+            'callback' => [
+                'fct_name' => 'check_utility_cli_version_found_by_name',
+                'args' => [['antiword']],
+            ],
+        ],
+    ],
+    'pdftotext' => [
+        'required' => false,
+        'path_var_name' => 'pdftotext_path',
+        'display_name' => 'pdftotext',
+        'show_on_check_page' => true,
+        'version_check' => [
+            'argument' => '-v',
+            'callback' => [
+                'fct_name' => 'check_utility_cli_version_found_by_name',
+                'args' => [['pdftotext']],
+            ],
+        ],
+    ],
+    'blender' => [
+        'required' => false,
+        'path_var_name' => 'blender_path',
+        'display_name' => 'Blender',
+        'show_on_check_page' => true,
+        'version_check' => [
+            'argument' => '-v',
+            'callback' => [
+                'fct_name' => 'check_utility_cli_version_found_by_name',
+                'args' => [['blender']],
+            ],
+        ],
+    ],
+    'unoconv' => [
+        'required' => false,
+        'path_var_name' => 'unoconv_path',
+        'display_name' => 'Unoconv',
+        'show_on_check_page' => true,
+        'version_check' => [
+            'argument' => '--version',
+            'callback' => [
+                'fct_name' => 'check_utility_cli_version_found_by_name',
+                'args' => [['unoconv']],
+            ],
+        ],
+    ],
+    'calibre' => [
+        'required' => false,
+        'path_var_name' => 'calibre_path',
+        'display_name' => 'Calibre',
+        'show_on_check_page' => true,
+        'version_check' => [
+            'argument' => '--version',
+            'callback' => [
+                'fct_name' => 'check_utility_cli_version_found_by_name',
+                'args' => [['calibre']],
+            ],
+        ],
+    ],
 ];
 
 const SENSITIVE_VARIABLE_NAMES = [
@@ -512,4 +806,67 @@ const SENSITIVE_VARIABLE_NAMES = [
     'museumplus_api_user',
     'museumplus_api_pass',
     'emu_email_notify',
+];
+
+const WORKFLOW_DEFAULT_ICON = "fa-solid fa-gears";
+const WORKFLOW_DEFAULT_ICONS = [
+    '-2'    => 'fa-solid fa-file-import',
+    '-1'    => 'fa-solid fa-eye',
+    '0'     => 'fa-solid fa-check',
+    '1'     => 'fa-solid fa-clock',
+    '2'     => 'fa-solid fa-box-archive',
+    '3'     => 'fa-solid fa-trash',
+    ];
+
+// Alternative file extensions that can be natively viewed in the browser
+const VIEW_IN_BROWSER_EXTENSIONS = ['pdf', 'mp3'];
+
+// PHP stream wrappers that will be blocked when attempting uploads by URL via the API.
+const BLOCKED_STREAM_WRAPPERS = ['php', 'file'];
+
+// Separator to use when rendering date range field values
+define('DATE_RANGE_SEPARATOR'," / ");
+
+// Maximum age in hours of the actions that will be included in user action notification emails
+define ('ACTIONS_EMAIL_MAX_AGE',   168);
+
+// Array of permitted api calls that can be made using native mode authentication 
+// Only those required for browser access must be added.
+const API_NATIVE_WHITELIST = [
+    'add_resource_to_collection',
+    'collection_add_resources',
+    'collection_remove_resources',
+    'create_collection',
+    'delete_access_keys',
+    'delete_alternative_file',
+    'delete_resource',
+    'delete_tabs',
+    'get_collections_resource_count',
+    'get_dash_search_data',
+    'get_field_options',
+    'get_users',
+    'get_user_message',
+    'relate_all_resources',
+    'remove_resource_from_collection',
+    'reorder_featured_collections',
+    'reorder_tabs',
+    'save_tab',
+    'send_collection_to_admin',
+    'send_user_message',
+    'update_related_resource',
+];
+
+const DEFAULT_DOWNLOAD_FILENAME_FORMAT = 'RS%resource_%filename%size.%extension';
+
+// get_system_status() severity types
+const SEVERITY_CRITICAL = 0;
+const SEVERITY_WARNING = 1;
+const SEVERITY_NOTICE = 2;
+
+const API_ISSUE_VALID_DESTINATIONS = [
+    "linkrui" => [
+        "name" => "LinkrUI",
+        "url" => "https://resourcespace.linkrui.com/saml",
+        "stateparam" => "state",
+    ],
 ];

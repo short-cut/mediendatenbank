@@ -1,8 +1,5 @@
 <?php
-if('cli' != PHP_SAPI)
-    {
-    exit('This utility is command line only.');
-    }
+command_line_only();
 
 include_once(__DIR__ . '/../../include/metadata_functions.php');
 
@@ -10,6 +7,17 @@ include_once(__DIR__ . '/../../include/metadata_functions.php');
 if(get_utility_path("exiftool") === false)
     {
     echo 'ExifTool not installed';
+    return false;
+    }
+
+function FITS_test($f_xml,$f_field,$f_expect) 
+    {
+    $fitsdata=getFitsMetadataFieldValue($f_xml, $f_field);
+    if ($fitsdata == $f_expect) 
+        {
+        return true;
+        }
+    echo "FAILED FITS field={$f_field} expected={$f_expect} returned={$fitsdata}".PHP_EOL;
     return false;
     }
 
@@ -27,15 +35,4 @@ if  (   FITS_test($xmlobj,'fileinfo.size',80874)
     }
 
 echo "FAILED FITS TEST".PHP_EOL;
-return false;    
-
-function FITS_test($f_xml,$f_field,$f_expect) 
-    {
-    $fitsdata=getFitsMetadataFieldValue($f_xml, $f_field);
-    if ($fitsdata == $f_expect) 
-        {
-        return true;
-        } 
-        echo "FAILED FITS field={$f_field} expected={$f_expect} returned={$fitsdata}".PHP_EOL;
-        return false;
-    }
+return false;

@@ -69,7 +69,7 @@ function generate_merged_video($videos, $video_splice_type, $target_video_comman
     if ($video_splice_type == "video_splice_save_new")
         {
         // Create new blank resource with the type specified in the config
-        $ref = create_resource($videosplice_resourcetype, 0);
+        $ref = create_resource($videosplice_resourcetype, 0,-1,$lang["video_splice_createdfromvideosplice"]);
         $resource_location = get_resource_path(
             $ref,
             true,
@@ -90,7 +90,7 @@ function generate_merged_video($videos, $video_splice_type, $target_video_comman
         create_previews($ref,false,$target_video_extension);
 
         // Add file extension to db so front end recognises the file
-        sql_query("update resource set file_extension='" . $target_video_extension . "' where ref='$ref'");
+        ps_query("update resource set file_extension=? where ref=?",array("s",$target_video_extension,"i",$ref));
 
         // Add current date to date field
         update_field($ref, $date_field, date("Y-m-d H:i:s"));

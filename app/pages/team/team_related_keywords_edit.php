@@ -10,25 +10,25 @@ include "../../include/db.php";
 include "../../include/authenticate.php"; if (!checkperm("k")) {exit ("Permission denied.");}
 include "../../include/research_functions.php";
 
-$keyword=strtolower(getvalescaped("keyword",""));
-$related=strtolower(getvalescaped("related",""));
+$keyword=strtolower(getval("keyword",""));
+$related=strtolower(getval("related",""));
 
 if (getval("save","")!="" && enforcePostRequest(false))
-	{
-	save_related_keywords($keyword, $related);
-	redirect ($baseurl_short."pages/team/team_related_keywords.php?nc=" . time());
-	}
+    {
+    save_related_keywords($keyword, $related);
+    redirect ($baseurl_short."pages/team/team_related_keywords.php?nc=" . time());
+    }
 
 # Fetch existing relationships
 $related=get_grouped_related_keywords("",$keyword);
 if (count($related)==0)
-	{
-	$related="";
-	}
+    {
+    $related="";
+    }
 else
-	{
-	$related=$related[0]["related"];
-	}
+    {
+    $related=$related[0]["related"];
+    }
 
 include "../../include/header.php";
 ?>
@@ -37,15 +37,14 @@ include "../../include/header.php";
 
 <form method=post id="mainform" action="<?php echo $baseurl_short?>pages/team/team_related_keywords_edit.php">
     <?php generateFormToken("mainform"); ?>
-<input type="hidden" name="keyword" value="<?php echo $keyword?>">
+<input type="hidden" name="keyword" value="<?php echo escape($keyword)?>">
 
-<div class="Question"><label><?php echo $lang["keyword"]?></label><div class="Fixed"><?php echo $keyword?></div><div class="clearerleft"> </div></div>
+<div class="Question"><label><?php echo htmlspecialchars($lang["keyword"])?></label><div class="Fixed"><?php echo htmlspecialchars($keyword)?></div><div class="clearerleft"> </div></div>
 
-<div class="Question"><label><?php echo $lang["relatedkeywords"]?></label><textarea name="related" class="stdwidth" rows=5 cols=50><?php echo htmlspecialchars($related)?></textarea><div class="clearerleft"></div></div>
+<div class="Question"><label><?php echo htmlspecialchars($lang["relatedkeywords"])?></label><textarea name="related" class="stdwidth" rows=5 cols=50><?php echo htmlspecialchars($related)?></textarea><div class="clearerleft"></div></div>
 
-<div class="QuestionSubmit">
-<label for="buttons"> </label>			
-<input name="save" type="submit" value="&nbsp;&nbsp;<?php echo $lang["save"]?>&nbsp;&nbsp;" />
+<div class="QuestionSubmit">		
+<input name="save" type="submit" value="&nbsp;&nbsp;<?php echo htmlspecialchars($lang["save"])?>&nbsp;&nbsp;" />
 </div>
 </form>
 </div>

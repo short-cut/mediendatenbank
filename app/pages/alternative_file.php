@@ -4,21 +4,22 @@ include "../include/db.php";
 include "../include/authenticate.php";
 include_once "../include/image_processing.php";
 
-$ref=getvalescaped("ref","",true);
+$ref=getval("ref","",true);
 
-$search=getvalescaped("search","");
-$offset=getvalescaped("offset",0,true);
-$order_by=getvalescaped("order_by","");
-$archive=getvalescaped("archive","",true);
-$restypes=getvalescaped("restypes","");
+$search=getval("search","");
+$offset=getval("offset",0,true);
+$order_by=getval("order_by","");
+$archive=getval("archive","",true);
+$restypes=getval("restypes","");
 if (strpos($search,"!")!==false) {$restypes="";}
 $modal = (getval("modal", "") == "true");
+$context = getval("context", "");
 
 $default_sort_direction="DESC";
 if (substr($order_by,0,5)=="field"){$default_sort_direction="ASC";}
 $sort=getval("sort",$default_sort_direction);
 
-$resource=getvalescaped("resource","",true);
+$resource=getval("resource","",true);
 
 # Fetch resource data.
 $resourcedata=get_resource_data($resource);
@@ -34,7 +35,7 @@ if($resourcedata["lock_user"] > 0 && $resourcedata["lock_user"] != $userref)
 resource_type_config_override($resourcedata["resource_type"]);
 
 # Not allowed to edit this resource?
-if ((!get_edit_access($resource, $resourcedata["archive"],false,$resourcedata) || checkperm('A')) && $resource>0) {exit ("Permission denied.");}
+if ((!get_edit_access($resource, $resourcedata["archive"],$resourcedata) || checkperm('A')) && $resource>0) {exit ("Permission denied.");}
 
 hook("pageevaluation");
 
@@ -62,44 +63,80 @@ if (getval("tweak","")!="" && enforcePostRequest(false))
       }
    }
 
+    $url_params = [
+        "ref" => $resource,
+        "search" => $search,
+        "offset" => $offset,
+        "order_by" => $order_by,
+        "sort" => $sort,
+        "archive" => $archive,
+        
+    ];
+    if($modal)
+        {
+        $url_params["modal"]="true";
+        if($context="Modal")$url_params["context"] = $context;
+        }
+if (getval("name","")!="" && getval("tweak","")=="" && enforcePostRequest(false)) // do not do this during a tweak operation!
+    {
+    hook("markmanualupload");
+    # Save file data
+    save_alternative_file($resource,$ref);
+    // Check to see if we need to notify users of this change
+    if($notify_on_resource_change_days!=0)
+        {
+        notify_resource_change($resource);
+        }
+    hook ("savealternatefiledata");
+
+    if (getval("tweak","")!='')
+        {
+        $url_params["ref"]=$ref;
+        $url_params = array_merge(["resource"=>$resource],$url_params);
+        redirect(generateURL(
+            "{$baseurl_short}pages/alternative_file.php",
+            $url_params
+        ));
+        }
+    else
+        {
+        redirect(generateURL("{$baseurl_short}pages/alternative_files.php",$url_params));
+        }
+    }
 
 
-if (getval("name","")!="" && getval("tweak","")=="" && enforcePostRequest(false)) // do not do this during a tweak operation! 
-	{
-	hook("markmanualupload");
-	# Save file data
-	save_alternative_file($resource,$ref);
-	// Check to see if we need to notify users of this change							
-	if($notify_on_resource_change_days!=0)
-		{								
-		notify_resource_change($resource);
-		}
-	hook ("savealternatefiledata");
-    $url_modal_part = "&modal=" . ($modal ? "true" : "");
-	if (getval("tweak","")!=''){
-		redirect ($baseurl_short."pages/alternative_file.php?resource=$resource&ref=$ref&search=".urlencode($search)."&offset=$offset&order_by$order_by&sort=$sort&archive=$archive" . $url_modal_part);
-	} else {
-		redirect ($baseurl_short."pages/alternative_files.php?ref=$resource&search=".urlencode($search)."&offset=$offset&order_by=$order_by&sort=$sort&archive=$archive" . $url_modal_part);
-		}
-	}
-
-	
 include "../include/header.php";
+$backtoalternativefilesurl = generateURL("{$baseurl_short}pages/alternative_files.php",$url_params);
+$backtoalternativefileurl = generateURL("{$baseurl_short}pages/alternative_file.php",$url_params);
 ?>
 <div class="BasicsBox">
 <p>
-<a onClick="return CentralSpaceLoad(this,true);" href="<?php echo $baseurl_short?>pages/alternative_files.php?ref=<?php echo $resource?>&search=<?php echo urlencode($search)?>&offset=<?php echo $offset?>&order_by=<?php echo urlencode($order_by)?>&sort=<?php echo urlencode($sort)?>&archive=<?php echo urlencode($archive)?>"><?php echo LINK_CARET_BACK ?><?php echo $lang["backtomanagealternativefiles"]?></a>
+<a onClick="return <?php echo ($context!="Modal"?"CentralSpace":"Modal")?>Load(this,true);" 
+    href="<?php echo $backtoalternativefilesurl?>">
+    <?php echo LINK_CARET_BACK;
+    echo $lang["backtomanagealternativefiles"];?>
+</a>
 </p>
 
 <h1><?php echo $lang["editalternativefile"]; render_help_link('user/alternative-files');?></h1>
 
-<form method="post" class="form" id="fileform" onsubmit="return <?php echo ($modal ? "Modal" : "CentralSpace"); ?>Post(this, true);" action="<?php echo $baseurl_short?>pages/alternative_file.php?search=<?php echo urlencode($search)?>&offset=<?php echo urlencode($offset)?>&order_by=<?php echo urlencode($order_by)?>&sort=<?php echo urlencode($sort)?>&archive=<?php echo urlencode($archive)?>">
+<form 
+    method="post"
+    class="form"
+    id="fileform"
+    onsubmit="return <?php echo ($context="Modal" ? "Modal" : "CentralSpace"); ?>Post(this, true);" action="<?php echo $backtoalternativefileurl?>">
 <?php
 if($modal)
     {
     ?>
     <input type="hidden" name="modal" value="true">
     <?php
+    if($context=="Modal")
+        {
+        ?>
+        <input type="hidden" name="context" value="Modal">
+        <?php
+        }
     }
 generateFormToken('fileform'); ?>
 <input type=hidden name=ref value="<?php echo htmlspecialchars($ref) ?>">
@@ -114,8 +151,8 @@ if(file_exists(get_resource_path($resource , true, 'thm', true, 'jpg', true, 1, 
     $fileurl = get_resource_path($resource, false, 'thm', true, 'jpg', true, 1, false, date('Y-m-d H:i:s'), $ref);
     ?>
     <div class="Question" style="border:0px;"><img id="preview" align="top" src="<?php echo $fileurl; ?>" class="ImageBorder" style="margin-right:10px;"/><br /><br /><div class="clearerleft"> </div></div>
-    <?php 
-    } 
+    <?php
+    }
     ?>
 <div class="Question">
 <label><?php echo $lang["resourceid"]?></label><div class="Fixed"><?php echo htmlspecialchars($resource) ?></div>
@@ -134,17 +171,16 @@ if(file_exists(get_resource_path($resource , true, 'thm', true, 'jpg', true, 1, 
 <?php hook('alternative_file_question', ''); ?>
 
 <?php
-	// if the system is configured to support a type selector for alt files, show it
-	if (isset($alt_types) && count($alt_types) > 1){
-		echo "<div class='Question'>\n<label for='alt_type'>".$lang["alternatetype"]."</label><select name='alt_type' id='alt_type'>";
-		foreach($alt_types as $thealttype){
-			//echo "thealttype:$thealttype: / filealttype:" . $file['alt_type'].":";
-			if ($thealttype == $file['alt_type']){$alt_type_selected = " selected='selected'"; } else { $alt_type_selected = ''; }
-			$thealttype = htmlspecialchars($thealttype,ENT_QUOTES);
-			echo "\n   <option value='$thealttype' $alt_type_selected >$thealttype</option>";
-		}
-		echo "\n</select>\n<div class='clearerleft'> </div>\n</div>";
-	}
+    // if the system is configured to support a type selector for alt files, show it
+    if (isset($alt_types) && count($alt_types) > 1){
+        echo "<div class='Question'>\n<label for='alt_type'>".$lang["alternatetype"]."</label><select name='alt_type' id='alt_type'>";
+        foreach($alt_types as $thealttype){
+            if ($thealttype == $file['alt_type']){$alt_type_selected = " selected='selected'"; } else { $alt_type_selected = ''; }
+            $thealttype = escape($thealttype);
+            echo "\n   <option value='$thealttype' $alt_type_selected >$thealttype</option>";
+        }
+        echo "\n</select>\n<div class='clearerleft'> </div>\n</div>";
+    }
 ?>
 <?php if ($previews_exist){?>
 <div class="Question" id="question_imagecorrection">
@@ -152,8 +188,8 @@ if(file_exists(get_resource_path($resource , true, 'thm', true, 'jpg', true, 1, 
    <select name="tweak" id="tweak" onChange="form.submit()">
    <option value=""><?php echo $lang["select"]?></option>
    <?php
-	# On some PHP installations, the imagerotate() function is wrong and images are turned incorrectly.
-	# A local configuration setting allows this to be rectified
+    # On some PHP installations, the imagerotate() function is wrong and images are turned incorrectly.
+    # A local configuration setting allows this to be rectified
    if (!$image_rotate_reverse_options)
    {
      ?>
@@ -170,7 +206,7 @@ if(file_exists(get_resource_path($resource , true, 'thm', true, 'jpg', true, 1, 
   }
   ?>
   <option value="restore"><?php echo $lang["recreatepreviews"]?></option>
-  
+
   <?php /*hook("moretweakingopt");*/?>
 </select>
 <div class="clearerleft"> </div>
@@ -178,12 +214,11 @@ if(file_exists(get_resource_path($resource , true, 'thm', true, 'jpg', true, 1, 
 <?php } ?>
 
 <div class="QuestionSubmit">
-<label for="buttons"> </label>			
 <input name="save" type="submit" value="&nbsp;&nbsp;<?php echo $lang["save"]?>&nbsp;&nbsp;" />
 </div>
 </form>
 </div>
 
-<?php		
+<?php
 include "../include/footer.php";
 ?>

@@ -39,8 +39,8 @@ $usertoimage    = get_profile_image($msgto)
 msgto = <?php echo $msgto; ?>;
 
 defaultimghtml =  jQuery("<i />", {
-    title           : '<?php echo htmlspecialchars($userfullname); ?>',
-    alt             : '<?php echo htmlspecialchars($userfullname); ?>',
+    title           : '<?php echo escape($userfullname); ?>',
+    alt             : '<?php echo escape($userfullname); ?>',
     'class'         : 'fa fa-user fa-lg fa-fw ProfileImage',
     'aria-hidden'   : true
     });
@@ -50,10 +50,10 @@ if($userimage != "")
     {
     ?>
     userimghtml =  jQuery("<img />", {
-        title   : '<?php echo htmlspecialchars($userfullname); ?>',
-        alt     : '<?php echo htmlspecialchars($userfullname); ?>',
+        title   : '<?php echo escape($userfullname); ?>',
+        alt     : '<?php echo escape($userfullname); ?>',
         'class' : 'ProfileImage',
-        src     : '<?php echo htmlspecialchars($userimage); ?>'
+        src     : '<?php echo escape($userimage); ?>'
         });
     <?php
     }
@@ -66,10 +66,10 @@ if($usertoimage != "")
     {
     ?>
     usertoimghtml =  jQuery("<img />", {
-        title   : '<?php echo htmlspecialchars($userfullname); ?>',
-        alt     : '<?php echo htmlspecialchars($userfullname); ?>',
+        title   : '<?php echo escape($userfullname); ?>',
+        alt     : '<?php echo escape($userfullname); ?>',
         'class' : 'ProfileImage',
-        src     : '<?php echo htmlspecialchars($usertoimage); ?>'
+        src     : '<?php echo escape($usertoimage); ?>'
         });
     <?php
     }
@@ -101,14 +101,26 @@ function sendMessage()
             if(response.length == 1)
                 {
                 msgto = parseInt(response[0]['ref']);
-                api("send_user_message",postdata,reloadMessages());
+                api(
+                    "send_user_message",
+                    postdata,
+                    reloadMessages(),
+                    <?php echo generate_csrf_js_object('send_user_message'); ?>
+                );
                 return true;
                 }
-            });
+            },
+            <?php echo generate_csrf_js_object('get_users'); ?>
+            );
         }
     else
         {
-        api("send_user_message",postdata,showUserMessage(messagetext,true));
+        api(
+            "send_user_message",
+            postdata,
+            showUserMessage(messagetext,true),
+            <?php echo generate_csrf_js_object('send_user_message'); ?>
+        );
         }
 
     // Speed up message checking whilst on this page
@@ -132,9 +144,11 @@ function showUserMessage(message,fromself)
         }
 
     msgtemp = msgtemp.replace("%%CLASSES%%", classtxt);
-    msgtemp = msgtemp.replace("%%MESSAGE%%", message);
+
+    let msg = new DOMParser().parseFromString(msgtemp, 'text/html');
+    msg.querySelector('div.user_message_text').textContent = message;
     
-    jQuery('#message_conversation').append(msgtemp);
+    jQuery('#message_conversation').append(msg.querySelector('div'));
     jQuery('#message_conversation').scrollTop(jQuery('#message_conversation').prop('scrollHeight'));
     }
 
@@ -151,7 +165,8 @@ if(isset($_SERVER["HTTP_REFERER"]) && strpos($_SERVER["HTTP_REFERER"],"team_user
     {    
     $links_trail[] = array(
         'title' => $lang["teamcentre"],
-        'href'  => $baseurl_short . "pages/team/team_home.php"
+        'href'  => $baseurl_short . "pages/team/team_home.php",
+		'menu' =>  true
         );
     $links_trail[] = array(
         'title' => $lang["manageusers"],
@@ -237,8 +252,7 @@ renderBreadcrumbs($links_trail);
     <div class="Question"><label><?php echo $lang["message"]?></label>
         <textarea id="messagetext" name="messagetext" class="stdwidth Inline required" rows=5 cols=50></textarea>
         <div class="clearerleft"> </div></div>
-    <div class="QuestionSubmit">
-    <label for="buttons"> </label>			
+    <div class="QuestionSubmit">		
     <input name="send" type="submit" value="&nbsp;&nbsp;<?php echo $lang["send"]?>&nbsp;&nbsp;" onclick="sendMessage();return false;"/>
     </div>
     </form>

@@ -15,7 +15,7 @@ $requesteduser = getval('actasuser',0, true);
 $actasuser = $requesteduser === $userref ? $userref : $requesteduser;
 
 // Filter by a particular table and its reference
-$table = getvalescaped('table', '');
+$table = getval('table', '');
 $table_reference = getval('table_reference', 0, true);
 $tables_data = array(
     'resource_type_field' => array(
@@ -39,11 +39,11 @@ $tables_data = array(
 );
 
 // TODO: over time, these can be put under tables_data once we can use the referenced information (ie. if there is a function to do so - see examples above)
-$no_reference_data_tables = sql_array('
+$no_reference_data_tables = ps_array('
         SELECT DISTINCT remote_table AS "value"
           FROM activity_log
          WHERE remote_table IS NOT NULL AND remote_table <> ""
-    ',
+    ',array(),
     "");
 
 if(!checkperm('a') || $requesteduser == $actasuser && $requesteduser != 0)
@@ -67,15 +67,18 @@ else
 // Add date restriction
 $curmonth   = date('m');
 $curyear    = date('Y');
-$logmonth   = getvalescaped("logmonth",($log_search != "" ? "" : $curmonth), true);
-$logyear    = getvalescaped("logyear",($log_search != "" ? "" : $curyear), true);
+$logmonth   = getval("logmonth",($log_search != "" ? "" : $curmonth), true);
+$logyear    = getval("logyear",($log_search != "" ? "" : $curyear), true);
 
 // Add filtering if not searching
 if($logmonth != 0 || $logyear != 0)
     {
+    $logmonth=(int)$logmonth;
+    $logyear=(int)$logyear;
     $monthstart = $logmonth == 0 ? 1 : $logmonth;
     $monthend = $logmonth == 0 ? 12 : $logmonth;
-    $datevals = " BETWEEN CAST('$logyear-$monthstart-01' AS DATE) AND LAST_DAY(CAST('$logyear-$monthend-01' AS DATE)) ";
+    $datevals = " BETWEEN CAST('$logyear-$monthstart-01' AS DATETIME) 
+        AND CAST( CONCAT( LAST_DAY('$logyear-$monthend-01'),' 23:59:59') AS DATETIME) ";
     $log_tables_where_statements['activity_log']    .= "(logged " . $datevals . ") AND ";
     $log_tables_where_statements['resource_log']    .= "(date " . $datevals . ") AND ";
     $log_tables_where_statements['collection_log']  .= "(date " . $datevals . ") AND ";
@@ -153,7 +156,8 @@ else if (strpos($backurl, "pages/team/team_user.php") !== false)
     $links_trail = array(
         array(
             'title' => $lang["teamcentre"],
-            'href'  => $baseurl_short . "pages/team/team_home.php"
+            'href'  => $baseurl_short . "pages/team/team_home.php",
+            'menu' =>  true
         ),
         array(
             'title' => $lang["manageusers"],
@@ -161,13 +165,14 @@ else if (strpos($backurl, "pages/team/team_user.php") !== false)
         )
     );
     }
-elseif (strpos($backurl, "pages/team/team_user_edit.php") !== false)
+else if (strpos($backurl, "pages/team/team_user_edit.php") !== false)
     {
     // Arrived from Edit user page
     $links_trail = array(
         array(
             'title' => $lang["teamcentre"],
-            'href'  => $baseurl_short . "pages/team/team_home.php"
+            'href'  => $baseurl_short . "pages/team/team_home.php",
+            'menu' =>  true
         ),
         array(
             'title' => $lang["manageusers"],
@@ -179,21 +184,29 @@ elseif (strpos($backurl, "pages/team/team_user_edit.php") !== false)
         )
     );
     }
+else
+    {
+    $links_trail = [
+        ['title' => $lang["systemsetup"], 'href' => "{$baseurl_short}pages/admin/admin_home.php"]
+    ];
+    }
 $links_trail[] = array(
-    'title' => htmlspecialchars($title),
-    'href'  => ""
+    'title' => htmlspecialchars($title)
 );
+?>
+<h1><?php echo htmlspecialchars($title); ?></h1>
+<?php
 renderBreadcrumbs($links_trail);
 ?>
     <h1>
         <form class="ResultsFilterTopRight" method="get">
             <input type="hidden" name="actasuser" value="<?php echo $actasuser; ?>">
-            <input type="hidden" name="backurl" value="<?php echo $backurl; ?>">
-            <input type="hidden" name="table" value="<?php echo $table; ?>">
+            <input type="hidden" name="backurl" value="<?php echo urlencode($backurl); ?>">
+            <input type="hidden" name="table" value="<?php echo escape($table); ?>">
             <input type="hidden" name="table_reference" value="<?php echo $table_reference; ?>">
             <input type="hidden" name="logyear" value="<?php echo $logyear; ?>">
             <input type="hidden" name="logmonth" value="<?php echo $logmonth; ?>">
-            <input type="text" name="log_search" placeholder="<?php echo htmlspecialchars($log_search); ?>">
+            <input type="text" name="log_search" placeholder="<?php echo escape($log_search); ?>">
             <input type="submit" name="searching" value="<?php echo htmlspecialchars($lang["searchbutton"]); ?>">
         <?php
         if($log_search != "")
@@ -278,7 +291,7 @@ $select_table_url = generateURL(
     else
         {
         ?>
-        <input type="hidden" name="table" value="<?php echo $table;?>">
+        <input type="hidden" name="table" value="<?php echo escape($table);?>">
         <?php
         }
 
@@ -292,7 +305,7 @@ $select_table_url = generateURL(
     if ($log_search != '')
         {
         ?>
-        <input type="hidden" name="log_search" value="<?php echo $log_search;?>">
+        <input type="hidden" name="log_search" value="<?php echo escape($log_search);?>">
         <?php
         }
     ?>
@@ -345,23 +358,23 @@ $select_table_url = generateURL(
                 {
                 ?>
                 <tr>
-                    <td><?php echo htmlspecialchars(nicedate($record['datetime'], true, true, true)); ?></td>
-                    <td><?php echo htmlspecialchars($record['user']); ?></td>
-                    <td><?php echo htmlspecialchars($record['operation']); ?></td>
-                    <td><?php echo hook("userdisplay","",array(array("access_key"=>$record['access_key'],'username'=>$record['user'])))?"":htmlspecialchars($record['notes']); ?></td>
-                    <td><?php echo htmlspecialchars($record['resource_field']); ?></td>
-                    <td><?php echo htmlspecialchars($record['old_value']); ?></td>
-                    <td><?php echo htmlspecialchars($record['new_value']); ?></td>
+                    <td><?php echo htmlspecialchars((string) nicedate($record['datetime'], true, true, true)); ?></td>
+                    <td><?php echo htmlspecialchars((string) $record['user']); ?></td>
+                    <td><?php echo htmlspecialchars((string) $record['operation']); ?></td>
+                    <td><?php echo hook("userdisplay","",array(array("access_key"=>$record['access_key'],'username'=>$record['user'])))?"":htmlspecialchars((string) $record['notes']); ?></td>
+                    <td><?php echo htmlspecialchars((string) $record['resource_field']); ?></td>
+                    <td><?php echo htmlspecialchars((string) $record['old_value']); ?></td>
+                    <td><?php echo htmlspecialchars((string) $record['new_value']); ?></td>
                     <td><?php echo strip_tags_and_attributes($record['difference'], array("pre")); ?></td>
                     <?php
                     if($table == '' || $table_reference == 0)
                         {
                         ?>
-                        <td><?php echo htmlspecialchars($record['table']); ?></td>
+                        <td><?php echo htmlspecialchars((string) $record['table']); ?></td>
                         <?php
                         }
                         ?>
-                    <td><?php echo htmlspecialchars($record['column']); ?></td>
+                    <td><?php echo htmlspecialchars((string) $record['column']); ?></td>
                     <?php
                     if($table != '' && $table_reference == 0 && array_key_exists($record['table'], $tables_data))
                         {
@@ -379,7 +392,7 @@ $select_table_url = generateURL(
                         }
                     else if($table == '' || $table_reference == 0)
                         {
-                        $ref = htmlspecialchars($record['table_reference']);
+                        $ref = htmlspecialchars((string) $record['table_reference']);
                         
                         switch ($record['column'])
                             {

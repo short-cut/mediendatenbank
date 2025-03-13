@@ -1,15 +1,21 @@
 <?php
 // Test of staticsync functionality
-if('cli' != PHP_SAPI)
-    {
-    exit('This utility is command line only.');
-    }
+command_line_only();
 
 // Staticsync affects this so keep a copy and restore it later
 $saved_user_data    = $userdata;
 $saved_userref      = $userref;
 $saved_perms        = $userpermissions;
 $userpermissions    = array("s","g","j*");
+if(isset($unoconv_path))
+    {
+    $saved_unoconv_path = $unoconv_path;
+    // Disable unoconv previews as this is not being tested here and failures can interrupt test
+    unset($unoconv_path);
+    }
+$saved_alternative_file_previews = $alternative_file_previews;
+$saved_enable_thumbnail_creation_on_upload = $enable_thumbnail_creation_on_upload;
+
 // Command line args are used by staticsync so need to save them
 $savedargv= $argv;
 $savedargc= $argc;
@@ -28,22 +34,26 @@ if (!file_exists($test_path))
     {
     mkdir($test_path,0777,true);
     }
-//chmod($test_path,0777);
 
 // Set our test config
 $staticsync_userref=$userref;
 $theme_category_levels=20;
 $staticsync_ingest=true;
 $staticsync_autotheme = true;
-
-// Disable unoconv previews as this is not being tested here and failures can interrupt test
-unset($unoconv_path);
+$enable_thumbnail_creation_on_upload = false;
+$alternative_file_previews = false;
 
 // Create file to sync
 copy(dirname(__FILE__) . '/../../gfx/homeanim/1.jpg', $test_path . "teststatic.jpg");
 
-// Required for test C 
-$staticsync_folder_structure=true;
+// Required for test L ($nogo)
+$nogo = '[to_skip]';
+$test_nogo_path = $syncdir . "to_skip/";
+if (!file_exists($test_nogo_path))
+    {
+    mkdir($test_nogo_path,0777,true);
+    }
+copy(dirname(__FILE__) . '/../../gfx/homeanim/1.jpg', $test_nogo_path . "skipped.jpg");
 
 // Required for test D
 $staticsync_extension_mapping[2]=array("txt");
@@ -111,8 +121,7 @@ ob_flush();
 ob_start();
 $staticsync_suppress_output=true;
 include (dirname(__FILE__) . "/../../pages/tools/staticsync.php");
-ob_clean();
-ob_start();
+ob_end_clean();
 
 // Test A: check the file has gone
 if (file_exists($test_path . "teststatic.jpg"))
@@ -158,8 +167,8 @@ if (!is_array($results) || count($results)==0 || $results[0]["resource_type"] !=
     }
 
 // Test F - $staticsync_mapped_category_tree
-$treedata = get_data_by_field($resid,$sync_tree_field);
-if($treedata != "test_folder, featured")
+$treedata = get_data_by_field($resid, $sync_tree_field, false);
+if(!is_array($treedata) || count($treedata) != 2 || "test_folder/featured" !== implode('/', array_column($treedata, 'name')))
     {
     echo "Test F failed: \$staticsync_mapped_category_tree failed - ";
     return false;
@@ -176,7 +185,7 @@ $projectresource=$results[0]["ref"];
 $mappeddata = get_data_by_field($projectresource,$project_field);
 if(trim($mappeddata) != "conferenceA")
     {
-    echo "Test H failed: \$staticsync_mapped_category_tree failed - ";
+    echo "Test H failed: \$staticsync_mapfolders failed - ";
     return false;
     }
 
@@ -223,11 +232,25 @@ if(!is_array($alts_k)
     return false;
     }
 
+// Test L - $nogo : Confirm resource was not created from "skipped.jpg"
+$results=do_search("skipped");
+if (is_array($results) && count($results) > 0)
+    {
+    echo "Test L failed: File in \$nogo location was imported - ";
+    return false;
+    }
+
 $userref            = $saved_userref;
 $userpermissions    = $saved_perms;
 $userdata           = $saved_user_data;
 $argv = $savedargv;
 $argc = $savedargc;
+if(isset($unoconv_path))
+    {
+    $unoconv_path = $saved_unoconv_path;
+    }
+$alternative_file_previews = $saved_alternative_file_previews;
+$enable_thumbnail_creation_on_upload = $saved_enable_thumbnail_creation_on_upload;
 
 return true;
 

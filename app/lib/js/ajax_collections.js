@@ -2,31 +2,23 @@
 
 // Prevent caching
 jQuery.ajaxSetup({ cache: false });
- 
-function PopCollection(thumbs) {
-    if(thumbs == "hide" && collections_popout) {
-        ToggleThumbs();
-    }
-}
 
 function ChangeCollection(collection,k,last_collection,searchParams) {
     console.debug("ChangeCollection(collection = %o, k = %o, last_collection = %o, searchParams = %o)", collection, k, last_collection, searchParams);
     if(typeof last_collection == 'undefined'){last_collection='';}
     if(typeof searchParams == 'undefined') {searchParams='';}
     thumbs = getCookie("thumbs");
-    PopCollection(thumbs);
     // Set the collection and update the count display
     CollectionDivLoad(baseurl_short + 'pages/collections.php?collection=' + collection + '&thumbs=' + thumbs + '&last_collection=' + last_collection + '&k=' + k + '&' +searchParams);
 }
 
 function UpdateCollectionDisplay(k) {
     thumbs = getCookie("thumbs");
-    PopCollection(thumbs);
     // Update the collection count display
     jQuery('#CollectionDiv').load(baseurl_short + 'pages/collections.php?thumbs=' + thumbs + '&k=' + k);
 }
 
-function AddResourceToCollection(event,resource,size, collection_id) {
+function AddResourceToCollection(event, ui, resource, size, collection_id) {
 
     // Optional params
     if(typeof collection_id === 'undefined') {
@@ -73,15 +65,45 @@ function AddResourceToCollection(event,resource,size, collection_id) {
             }
         }
     }
+
+    // Get the relevant CSRFToken
+    artc_csrf="";
+    
+    if(event.type=="click")
+        {
+        try {
+            artc_csrf=JSON.parse(event.currentTarget.dataset.apiNativeCsrf);
+            }
+        catch {
+              console.debug('Click csrf not found');
+              }
+        }
+    else if(event.type=="drop")
+        {
+        artc_dropped = jQuery(ui.draggable);
+        try {
+            artc_csrf=JSON.parse(artc_dropped.find("a.addToCollection").attr("data-api-native-csrf"));
+            } 
+        catch {
+            console.debug('Dropped csrf not found');
+            }
+        }
+
     prevadded = resource;
-
-    thumbs = getCookie("thumbs");
-    PopCollection(thumbs);
-
+    searchstring = '';
+    if(typeof searchParams !== "undefined")
+        {
+        searchstring = searchParams.get("search");
+        if (searchstring == null)
+            {
+            searchstring = '';
+            }
+        }
     post_data = {
         'resource'   : resource,
         'collection' : collection_id,
-    };
+        'search'     : searchstring
+     };
     
     api("add_resource_to_collection",post_data,function(response) {
         if(typeof response == 'string')
@@ -95,15 +117,14 @@ function AddResourceToCollection(event,resource,size, collection_id) {
             CollectionDivLoad(baseurl_short + 'pages/collections.php');
             jQuery("#CentralSpace").trigger("resourceremovedfromcollection",[resource_list]);
             }
-    });
+        },
+        artc_csrf 
+    );
 
     delete prevremoved;
-    if(collection_bar_hide_empty){
-	CheckHideCollectionBar();
-	}
 }
 
-function RemoveResourceFromCollection(event,resource,pagename, collection_id) {
+function RemoveResourceFromCollection(event,resource,pagename, collection_id, csrf_token) {
     // Optional params
     if(typeof collection_id === 'undefined') {
         collection_id = '';
@@ -151,12 +172,16 @@ function RemoveResourceFromCollection(event,resource,pagename, collection_id) {
     }
     prevremoved = resource;
 
-    thumbs = getCookie("thumbs");
-    PopCollection(thumbs);
     post_data = {
         'resource'   : resource,
         'collection' : collection_id,
     };
+
+    if(typeof csrf_token !== 'object')
+        {
+        csrf_token = jQuery(event.target).data('api-native-csrf');
+        }
+
     api("remove_resource_from_collection",post_data,function(response) {
         if(typeof response == 'string')
             {
@@ -169,13 +194,11 @@ function RemoveResourceFromCollection(event,resource,pagename, collection_id) {
             CollectionDivLoad(baseurl_short + 'pages/collections.php');
             jQuery("#CentralSpace").trigger("resourceremovedfromcollection",[resource_list]);
             }
-        
-        });
+        },
+        csrf_token
+    );
 
     delete prevadded;
-    if(collection_bar_hide_empty){
-	CheckHideCollectionBar();
-	}
 }
 
 
@@ -208,9 +231,7 @@ function UpdateHiddenCollections(checkbox, collection, post_data) {
 
 function ProcessCollectionResourceSelection(resource_list, primary_action, collection, csrf_data)
     {
-
     var csrf_post_data = JSON.parse(csrf_data);
-
     if(primary_action)
         {
         CentralSpaceShowLoading();
@@ -221,8 +242,6 @@ function ProcessCollectionResourceSelection(resource_list, primary_action, colle
         CentralSpaceShowLoading();
         remove_multiple_resources_from_collection(resource_list, collection, csrf_post_data)
         }
-        
-
     return true;
 }
 
@@ -292,7 +311,7 @@ function ClearSelectionCollection(t)
             {
             if(typeof response.status !== "undefined" && response.status == "success")
                 {
-                CentralSpaceLoad(window.location.href);
+                CentralSpaceLoad(window.location.href, null, null, false);
                 }
             })
         .fail(function(data, textStatus, jqXHR)
@@ -316,6 +335,7 @@ function ClearSelectionCollection(t)
 
 function UpdateSelColSearchFilterBar()
     {
+    console.log('Called UpdateSelColSearchFilterBar()');
     CentralSpaceShowLoading();
 
     jQuery.ajax({
@@ -375,7 +395,7 @@ function UpdateSelectedResourcesCounter(clear)
         // We already had the "selected" counter - there is no search results found counter in DOM. Reload in this case.
         if(!orig_srf.length)
             {
-            CentralSpaceLoad(window.location.href);
+            CentralSpaceLoad(window.location.href, null, null, false);
             }
 
         orig_srf.addClass("InpageNavLeftBlock");
@@ -490,9 +510,12 @@ function UpdateSelectedUnifiedActions(clear)
     var load_actions_action_selection = jQuery("select[id^=load_actions_action_selection");
     var actionspace = (!search_action_selection.length ? load_actions_action_selection : search_action_selection);
     var actionspace_parent = actionspace.parent();
+    console.debug('[UpdateSelectedUnifiedActions] actionspace_parent = %o', actionspace_parent);
 
     if(clear)
         {
+        // Allow LoadActions to reload the options when clearing
+        actionspace_parent.attr('data-actions-loaded', '0');
         var load_actions = LoadActions("search", actionspace_parent, "search", null, searchparams);
         }
     else
@@ -502,17 +525,17 @@ function UpdateSelectedUnifiedActions(clear)
 
     load_actions.then(function(actions_loaded)
         {
+        console.debug('[UpdateSelectedUnifiedActions] actions_loaded = %o', actions_loaded);
         if(!actions_loaded)
             {
             return;
             }
 
-        actionspace_parent.after(actionspace_parent.html());
-        actionspace_parent.remove();
+        let actions_html = actionspace_parent.find('.ActionsContainer.InpageNavLeftBlock').html();
+        actionspace_parent.empty().append(actions_html);
 
         return;
         });
-
     return;
     }
 
@@ -528,6 +551,8 @@ function RemoveSelectedFromCollection(csrf_id, csrf_token)
     var post_data = {
         selected:true
     };
+    let csrf_data = {};
+    csrf_data[csrf_id] = csrf_token;
 
     CentralSpaceShowLoading();
     api("collection_remove_resources",post_data,function(response){
@@ -544,7 +569,7 @@ function RemoveSelectedFromCollection(csrf_id, csrf_token)
         UpdateCollectionDisplay('');
 
     return true;
-        });
+        }, csrf_data);
 
     return;
     }
@@ -573,7 +598,7 @@ function add_resource_to_collection(resource, collection, csrf)
         }
 
     return true;
-    });
+    }, csrf);
     }
 
 function add_multiple_resources_to_collection(resource_list, collection, csrf)
@@ -600,7 +625,7 @@ function add_multiple_resources_to_collection(resource_list, collection, csrf)
             }
 
         return true;
-    });
+    }, csrf);
     }
 
 
@@ -628,7 +653,7 @@ function remove_resource_from_collection(resource, collection, csrf)
             }
 
         return true;
-    });
+    }, csrf);
     }
 
 function remove_multiple_resources_from_collection(resource_list, collection, csrf)
@@ -655,7 +680,7 @@ function remove_multiple_resources_from_collection(resource_list, collection, cs
             }
 
         return true;
-    });
+    }, csrf);
     }
 
 function toggle_fc_bg_image_txt_input(el, show_on_val)
