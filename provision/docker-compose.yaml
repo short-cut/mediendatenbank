@@ -14,6 +14,7 @@ services:
         container_name: ${COMPOSE_CONTAINER_NAME}_app
         volumes:
             - "../app:${PROJECT_ROOT_DOCKER}"
+            - "./_data/filestore:${PROJECT_ROOT_DOCKER}/filestore"
         environment:
             ENVIRONMENT: ${ENVIRONMENT}
             WWW_BASE_DIR: ${WWW_BASE_DIR}
