@@ -66,7 +66,7 @@ if (getval("submitted","")=="yes" && getval("resetform","")=="")
 	if (getval("countonly","")!="")
 		{
 		# Only show the results (this will appear in an iframe)
-        if (substr($restypes,0,11)!="Collections" && !$collection_search_includes_resource_metadata)
+        if (substr($restypes,0,11)!="Collections")
             {
             $result=do_search($search,$restypes,"relevance",$archive,1,"",false,$starsearch, false, false, "", false, true, false, false, false, $access);
             }
@@ -437,17 +437,37 @@ if($search_includes_resources && !hook("advsearchrestypes") && !$hide_search_res
  <label><?php echo $lang["search-mode"]?></label><?php
  
  $wrap=0;
+
+ $checked=false;
+ if(!empty($selectedtypes[0]) && in_array("Global",$selectedtypes))
+ 	{
+	$checked=true;
+	}
+elseif(in_array("Global",$restypes) && empty($selectedtypes[0]))
+	{
+	$checked=true;
+	}
  ?><table><tr>
- <td valign=middle><input type=checkbox class="SearchTypeCheckbox" id="SearchGlobal" name="resourcetypeGlobal" value="yes" <?php if (in_array("Global",$restypes)) { ?>checked<?php }?>></td><td valign=middle><?php echo $lang["resources-all-types"]; ?>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td><?php
+ <td valign=middle><input type=checkbox class="SearchTypeCheckbox" id="SearchGlobal" name="resourcetypeGlobal" value="yes" <?php if ($checked) { ?>checked<?php }?>></td><td valign=middle><?php echo $lang["resources-all-types"]; ?>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td><?php
  $hiddentypes=Array();
  for ($n=0;$n<count($types);$n++)
-	 {
-		 if(in_array($types[$n]['ref'], $hide_resource_types)) { continue; }
-	 $wrap++;if ($wrap>4) {$wrap=1;?></tr><tr><?php }
-	 ?><td valign=middle><input type=checkbox class="SearchTypeCheckbox SearchTypeItemCheckbox" name="resourcetype<?php echo $types[$n]["ref"]?>" value="yes" <?php if (in_array("Global",$restypes) || in_array($types[$n]["ref"],$restypes)) {?>checked<?php } else $hiddentypes[]=$types[$n]["ref"]; ?>></td><td valign=middle><?php echo htmlspecialchars($types[$n]["name"])?>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td><?php	
-	 }
+	{
+	if(in_array($types[$n]['ref'], $hide_resource_types)) { continue; }
+	$wrap++;if ($wrap>4) {$wrap=1;?></tr><tr><?php }
+	$checked=false;	
+	if(!empty($selectedtypes[0]) && (in_array("Global",$selectedtypes) || in_array($types[$n]["ref"],$selectedtypes)))
+		{
+		$checked=true;
+		}
+	elseif((in_array("Global",$restypes) || in_array($types[$n]["ref"],$restypes)) && empty($selectedtypes[0]))
+		{
+		$checked=true;
+		}
+
+	?><td valign=middle><input type=checkbox class="SearchTypeCheckbox SearchTypeItemCheckbox" name="resourcetype<?php echo $types[$n]["ref"]?>" value="yes" <?php if ($checked) {?>checked<?php } else $hiddentypes[]=$types[$n]["ref"]; ?>></td><td valign=middle><?php echo htmlspecialchars($types[$n]["name"])?>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td><?php	
+	}
  ?>
- <?php if ($search_includes_user_collections || $search_includes_public_collections ||$search_includes_themes)
+ <?php if ($search_includes_themes)
 	 {
  ?></tr><tr><td>&nbsp;</td>
  </tr>
@@ -473,7 +493,7 @@ if (!hook('advsearchallfields')) { ?>
 </div>
 <?php } ?>
 <h1 class="AdvancedSectionHead CollapsibleSectionHead" id="AdvancedSearchGlobalSectionHead" 
-<?php if (in_array("Collections",$selectedtypes) && !$collection_search_includes_resource_metadata) 
+<?php if (in_array("Collections",$selectedtypes)) 
 		{?> 
 		style="display: none;" 
 <?php 	} ?>>
@@ -590,7 +610,7 @@ for ($n=0;$n<count($fields);$n++)
 		$value="";
 		}
 	# Render this field
-    render_search_field($fields[$n], $value, true, 'SearchWidth', false, array(), $searched_nodes, $resetform);
+    render_search_field($fields[$n], $fields, $value, true, 'SearchWidth', false, array(), $searched_nodes, $resetform);
 	}
 ?>
 </div>
@@ -696,9 +716,9 @@ if($advanced_search_contributed_by)
     }
 ?>
 
-<?php if  ($search_includes_user_collections || $search_includes_public_collections || $search_includes_themes) { ?>
-<h1 class="AdvancedSectionHead CollapsibleSectionHead" id="AdvancedSearchCollectionsSectionHead" <?php if (!in_array("Collections",$selectedtypes) && !$collection_search_includes_resource_metadata) {?> style="display: none;" <?php } ?>><?php echo $lang["collections"]; ?></h1>
-<div class="AdvancedSection" id="AdvancedSearchCollectionsSection" <?php if (!in_array("Collections",$selectedtypes) && !$collection_search_includes_resource_metadata) {?> style="display: none;" <?php } ?>>
+<?php if ($search_includes_themes) { ?>
+<h1 class="AdvancedSectionHead CollapsibleSectionHead" id="AdvancedSearchCollectionsSectionHead" <?php if (!in_array("Collections",$selectedtypes)) {?> style="display: none;" <?php } ?>><?php echo $lang["collections"]; ?></h1>
+<div class="AdvancedSection" id="AdvancedSearchCollectionsSection" <?php if (!in_array("Collections",$selectedtypes)) {?> style="display: none;" <?php } ?>>
 
 <script type="text/javascript">	
 function resetTickAllColl(){
@@ -723,18 +743,6 @@ $wrap=0;
 
 <?php
 $clear_function="";
-if ($search_includes_user_collections) 
-    { ?>
-    <td align="middle"><?php if ($searchbar_selectall){ ?>&nbsp;&nbsp;<?php } ?><input class="tickboxcoll" id="TickBoxMyCol" type="checkbox" name="resourcetypemycol" value="yes" <?php if ((count($restypes)==1 && $restypes[0]=="Collections") || in_array("mycol",$restypes)) {?>checked="checked"<?php } ?>onClick="resetTickAllColl();" onChange="UpdateResultCount();"/><?php echo $lang["mycollections"]?></td><?php	
-    $clear_function.="document.getElementById('TickBoxMyCol').checked=true;";
-    $clear_function.="resetTickAllColl();";
-    }
-if ($search_includes_public_collections) 
-    { ?>
-    <td align="middle"><?php if ($searchbar_selectall){ ?>&nbsp;&nbsp;<?php } ?><input class="tickboxcoll" id="TickBoxPubCol" type="checkbox" name="resourcetypepubcol" value="yes" <?php if ((count($restypes)==1 && $restypes[0]=="Collections") || in_array("pubcol",$restypes)) {?>checked="checked"<?php } ?>onClick="resetTickAllColl();" onChange="UpdateResultCount();"/><?php echo $lang["findpubliccollection"]?></td><?php	
-    $clear_function.="document.getElementById('TickBoxPubCol').checked=true;";
-    $clear_function.="resetTickAllColl();";
-    }
 if ($search_includes_themes) 
     { ?>
     <td align="middle"><?php if ($searchbar_selectall){ ?>&nbsp;&nbsp;<?php } ?><input class="tickboxcoll" id="TickBoxThemes" type="checkbox" name="resourcetypethemes" value="yes" <?php if ((count($restypes)==1 && $restypes[0]=="Collections") || in_array("themes",$restypes)) {?>checked="checked"<?php } ?>onClick="resetTickAllColl();" onChange="UpdateResultCount();"/><?php echo $lang["findcollectionthemes"]?></td><?php	
@@ -745,8 +753,6 @@ if ($search_includes_themes)
 </tr></table></div>
 <script type="text/javascript">resetTickAllColl();</script>
 <?php
-if (!$collection_search_includes_resource_metadata)
-   {
  $fields=get_advanced_search_collection_fields();
  for ($n=0;$n<count($fields);$n++)
 	 {
@@ -759,9 +765,8 @@ if (!$collection_search_includes_resource_metadata)
 		$value="";
 		}
 	 # Render this field
-	 render_search_field($fields[$n],$value,true,"SearchWidth",false,array(),$searched_nodes,$resetform);
+	 render_search_field($fields[$n], $fields, $value, true, "SearchWidth", false, array(), $searched_nodes, $resetform);
 	 }
-   }
 ?>
 </div>
 

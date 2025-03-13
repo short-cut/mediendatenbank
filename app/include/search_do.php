@@ -123,6 +123,7 @@ function do_search(
         "file_path"       => "file_path $sort,r.ref $sort",
         "resourceid"      => "r.ref $sort",
         "resourcetype"    => "order_by $sort, resource_type $sort, r.ref $sort",
+        "extension"       => "file_extension $sort",
         "titleandcountry" => "title $sort,country $sort",
         "random"          => "RAND()",
         "status"          => "archive $sort",
@@ -207,11 +208,6 @@ function do_search(
         $keywords = array();
         }
 
-    foreach (get_indexed_resource_type_fields() as $resource_type_field)
-        {
-        add_verbatim_keywords($keywords,$search,$resource_type_field,true);      // add any regex matched verbatim keywords for those indexed resource type fields
-        }
-
     $search=trim($search);
     $keywords = array_values(array_filter(array_unique($keywords), 'is_not_wildcard_only'));
 
@@ -258,7 +254,7 @@ function do_search(
         }
 
     # Join thumbs_display_fields to resource table
-    $select="r.ref, r.resource_type, r.has_image, r.is_transcoding, r.creation_date, r.rating, r.user_rating, r.user_rating_count, r.user_rating_total, r.file_extension, r.preview_extension, r.image_red, r.image_green, r.image_blue, r.thumb_width, r.thumb_height, r.archive, r.access, r.colour_key, r.created_by, r.file_modified, r.file_checksum, r.request_count, r.new_hit_count, r.expiry_notification_sent, r.preview_tweaks, r.file_path, r.modified ";
+    $select="r.ref, r.resource_type, r.has_image, r.is_transcoding, r.creation_date, r.rating, r.user_rating, r.user_rating_count, r.user_rating_total, r.file_extension, r.preview_extension, r.image_red, r.image_green, r.image_blue, r.thumb_width, r.thumb_height, r.archive, r.access, r.colour_key, r.created_by, r.file_modified, r.file_checksum, r.request_count, r.new_hit_count, r.expiry_notification_sent, r.preview_tweaks, r.file_path, r.modified, r.file_size ";
     $sql_hitcount_select="r.hit_count";
     
     $modified_select=hook('modifyselect');
@@ -302,7 +298,7 @@ function do_search(
     $skipped_last=false;
 
     # Do not process if a numeric search is provided (resource ID)
-    global $config_search_for_number, $category_tree_search_use_and;
+    global $config_search_for_number, $category_tree_search_use_and_logic;
     $keysearch=!($config_search_for_number && is_numeric($search));
 
     # Fetch a list of fields that are not available to the user - these must be omitted from the search.
@@ -368,6 +364,9 @@ function do_search(
                                 $fieldinfo_cache[$fieldname]=$fieldinfo;
                                 }
                             }
+                        
+                        // add any regex matched verbatim keywords for those indexed resource type fields
+                        add_verbatim_keywords($keywords,$keystring,$fieldinfo["ref"],true);
                         }
 
                     //First try and process special keyword types
@@ -930,18 +929,17 @@ function do_search(
 					}
                
                 $qk=1; // Set the counter to the first keyword
+                $last_key_offset=1;
 				foreach($quotedkeywords as $quotedkeyword)
 					{
 					global $noadd, $wildcard_always_applied, $wildcard_always_applied_leading;
 					if (in_array($quotedkeyword, $noadd)) # skip common words that are excluded from indexing
 						{
-						$skipped_last = true;       
+						# Support skipped keywords - if the last keyword was skipped (listed in $noadd), increase the allowed position from the previous keyword. Useful for quoted searches that contain $noadd words, e.g. "black and white" where "and" is a skipped keyword.
+						++$last_key_offset;
 						}
 					else
 						{
-						$last_key_offset=1;
-						if (isset($skipped_last) && $skipped_last) {$last_key_offset=2;} # Support skipped keywords - if the last keyword was skipped (listed in $noadd), increase the allowed position from the previous keyword. Useful for quoted searches that contain $noadd words, e.g. "black and white" where "and" is a skipped keyword.
-						
 						$keyref = resolve_keyword($quotedkeyword, false,true,false); # Resolve keyword.
                         if ($keyref === false)
                             {
@@ -995,7 +993,7 @@ function do_search(
                             $fixedunion .=" JOIN `node_keyword` nk_[union_index]_" . $qk . " ON nk_[union_index]_" . $qk . ".node = nk_[union_index]_" . ($qk-1) . ".node AND nk_[union_index]_" . $qk . ".keyword = '" . $keyref . "' AND  nk_[union_index]_" . $qk . ".position=nk_[union_index]_" . ($qk-1) . ".position+" . $last_key_offset ;
                             }
                         
-                        $skipped_last=false;
+                        $last_key_offset=1;
                         $qk++;
                         } // End of if keyword not excluded (not in $noadd array)
                     } // End of each keyword in quoted string
@@ -1045,9 +1043,21 @@ function do_search(
     foreach($node_bucket as $node_bucket_or)
         {
         //$node_bucket_sql.='EXISTS (SELECT `resource` FROM `resource_node` WHERE `ref`=`resource` AND `node` IN (' .  implode(',',$node_bucket_or) . ')) AND ';
-        $sql_join.=' JOIN `resource_node` rn' . $rn . ' ON r.`ref`=rn' . $rn . '.`resource` AND rn' . $rn . '.`node` IN (' . implode(',',$node_bucket_or) . ')';
-        $node_hitcount .= (($node_hitcount!="")?" +":"") . "rn" . $rn . ".hit_count";
-        $rn++;
+        if($category_tree_search_use_and_logic)
+            {
+            foreach($node_bucket_or as $node_bucket_and)
+                {
+                $sql_join.= ' JOIN `resource_node` rn' . $rn . ' ON r.`ref`=rn' . $rn . '.`resource` AND rn' . $rn . '.`node` = ' . $node_bucket_and;
+                $node_hitcount .= (($node_hitcount!="")?" +":"") . "rn" . $rn . ".hit_count";
+                $rn++;
+                }
+            }
+        else 
+            {
+            $sql_join.=' JOIN `resource_node` rn' . $rn . ' ON r.`ref`=rn' . $rn . '.`resource` AND rn' . $rn . '.`node` IN (' . implode(',',$node_bucket_or) . ')';
+            $node_hitcount .= (($node_hitcount!="")?" +":"") . "rn" . $rn . ".hit_count";
+            $rn++;
+            }
         }
     if ($node_hitcount!="")
         {
@@ -1324,12 +1334,13 @@ function do_search(
             else
                 {
                 $migrateresult = 0; // filter was only for resource type, hasn't failed but no need to migrate again
+                ps_query("UPDATE usergroup SET edit_filter='' WHERE ref= ?",["i",$usergroup]);
                 }
             if(is_numeric($migrateresult))
                 {
                 debug("Migrated . " . $migrateresult);
                 // Successfully migrated - now use the new filter
-                sql_query("UPDATE usergroup SET edit_filter_id='" . $migrateresult . "' WHERE ref='" . $usergroup . "'");
+                ps_query("UPDATE usergroup SET edit_filter_id=? WHERE ref=?",["i",$migrateresult,"i",$usergroup]);
                 debug("FILTER MIGRATION: Migrated edit filter - '" . $usereditfilter . "' filter id#" . $migrateresult);
                 $usereditfilter = $migrateresult;
                 }
@@ -1337,7 +1348,7 @@ function do_search(
                 {
                 debug("FILTER MIGRATION: Error migrating filter: '" . $usersearchfilter . "' - " . implode('\n' ,$migrateresult));
                 // Error - set flag so as not to reattempt migration and notify admins of failure
-                sql_query("UPDATE usergroup SET edit_filter_id='-1' WHERE ref='" . $usergroup . "'");
+                ps_query("UPDATE usergroup SET edit_filter_id='-1' WHERE ref=?",["i",$usergroup]);
                 $notification_users = get_notification_users();
                 message_add(array_column($notification_users,"ref"), $lang["filter_migration"] . " - " . $lang["filter_migrate_error"] . ": <br />" . implode('\n' ,$migrateresult),generateURL($baseurl . "/pages/admin/admin_group_management_edit.php",array("ref"=>$usergroup)));
                 }
@@ -1563,11 +1574,12 @@ function do_search(
         $score="h.score";
         }
 
-    # Can only search for resources that belong to featured collections
-    if(checkperm("J"))
+    # Can only search for resources that belong to featured collections. Doesn't apply to user's special upload collection to allow for upload then edit mode.
+    $upload_collection = '!collection' . (0 - $userref);
+    if(checkperm("J") && $search != $upload_collection)
         {
         $collection_join = " JOIN collection_resource AS jcr ON jcr.resource = r.ref JOIN collection AS jc ON jcr.collection = jc.ref";
-        $collection_join .= featured_collections_permissions_filter_sql("AND", "jc.ref");
+        $collection_join .= featured_collections_permissions_filter_sql("AND", "jc.ref",true);
 
         $sql_join = $collection_join . $sql_join;
         }

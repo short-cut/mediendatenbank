@@ -104,6 +104,10 @@ if ($collection!="" && $collection!="undefined")
 // Load collection info. 
 // get_user_collections moved before output as function may set cookies
 $cinfo=get_collection($usercollection);
+if(!is_array($cinfo))
+    {
+    $cinfo = get_collection(get_default_user_collection(true));
+    }
 if('' == $k || $internal_share_access)
     {
     $list = get_user_collections($userref);
@@ -425,6 +429,29 @@ else { ?>
 			jQuery('#CentralSpace').trigger('prepareDragDrop');
 			CheckHideCollectionBar();
 		});
+
+        jQuery('#CentralSpace').on('resourcesaddedtocollection', function(response,resource_list) {
+            resource_list.forEach(function (resource)
+                {
+                    jQuery("#ResourceShell" + resource).addClass("Selected");
+                    jQuery("#check" + resource).prop('checked','checked');
+                });
+        
+            UpdateSelColSearchFilterBar();
+            CentralSpaceHideLoading();
+        });
+
+        jQuery('#CentralSpace').on('resourcesremovedfromcollection', function(response,resource_list) {
+            resource_list.forEach(function (resource)
+                {
+                    jQuery("#ResourceShell" + resource).removeClass("Selected");
+                    jQuery("#check" + resource).prop('checked','');
+                });
+            
+            CentralSpaceHideLoading();
+            UpdateSelColSearchFilterBar();
+        });
+
 	</script>
 	<!-- End of Drag and Drop -->
 	<style>
@@ -725,7 +752,9 @@ if (isset($userrequestmode) && ($userrequestmode==2 || $userrequestmode==3) && $
 		}
 	}
 ?><div>
-
+<script>
+    var collection_resources = <?php echo json_encode(array_column($result,'ref'));?>; 
+</script>
 <div id="CollectionMaxDiv" style="display:<?php if ($thumbs=="show") { ?>block<?php } else { ?>none<?php } ?>"><?php
 
 hook('before_collectionmenu');
@@ -871,11 +900,11 @@ else if ($basket)
         include "search_views/resource_tools.php";  
             
 		} # End of remove link condition 
-		?>
+        ?>
 		</div>
 		<?php 
 		} # End of k="" condition 
-		 ?>
+        ?>
 		</div>
 		<?php
 		} # End of ResourceView hook
@@ -1071,7 +1100,7 @@ else
         hook("beforecollectiontoolscolumn");
 
         $resources_count = $count_result;
-        render_actions($cinfo, false,true,'',$result);
+        render_actions($cinfo, false,!hook('renderactionsononeline', 'collections'),'',$result);
 
         hook("aftercollectionsrenderactions");
         ?>
@@ -1104,7 +1133,7 @@ else
 
 	<?php 
 	# Loop through saved searches
-	if (isset($cinfo['savedsearch'])&&$cinfo['savedsearch']==null  && ($k=='' || $internal_share_access))
+	if (is_null($cinfo['savedsearch']) && ($k=='' || $internal_share_access))
 		{ // don't include saved search item in result if this is a smart collection  
 
 		# Setting the save search icon
@@ -1240,7 +1269,7 @@ else
 		</div>
 		<?php 
 		} # End of k="" condition 
-		 ?>
+        ?>
 		</div>
 		<?php
 		} # End of ResourceView hook

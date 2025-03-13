@@ -114,6 +114,20 @@ elseif($tempfile != "")
 else
     {
     $resource_data = get_resource_data($ref);
+    if (!is_array($resource_data)){
+        $error = $lang["resourcenotfound"];
+        if(getval("ajax","") != "")
+            {
+            error_alert($error, true,200);
+            }
+        else
+            {
+            include "../include/header.php";
+            $onload_message = array("title" => $lang["error"],"text" => $error);
+            include "../include/footer.php";
+            }
+        exit();
+    }
 
     resource_type_config_override($resource_data['resource_type']);
 
@@ -169,21 +183,31 @@ else
         $tile_scale = (int) getval('tile_scale', 1, true);
         $tile_row = (int) getval('tile_row', 0, true);
         $tile_col = (int) getval('tile_col', 0, true);
-
-        $image_size = get_original_imagesize($ref, get_resource_path($ref, true, $size, false));
-        $image_width = (int) $image_size[1];
-        $image_height = (int) $image_size[2];
-
-        debug(sprintf('PAGES/DOWNLOAD.PHP: Requesting a tile region with scale=%s, row=%s, col=%s', $tile_scale, $tile_row, $tile_col));
-
-        $tiles = compute_tiles_at_scale_factor($tile_scale, $image_width, $image_height);
-        foreach($tiles as $tile)
+        $fulljpgsize = strtolower($ext) != "jpg" ? "hpr" : "";
+        $fullpath = get_resource_path($ref, true,$fulljpgsize, false, "jpg");
+        $image_size = get_original_imagesize($ref,$fullpath, "jpg");
+        if($image_size === false)
             {
-            if($tile['column'] == $tile_col && $tile['row'] == $tile_row)
+            debug("PAGES/DOWNLOAD.PHP: File does not exist!");        
+            header('HTTP/1.0 404 Not Found');
+            exit();
+            }
+        else
+            {
+            $image_width = (int) $image_size[1];
+            $image_height = (int) $image_size[2];
+
+            debug(sprintf('PAGES/DOWNLOAD.PHP: Requesting a tile region with scale=%s, row=%s, col=%s', $tile_scale, $tile_row, $tile_col));
+
+            $tiles = compute_tiles_at_scale_factor($tile_scale, $image_width, $image_height);
+            foreach($tiles as $tile)
                 {
-                $size = $tile['id'];
-                $ext = 'jpg';
-                break;
+                if($tile['column'] == $tile_col && $tile['row'] == $tile_row)
+                    {
+                    $size = $tile['id'];
+                    $ext = 'jpg';
+                    break;
+                    }
                 }
             }
         }
@@ -301,6 +325,11 @@ if(!$direct && isset($filename))
     }
 else
     {
+    if(!allow_in_browser($path))
+        {
+        error_alert($lang['error-permissiondenied'],true);
+        exit();
+        }
     header('Content-Disposition: inline;');
     header('Content-Transfer-Encoding: binary');
 

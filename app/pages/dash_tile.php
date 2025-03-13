@@ -26,6 +26,8 @@ if($submitdashtile && enforcePostRequest(false))
 	{
 	$buildurl = getvalescaped("url","");
     $tlsize   = ('double' === getvalescaped('tlsize', '') ? 'double' : '');
+	
+	$buildurl = validate_build_url($buildurl);
 
 	if ($buildurl=="")
 		{
@@ -162,7 +164,7 @@ if($submitdashtile && enforcePostRequest(false))
 		else if(!$tile["all_users"] && !$all_users) # Not an all_users tile
 			{
 			$newtile = create_dash_tile($buildurl,$link,$title,$reload_interval,$all_users,$default_order_by,$resource_count,$text);
-			sql_query("UPDATE user_dash_tile SET dash_tile = ".$newtile." WHERE dash_tile=".$tile["ref"]." AND user =".$userref);
+			ps_query("UPDATE user_dash_tile SET dash_tile = ? WHERE dash_tile= ? AND user = ?", ['s', $newtile, 'i', $tile['ref'], 'i', $userref]);
 			cleanup_dash_tiles();
 			}
 		}
@@ -207,7 +209,7 @@ if($submitdashtile && enforcePostRequest(false))
 	if($error)
 		{?>
 		<p class="FormError" style="margin-left:5px;">
-		<?php echo $error;?>
+		<?php echo htmlspecialchars($error);?>
 		</p>
 		<?php
 		}?>
@@ -216,7 +218,7 @@ if($submitdashtile && enforcePostRequest(false))
 	if($message)
 		{?>
 		<p style="margin-left:5px;">
-		<?php echo $message;?>
+		<?php echo htmlspecialchars($message);?>
 		</p>
 		<?php
 		if(strpos($link,"pages/")===0)
@@ -275,7 +277,7 @@ function tileStyle($tile_type, $existing = null, $tile_colour = '')
 							<input 
 								type="radio" 
 								class="tlstyle" 
-								id="tile_style_<?php echo $style;?>" 
+								id="tile_style_<?php echo htmlspecialchars($style);?>" 
 								name="tlstyle" 
 								value="<?php echo $style;?>" 
 								<?php 
@@ -292,7 +294,7 @@ function tileStyle($tile_type, $existing = null, $tile_colour = '')
 							/>
 						</td>
 						<td align="left" valign="middle" >
-							<label class="customFieldLabel" for="tile_style_<?php echo $style;?>"><?php echo $lang["tile_".$style];?></label>
+							<label class="customFieldLabel" for="tile_style_<?php echo htmlspecialchars($style);?>"><?php echo $lang["tile_".$style];?></label>
 						</td>
 						<?php
 						}?>
@@ -358,6 +360,7 @@ if($create)
 
         unset($tile_style);
 
+        $srch = urldecode($srch);
 		$link=$srch."&order_by=" . urlencode($order_by) . "&sort=" . urlencode($sort) . "&archive=" . urlencode($archive) . "&daylimit=" . urlencode($daylimit) . "&k=" . urlencode($k) . "&restypes=" . urlencode($restypes);
 		$title=preg_replace("/^.*search=/", "", $srch);
 		
@@ -531,7 +534,7 @@ if(!$validpage)
 		?>
 		<div class="Question">
 			<label for="freetext"><?php echo $lang["dashtiletext"];?></label> 
-			<input type="text" id="previewtext" name="freetext" value="<?php echo htmlspecialchars(ucfirst($freetext));?>"/>
+			<textarea class="stdwidth" rows="3" type="text" id="previewtext" name="freetext" /><?php echo htmlspecialchars(ucfirst($freetext));?></textarea>
 			<div class="clearerleft"></div>
 		</div>
 		<?php
@@ -654,14 +657,14 @@ if('' != $tile_type && $tile_type !== "conf")
                 <option value="<?php echo htmlspecialchars($resource["ref"]); ?>"
                     <?php echo $promoted_resource === $resource['ref'] ? 'selected="selected"' : ''; ?>
                 ><?php
-                    echo str_replace(
+                    echo htmlspecialchars(str_replace(
                         array('%ref','%title'),
                         array(
                             $resource['ref'],
                             i18n_get_translated($resource['field' . $view_title_field])
                         ),
                         $lang['ref-title']
-                    );
+                    ));
                 ?></option>
                 <?php
                 }
@@ -775,7 +778,7 @@ if('' != $tile_type && $tile_type !== "conf")
 	function updateDashTilePreview() {
 		var prevstyle = jQuery(".tlstyle:checked").val();
 		var width = 250;
-		var height = 180;
+		var height = 160;
 		var pretitle = encodeURIComponent(jQuery("#previewtitle").val());
 		var pretxt = encodeURIComponent(jQuery("#previewtext").val());
 		var prelink= encodeURIComponent(jQuery("#previewlink").val());

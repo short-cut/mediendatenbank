@@ -16,9 +16,9 @@ include "../include/header.php";
 
 # Check ResourceSpace Build
 $build = '';
-if ($productversion == 'SVN')
+if (substr($productversion,0,3) == 'SVN')
     {
-    $p_version = 'Trunk (SVN)'; # Should not be translated as this information is sent to the bug tracker.
+    $p_version = 'Trunk (SVN)';
     //Try to run svn info to determine revision number
     $out = array();
     exec('svn info ../', $out);
@@ -43,7 +43,7 @@ if ($productversion == 'SVN')
     }
 
 # ResourceSpace version
-$p_version = $productversion == 'SVN'?'Subversion ' . $build:$productversion; # Should not be translated as this information is sent to the bug tracker.
+$p_version = substr($productversion,0,3) == 'SVN' ? 'SVN ' . $build : $productversion;
 
 ?><tr><td nowrap="true"><?php echo str_replace("?", "ResourceSpace", $lang["softwareversion"]); ?></td><td><?php echo $p_version?></td><td><br /></td></tr><?php
 
@@ -126,31 +126,14 @@ if ($success===false) {$result=$lang["status-fail"] . ": " . $homeanim_folder . 
 <?php } 
 
 # Check filestore folder browseability
-$filestoreurl = isset($storageurl) ? $storageurl : $baseurl . "/filestore";
-if(function_exists('curl_init'))
-    {
-    $ch=curl_init();
-    $checktimeout=5;
-    curl_setopt($ch, CURLOPT_URL, $filestoreurl);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-    curl_setopt($ch, CURLOPT_TIMEOUT, $checktimeout);
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $checktimeout);
-    $output=curl_exec($ch);
-    curl_close($ch);
-    if (strpos($output,"Index of")===false)
-        {
-        $result=$lang["status-ok"];
-        }
-    else
-        {
-        $result=$lang["status-fail"] . ": " . $lang["noblockedbrowsingoffilestore"];
-        }
-    }
-else
-    {
-    $result=$lang["unknown"] . ": " . str_replace("%%EXTENSION%%","curl",$lang["php_extension_not_enabled"]);
-    }
-?><tr><td colspan="2"><?php echo $lang["blockedbrowsingoffilestore"] ?> (<a href="<?php echo $filestoreurl ?>" target="_blank"><?php echo $filestoreurl ?></a>)</td><td><b><?php echo $result?></b></td></tr><?php
+$cfb = check_filestore_browseability();
+?>
+<tr>
+    <td colspan="2"><?php echo $lang["blockedbrowsingoffilestore"]; ?> (<a href="<?php echo $cfb['filestore_url']; ?>" target="_blank"><?php echo htmlspecialchars($cfb['filestore_url']); ?></a>)</td>
+    <td>
+        <b><?php echo htmlspecialchars($cfb['index_disabled'] ? $cfb['status'] : "{$cfb['status']}: {$cfb['info']}"); ?></b>
+    </td>
+</tr><?php
 
 # Check sql logging configured correctly
 if($mysql_log_transactions)
@@ -237,10 +220,6 @@ if($php_tz == $mysql_tz)
     <td colspan="2"><?php echo $lang['server_timezone_check']; ?></td>
     <td><b><?php echo $timezone_check; ?></b></td>
 </tr>
-<?php
-
-hook("addinstallationcheck");?>
-
 <tr>
 <td><?php echo $lang["lastscheduledtaskexection"] ?></td>
 <td><?php $last_cron=sql_value("select datediff(now(),value) value from sysvars where name='last_cron'",$lang["status-never"]);echo $last_cron ?></td>
@@ -249,15 +228,23 @@ hook("addinstallationcheck");?>
 
 <?php
 // Check required PHP extensions 
+$npuccheck = function_exists("apcu_fetch");
+?>
+<tr>
+    <td colspan="2">php-apcu</td>
+    <td><b><?php echo (function_exists("apcu_fetch") ? $lang['status-ok'] : $lang['server_apcu_check_fail']); ?></b></td>
+</tr>
+<?php
 $extensions_required = array();
 $extensions_required["curl"] = "curl_init";
 $extensions_required["gd"] = "imagecrop";
 $extensions_required["xml"] = "xml_parser_create";
 $extensions_required["mbstring"] = "mb_strtoupper";
-$extensions_required["ldap"] = "ldap_bind";
 $extensions_required["intl"] = "locale_get_default";
 $extensions_required["json"] = "json_decode";
 $extensions_required["zip"] = "zip_open";
+
+ksort($extensions_required, SORT_STRING);
 foreach($extensions_required as $module=> $required_fn)
     {?>
     <tr>
@@ -266,6 +253,9 @@ foreach($extensions_required as $module=> $required_fn)
     </tr>
     <?php
     }
+
+hook("addinstallationcheck");
+
 ?>
 <tr>
 <td><?php echo $lang["phpextensions"] ?></td>

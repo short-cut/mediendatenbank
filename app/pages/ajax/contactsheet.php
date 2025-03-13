@@ -4,8 +4,8 @@
 #
 include('../../include/db.php');
 include('../../include/authenticate.php');
-include('../../include/image_processing.php');
-include('../../include/pdf_functions.php');
+include_once('../../include/image_processing.php');
+include_once('../../include/pdf_functions.php');
 require_once '../../lib/html2pdf/vendor/autoload.php';
 
 use Spipu\Html2Pdf\Html2Pdf;
@@ -19,12 +19,16 @@ if(strpos($size,"x") !== false)
     {
     $size = explode("x",$size);
     }
+else
+    {
+    $size = strtoupper($size);
+    }
 $columns           = getvalescaped('columns', 1);
 $order_by          = getvalescaped('orderby', 'relevance');
 $sort              = getvalescaped('sort', 'asc');
 $orientation       = getvalescaped('orientation', '');
 $sheetstyle        = getvalescaped('sheetstyle', 'thumbnails');
-$preview           = ('true' == getvalescaped('preview', '') ? true : false);
+$preview           = ('true' == getvalescaped('preview', ''));
 $previewpage       = getvalescaped('previewpage', 1, true);
 $includeheader     = getvalescaped('includeheader', '');
 $addlink           = getvalescaped('addlink', '');

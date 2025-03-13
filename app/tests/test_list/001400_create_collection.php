@@ -1,7 +1,9 @@
 <?php
-include_once(__DIR__ . '/../../include/db.php');
-if (php_sapi_name()!=="cli") {exit("This utility is command line only.");}
-$debug_log=true;
+if('cli' != PHP_SAPI)
+    {
+    exit('This utility is command line only.');
+    }
+
 // Create the Featured collections tree
 $fc_cat_1 = create_collection($userref, "FC 1");
 save_collection($fc_cat_1, array("featured_collections_changes" => array("update_parent" => 0, "force_featured_collection_type" => true)));
@@ -20,7 +22,7 @@ if(!empty(array_diff(array($fc_cat_1, $fc_cat_1_1), $fc_tree)))
     }
 
 $public_col = create_collection($userref, "Test 1400 - Public collection", 0, 0, 0, true);
-$find_public_col = search_public_collections("Test 1400", "name", "ASC", true, false);
+$find_public_col = search_public_collections("Test 1400", "name", "ASC", true);
 $found_public_col = array_column($find_public_col, "ref");
 if(empty($found_public_col))
     {

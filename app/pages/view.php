@@ -38,7 +38,7 @@ $restypes=getvalescaped("restypes","");
 $starsearch=getvalescaped("starsearch","");
 if (strpos($search,"!")!==false) {$restypes="";}
 $archive=getvalescaped("archive","");
-$per_page=getvalescaped("per_page",0,true);
+$per_page=getvalescaped("per_page",$default_perpage,true);
 $default_sort_direction="DESC";
 if (substr($order_by,0,5)=="field"){$default_sort_direction="ASC";}
 $sort=getval("sort",$default_sort_direction);
@@ -50,43 +50,43 @@ $curpos=getvalescaped("curpos","");
 $go=getval("go","");
 
 if ($go!="") 
-	{
-	$origref=$ref; # Store the reference of the resource before we move, in case we need to revert this.
+    {
+    $origref=$ref; # Store the reference of the resource before we move, in case we need to revert this.
 
-	# Re-run the search and locate the next and previous records.
-	$modified_result_set=hook("modifypagingresult"); 
-	if ($modified_result_set){
-		$result=$modified_result_set;
-	} else {
-		$result=do_search($search,$restypes,$order_by,$archive,-1,$sort,false,$starsearch,false,false,"", getvalescaped("go",""));
-	}
-	if (is_array($result))
-		{
-		# Locate this resource
-		$pos=-1;
-		for ($n=0;$n<count($result);$n++)
-			{
-			if ($result[$n]["ref"]==$ref) {$pos=$n;}
-			}
-		if ($pos!=-1)
-			{
-			if (($go=="previous") && ($pos>0)) {$ref=$result[$pos-1]["ref"];if (($pos-1)<$offset) {$offset=$offset-$per_page;}}
-			if (($go=="next") && ($pos<($n-1))) {$ref=$result[$pos+1]["ref"];if (($pos+1)>=($offset+$per_page)) {$offset=$pos+1;}} # move to next page if we've advanced far enough
-			}
-		elseif($curpos!="")
-			{
-			if (($go=="previous") && ($curpos>0) && isset($result[$curpos-1]["ref"])) {$ref=$result[$curpos-1]["ref"];if (($pos-1)<$offset) {$offset=$offset-$per_page;}}
-			if (($go=="next") && ($curpos<($n)) && isset($result[$curpos]["ref"])) {$ref=$result[$curpos]["ref"];if (($curpos)>=($offset+$per_page)) {$offset=$curpos+1;}}  # move to next page if we've advanced far enough
-			}
-		else
-			{
-			?>
-			<script type="text/javascript">
-			alert('<?php echo $lang["resourcenotinresults"] ?>');
-			</script>
-			<?php
- 			}
-		}
+    # Re-run the search and locate the next and previous records.
+    $modified_result_set=hook("modifypagingresult"); 
+    if ($modified_result_set){
+        $result=$modified_result_set;
+    } else {
+        $result=do_search($search,$restypes,$order_by,$archive,-1,$sort,false,$starsearch,false,false,"", getvalescaped("go",""));
+    }
+    if (is_array($result))
+        {
+        # Locate this resource
+        $pos=-1;
+        for ($n=0;$n<count($result);$n++)
+            {
+            if ($result[$n]["ref"]==$ref) {$pos=$n;}
+            }
+        if ($pos!=-1)
+            {
+            if (($go=="previous") && ($pos>0)) {$ref=$result[$pos-1]["ref"];if (($pos-1)<$offset) {$offset=$offset-$per_page;}}
+            if (($go=="next") && ($pos<($n-1))) {$ref=$result[$pos+1]["ref"];if (($pos+1)>=($offset+$per_page)) {$offset=$pos+1;}} # move to next page if we've advanced far enough
+            }
+        elseif($curpos!="")
+            {
+            if (($go=="previous") && ($curpos>0) && isset($result[$curpos-1]["ref"])) {$ref=$result[$curpos-1]["ref"];if (($pos-1)<$offset) {$offset=$offset-$per_page;}}
+            if (($go=="next") && ($curpos<($n)) && isset($result[$curpos]["ref"])) {$ref=$result[$curpos]["ref"];if (($curpos)>=($offset+$per_page)) {$offset=$curpos+1;}}  # move to next page if we've advanced far enough
+            }
+        else
+            {
+            ?>
+            <script type="text/javascript">
+            alert('<?php echo $lang["resourcenotinresults"] ?>');
+            </script>
+            <?php
+            }
+        }
     # Option to replace the key via a plugin (used by resourceconnect plugin).
     $newkey = hook("nextpreviewregeneratekey");
     if (is_string($newkey)) {$k = $newkey;}
@@ -617,6 +617,7 @@ if(!hook('replaceviewtitle'))
 if (in_array($resource["file_extension"], config_merge_non_image_types()) && $non_image_types_generate_preview_only)
     {
     $download_multisize=false;
+    $image_preview_zoom = false;
     }
 else
     {
@@ -802,7 +803,8 @@ if($image_preview_zoom)
     {
     $image_preview_zoom = false;
     $tile_region_support = false;
-    $zoom_image_path = get_resource_path($ref, true, '', false, $resource['file_extension'], true, 1, $use_watermark);
+    $fulljpgsize = strtolower($resource['file_extension']) != "jpg" ? "hpr" : "";
+    $zoom_image_path = get_resource_path($ref, true, $fulljpgsize, false, $resource['file_extension'], true, 1, $use_watermark);
     if($preview_tiles && file_exists($zoom_image_path) && resource_download_allowed($ref, '', $resource['resource_type']))
         {
         $image_size = get_original_imagesize($ref, $zoom_image_path);
@@ -1259,7 +1261,7 @@ function make_download_preview_link($ref, $size, $label)
 	return "<a href='$direct_link' target='dl_window_$ref'>$label</a>";
 	}
 
-function add_download_column($ref, $size_info, $downloadthissize)
+function add_download_column($ref, $size_info, $downloadthissize, $view_in_browser=false)
 	{
     global $save_as, $terms_download, $order_by, $lang, $baseurl, $k, $search, $request_adds_to_collection, $offset, $archive, $sort, $internal_share_access, $urlparams, $resource, $iOS_save,$download_usage;
 	if ($downloadthissize)
@@ -1275,11 +1277,18 @@ function add_download_column($ref, $size_info, $downloadthissize)
 				{
 				?><a id="downloadlink" <?php
 				if (!hook("downloadlink","",array("ref=" . $ref . "&k=" . $k . "&size=" . $size_info["id"]
-							. "&ext=" . $size_info["extension"])))
+							. "&ext=" . $size_info["extension"], $view_in_browser)))
 						{
-						echo "href=\"" . generateURL($baseurl . "/pages/terms.php",$urlparams,array("url"=> generateURL($baseurl . "/pages/download_progress.php",$urlparams,array("size"=>$size_info["id"],"ext"=> $size_info["extension"])))) . "\"";
+                        if ($view_in_browser)
+                            {
+                            echo "href=\"" . generateURL($baseurl . "/pages/terms.php",$urlparams,array("url"=> generateURL($baseurl . "/pages/download.php",$urlparams,array("size"=>$size_info["id"],"ext"=> $size_info["extension"],"direct"=>1,"noattach"=>true)))) . "\"";
+                            }
+                        else
+                            {
+                            echo "href=\"" . generateURL($baseurl . "/pages/terms.php",$urlparams,array("url"=> generateURL($baseurl . "/pages/download_progress.php",$urlparams,array("size"=>$size_info["id"],"ext"=> $size_info["extension"])))) . "\"";
+                            }
 						}
-						if($iOS_save)
+						if($iOS_save || $view_in_browser)
 							{
 							echo " target=\"_blank\"";
 							}
@@ -1287,7 +1296,7 @@ function add_download_column($ref, $size_info, $downloadthissize)
 							{
 							echo " onClick=\"return CentralSpaceLoad(this,true);\"";
 							}
-						?>><?php echo $lang["action-download"]?></a><?php
+						?>><?php echo $view_in_browser ? $lang["view_in_browser"] : $lang["action-download"]?></a><?php
 					
 				}
 			elseif ($download_usage)
@@ -1298,16 +1307,23 @@ function add_download_column($ref, $size_info, $downloadthissize)
                     {
                     echo 'href=' . $baseurl . '/pages/download_usage.php?ref=' . urlencode($ref) . '&size=' . $size_info['id'] . '&ext=' . $size_info['extension'] . '&k=' . urlencode($k);
                     }
-                ?>><?php echo $lang["action-download"]?></a><?php
+                ?>><?php echo $view_in_browser ? $lang["view_in_browser"] : $lang["action-download"]?></a><?php
                 }
             else
                 {
                 ?> <a id="downloadlink" <?php
-                if (!hook("downloadlink","",array("ref=" . $ref . "&k=" . $k . "&size=" . $size_info["id"]. "&ext=" . $size_info["extension"])))
+                if (!hook("downloadlink","",array("ref=" . $ref . "&k=" . $k . "&size=" . $size_info["id"]. "&ext=" . $size_info["extension"], $view_in_browser)))
                     {
-                    echo 'href="#" onclick="directDownload(' . '\'' . $baseurl . '/pages/download_progress.php?ref=' . urlencode($ref) . '&size=' . $size_info['id'] . '&ext=' . $size_info['extension'] . '&k=' . urlencode($k) . '\'' . ')"';
+                    if ($view_in_browser)
+                        {
+                        echo 'href="' . $baseurl . "/pages/download.php?direct=1&noattach=true&ref=" . urlencode($ref) . "&ext=" . $size_info['extension'] . "&k=" . urlencode($k) . '" target="_blank"';
+                        }
+                    else
+                        {
+                        echo 'href="#" onclick="directDownload(' . '\'' . $baseurl . '/pages/download_progress.php?ref=' . urlencode($ref) . '&size=' . $size_info['id'] . '&ext=' . $size_info['extension'] . '&k=' . urlencode($k) . '\'' . ')"';
+                        }
                     }
-                ?>><?php echo $lang["action-download"]?></a><?php
+                ?>><?php echo $view_in_browser ? $lang["view_in_browser"] : $lang["action-download"] ?></a><?php
                 }
 				unset($size_info_array);
 				?>
@@ -1434,12 +1450,19 @@ if ($resource["has_image"]==1 && $download_multisize)
 			if ($downloadthissize && $sizes[$n]["allow_preview"]==1)
 				{ 
 				# Add an extra line for previewing
+                global $data_viewsize;
+                $data_viewsize=$sizes[$n]["id"];
+                $data_viewsizeurl=hook('getpreviewurlforsize');
+                $preview_with_sizename=str_replace('%sizename', $sizes[$n]["name"], $lang['previewithsizename']);
 				?> 
-				<tr class="DownloadDBlend"><td class="DownloadFileName"><h2><?php echo $lang["preview"]?></h2><?php echo $use_larger_layout ? '</td><td class="DownloadFileDimensions">' : '';?><p><?php echo $lang["fullscreenpreview"]?></p></td><td class="DownloadFileSize"><?php echo $sizes[$n]["filesize"]?></td>
+				<tr class="DownloadDBlend"><td class="DownloadFileName"><h2><?php echo $lang["preview"]?></h2><?php echo $use_larger_layout ? '</td><td class="DownloadFileDimensions">' : '';?>
+                <p><?php echo $preview_with_sizename; ?></p></td><td class="DownloadFileSize"><?php echo $sizes[$n]["filesize"]?></td>
 				<?php if ($userrequestmode==2 || $userrequestmode==3) { ?><td></td><?php } # Blank spacer column if displaying a price above (basket mode).
 				?>
 				<td class="DownloadButton">
-				<a class="enterLink" id="previewlink" href="<?php echo generateURL($baseurl . "/pages/preview.php",$urlparams,array("ext"=>$resource["file_extension"])) . "&" . hook("previewextraurl") ?>"><?php echo $lang["action-view"]?></a>
+				<a class="enterLink previewsizelink previewsize-<?php echo $data_viewsize; ?>" 
+                    id="previewlink" data-viewsize="<?php echo $data_viewsize; ?>" data-viewsizeurl="<?php echo $data_viewsizeurl; ?>"  
+                    href="<?php echo generateURL($baseurl . "/pages/preview.php",$urlparams,array("ext"=>$resource["file_extension"])) . "&" . hook("previewextraurl") ?>"><?php echo $lang["action-view"]?></a>
 				</td>
 				</tr>
 				<?php
@@ -1508,6 +1531,46 @@ elseif (strlen($resource["file_extension"])>0 && ($access==1 && $restricted_full
         $nodownloads=true;
         }
     } 
+
+// Render a "View in browser" button for PDF/MP3 (no longer configurable in config as SVGs can easily be disguised)
+if (strlen($resource["file_extension"]) > 0 
+    && ($access == 0 || ($access == 1 && $restricted_full_download == true)) 
+    && in_array(strtolower($resource["file_extension"]),["pdf","mp3"]))
+    {
+    $path=get_resource_path($ref,true,"",false,$resource["file_extension"]);
+    if (resource_download_allowed($ref,"",$resource["resource_type"]) && file_exists($path))
+        {
+        $counter++;
+        ?>
+        <tr class="DownloadDBlend">
+        <td class="DownloadFileName"><h2><?php echo $lang["view_directly_in_browser"]; ?></h2>
+        <?php if ($use_larger_layout) { ?></td><td class="DownloadFileDimensions"><?php } ?>
+        <?php
+            if ($resource["has_image"]==1)
+                {
+                $sizes=get_image_sizes($ref,false,$resource["file_extension"]);
+                $original_size = '';
+                for ($n=0;$n<count($sizes);$n++)
+                    {
+                    if ($sizes[$n]["id"]=="" && is_numeric($sizes[$n]["width"]))
+                        {
+                        $original_size = get_size_info($sizes[$n]);
+                        break;
+                        }
+                    }
+                echo $original_size;
+                }
+        ?>
+        </td>
+        <td class="DownloadFileSize"><?php echo formatfilesize(filesize_unlimited($path))?></td>
+        <?php
+            $size_info = array('id' => '', 'extension' => $resource['file_extension']);
+            add_download_column($ref, $size_info, $downloadthissize, true);
+        ?>
+        </tr>
+        <?php
+        }
+    }
 
 if(($nodownloads || $counter == 0) && !checkperm('T' . $resource['resource_type'] . '_'))
 	{
@@ -1672,10 +1735,28 @@ hook ("resourceactions") ?>
                 {
                 echo "<div class='DisabledLink LockedResourceAction'><i class='fa fa-fw fa-trash'></i>&nbsp;" . $deletetext . "</div>";
                 }
+            else if ($delete_requires_password)
+                {
+                $delete_url = generateURL($baseurl . "/pages/delete.php", $urlparams);
+                echo "<a id='delete_link_" . $ref . "' href='" . $delete_url . "' class='LockedResourceAction' onclick='return ModalLoad(this, true);' ><i class='fa fa-fw fa-trash'></i>&nbsp;" . $deletetext . "</a>";
+                }
             else
                 {
-                echo "<a id='delete_link_" . $ref . "' href='" . generateURL($baseurl . "/pages/delete.php", $urlparams) . "' class='LockedResourceAction' onclick='return ModalLoad(this, true);' ><i class='fa fa-fw fa-trash'></i>&nbsp;" . $deletetext . "</a>";
-                }
+                $urlparams['text']='deleted';
+                $urlparams['refreshcollection']='true';
+                $redirect_url = generateURL($baseurl_short . "pages/done.php",$urlparams);
+                ?> <a id='delete_link_" . $ref . "' href='#' onclick="
+                if (confirm('<?php echo $lang['filedeleteconfirm'] ?>'))
+                    {
+                        api(
+                        'delete_resource',
+                        {'resource':'<?php echo $ref?>'}, 
+                        function(response){
+                            ModalLoad('<?php echo $redirect_url ?>',true);
+                    }
+                );}
+                " ><i class='fa fa-fw fa-trash'></i>&nbsp;<?php echo $deletetext ?></a>
+                <?php }
             echo "</li>";
             }
 		if (!$disable_alternative_files && !checkperm('A')) 
@@ -1698,7 +1779,7 @@ hook ("resourceactions") ?>
         // Show the replace file link
         if($top_nav_upload_type == 'local')
             {
-            $replace_upload_type = 'plupload';
+            $replace_upload_type = 'batch';
             }
         else 
             {
@@ -1708,7 +1789,7 @@ hook ("resourceactions") ?>
         if (!(in_array($resource['resource_type'], $data_only_resource_types)) && !resource_file_readonly($ref) && (checkperm("c") || checkperm("d")))
             { ?>
             <li>
-                <a href="<?php echo generateURL($baseurl_short . "pages/upload_" . $replace_upload_type . ".php", $urlparams, array("replace_resource"=>$ref, "resource_type"=>$resource['resource_type'])); ?>" onClick="return ModalLoad(this,true);">
+                <a id="view_replace_link" href="<?php echo generateURL($baseurl_short . "pages/upload_" . $replace_upload_type . ".php", $urlparams, array("replace_resource"=>$ref, "resource_type"=>$resource['resource_type'])); ?>" onClick="if(jQuery('#uploader').length){return CentralSpaceLoad(this,true);}else{return ModalLoad(this,true}">
                     <?php if ($resource["file_extension"] != "")
                         { ?>
                         <i class='fa fa-fw fa-file-import'></i>&nbsp;<?php echo $lang["replacefile"];
@@ -1736,7 +1817,7 @@ hook ("resourceactions") ?>
         if (!$disable_upload_preview && !resource_file_readonly($ref) && !checkperm("F*") && !$custompermshowfile) 
             { ?>
             <li>
-                <a href="<?php echo generateURL($baseurl_short . "pages/upload_preview.php",$urlparams); ?>" onClick="return ModalLoad(this,true);">
+                <a id="view_upload_preview_link" href="<?php echo generateURL($baseurl_short . "pages/upload_preview.php",$urlparams); ?>" onClick="return ModalLoad(this,true);">
                     <i class='fa fa-fw fa-upload'></i>&nbsp;<?php echo $lang["uploadpreview"]?>
                 </a>
             </li>
@@ -1762,12 +1843,13 @@ hook ("resourceactions") ?>
 
     $overrideparams= array(
         'search_offset'     => $offset,
-        'offset'            => 0
+        'offset'            => 0,
+        'per_page'          => $default_perpage_list,
     );
 
 	if (checkperm('v')) 
 		{ ?>
-		<li><a href="<?php echo generateurl($baseurl . "/pages/log.php",$urlparams,$overrideparams);?>" onclick="return ModalLoad(this, true);">
+		<li><a id="view_log_link" href="<?php echo generateurl($baseurl . "/pages/log.php",$urlparams,$overrideparams);?>" onclick="return ModalLoad(this, true);">
 		<?php echo "<i class='fa fa-fw fa-bars'></i>&nbsp;" .$lang["log"]?>
 		</a></li><?php 
 		}
@@ -1848,21 +1930,17 @@ foreach ($pushed as $pushed_resource)
 
 function RenderPushedMetadata($resource)
 	{
-    global $k,$view_title_field,$lang, $internal_share_access, $fields_all, $ref;
-    $reset_ref  = $ref;
-	$ref        = $resource["ref"];
-	$fields     = get_resource_field_data($ref,false,!hook("customgetresourceperms"),NULL,($k!="" && !$internal_share_access),false);
-	$access     = get_resource_access($ref);
     global $k,$view_title_field,$lang, $internal_share_access, $fields_all,$ref;
-    $reset_ref  = $ref;
-	$ref        = $resource["ref"];
-	$fields     = get_resource_field_data($ref,false,!hook("customgetresourceperms"),NULL,($k!="" && !$internal_share_access),false);
-    $access     = get_resource_access($ref);
+    $reset_ref    = $ref;
+	$ref          = $resource["ref"];
+    $resource     = array_merge($resource, get_resource_data($resource['ref']));
+	$fields       = get_resource_field_data($ref,false,!hook("customgetresourceperms"),NULL,($k!="" && !$internal_share_access),false);
+    $access       = get_resource_access($ref);
     
 	?>
 	<div class="RecordBox">
         <div class="RecordPanel">  <div class="backtoresults">&gt; <a href="view.php?ref=<?php echo $ref ?>" onClick="return CentralSpaceLoad(this,true);"><?php echo $lang["view"] ?></a></div>
-        <div class="Title"><?php echo $resource["resource_type_name"] . " : " . $resource["field" . $view_title_field] ?></div>
+        <div class="Title"><?php echo i18n_get_translated($resource["resource_type_name"]) . " : " . $resource["field" . $view_title_field] ?></div>
         <?php include "view_metadata.php"; ?>
         </div>
         </div>
@@ -2026,128 +2104,136 @@ $result=$relatedresources;
 if (count($result)>0) 
 	{
 	# -------- Related Resources by File Extension
-	if($sort_relations_by_filetype){	
-		#build array of related resources' file extensions
-		for ($n=0;$n<count($result);$n++){
-			$related_file_extension=$result[$n]["file_extension"];
-			$related_file_extensions[]=$related_file_extension;
-			}
-		#reduce extensions array to unique values
-		$related_file_extensions=array_unique($related_file_extensions);
-		$count_extensions=0;
-		foreach($related_file_extensions as $rext){
-		?><!--Panel for related resources-->
-		<div class="RecordBox">
-		<div class="RecordPanel">  
-         <div id="RelatedResources">
-		<div class="RecordResouce">
-		<div class="Title"><?php echo str_replace_formatted_placeholder("%extension", $rext, $lang["relatedresources-filename_extension"]); ?></div>
-		<?php
-		# loop and display the results by file extension
-		for ($n=0;$n<count($result);$n++)			
-			{
-			if(in_array($result[$n]["resource_type"],$relatedtypes_shown))
-				{
-				// Don't show this type again.
-				continue;
-				}			
-			if ($result[$n]["file_extension"]==$rext){
-				$rref=$result[$n]["ref"];
-				$title=$result[$n]["field".$view_title_field];
-				$access=get_resource_access($rref);
-				$use_watermark=check_use_watermark();
-				# swap title fields if necessary
-
-				if (isset($metadata_template_title_field) && isset($metadata_template_resource_type))
-					{
-					if ($result[$n]['resource_type']==$metadata_template_resource_type)
-						{
-						$title=$result[$n]["field".$metadata_template_title_field];
-						}	
-					}	
-						
-				?>
-				<!--Resource Panel-->
-				<div class="CollectionPanelShell">
-				<table border="0" class="CollectionResourceAlign"><tr><td>
-				<a href="<?php echo $baseurl ?>/pages/view.php?ref=<?php echo $rref?>&search=<?php echo urlencode("!related" . $ref)?>" onClick="return CentralSpaceLoad(this,true);"><?php if ($result[$n]["has_image"]==1) { ?><img border=0 src="<?php echo get_resource_path($rref,false,"col",false,$result[$n]["preview_extension"],-1,1,$use_watermark,$result[$n]["file_modified"])?>" class="CollectImageBorder"/><?php } else { ?><img border=0 src="../gfx/<?php echo get_nopreview_icon($result[$n]["resource_type"],$result[$n]["file_extension"],true)?>"/><?php } ?></a></td>
-				</tr></table>
-				<div class="CollectionPanelInfo"><a href="<?php echo $baseurl ?>/pages/view.php?ref=<?php echo $rref?>" onClick="return CentralSpaceLoad(this,true);"><?php echo tidy_trim(i18n_get_translated($title),$related_resources_title_trim)?></a>&nbsp;</div>
-				<?php hook("relatedresourceaddlink");?>
-				</div>
-				<?php		
-				}
-			}
-		?>
-		<div class="clearerleft"> </div>
-		<?php $count_extensions++; if ($count_extensions==count($related_file_extensions)){?><a href="<?php echo $baseurl ?>/pages/search.php?search=<?php echo urlencode("!related" . $ref) ?>" onClick="return CentralSpaceLoad(this,true);"><?php echo LINK_CARET ?><?php echo $lang["clicktoviewasresultset"]?></a><?php }?>
-		</div>
-		</div>
-		</div>
-		
-		</div><?php
-		} #end of display loop by resource extension
-	} #end of IF sorted relations
-	
-	elseif($sort_relations_by_restype){	
-		$count_restypes=0;
-		foreach($related_restypes as $rtype){
-			if(in_array($rtype,$relatedtypes_shown))
-				{
-				// Don't show this type again.
-				continue;
-				}
-        $restypename=sql_value("select name as value from resource_type where ref = '" . escape_check($rtype) . "'","", "schema");
-		$restypename = lang_or_i18n_get_translated($restypename, "resourcetype-", "-2");
-		?><!--Panel for related resources-->
-		<div class="RecordBox">
-		<div class="RecordPanel">  
-         <div id="RelatedResources">
-		<div class="RecordResouce">
-		<div class="Title"><?php echo str_replace_formatted_placeholder("%restype%", $restypename, $lang["relatedresources-restype"]); ?></div>
-		<?php
-		# loop and display the results by file extension
-		for ($n=0;$n<count($result);$n++)			
-			{	
-			if ($result[$n]["resource_type"]==$rtype){
-				$rref=$result[$n]["ref"];
-				$title=$result[$n]["field".$view_title_field];
-				$access=get_resource_access($rref);
-				$use_watermark=check_use_watermark();
-				# swap title fields if necessary
-
-				if (isset($metadata_template_title_field) && isset($metadata_template_resource_type))
-					{
-					if ($result[$n]['resource_type']==$metadata_template_resource_type)
-						{
-						$title=$result[$n]["field".$metadata_template_title_field];
-						}	
-					}	
-						
-				?>
-				<!--Resource Panel-->
-				<div class="CollectionPanelShell">
-				<table border="0" class="CollectionResourceAlign"><tr><td>
-				<a href="<?php echo $baseurl ?>/pages/view.php?ref=<?php echo $rref?>&search=<?php echo urlencode("!related" . $ref)?>" onClick="return CentralSpaceLoad(this,true);"><?php if ($result[$n]["has_image"]==1) { ?><img border=0 src="<?php echo get_resource_path($rref,false,"col",false,$result[$n]["preview_extension"],-1,1,$use_watermark,$result[$n]["file_modified"])?>" class="CollectImageBorder"/><?php } else { ?><img border=0 src="../gfx/<?php echo get_nopreview_icon($result[$n]["resource_type"],$result[$n]["file_extension"],true)?>"/><?php } ?></a></td>
-				</tr></table>
-				<div class="CollectionPanelInfo"><a href="<?php echo $baseurl ?>/pages/view.php?ref=<?php echo $rref?>" onClick="return CentralSpaceLoad(this,true);"><?php echo tidy_trim(i18n_get_translated($title),$related_resources_title_trim)?></a>&nbsp;</div>
-				<?php hook("relatedresourceaddlink");?>
-				</div>
-				<?php		
-				}
-			}
-		?>
-		<div class="clearerleft"> </div>
-		<?php $count_restypes++; if ($count_restypes==count($related_restypes)){?><a href="<?php echo $baseurl ?>/pages/search.php?search=<?php echo urlencode("!related" . $ref) ?>" onClick="return CentralSpaceLoad(this,true);"><?php echo LINK_CARET ?><?php echo $lang["clicktoviewasresultset"]?></a><?php }?>
-		</div>
-		</div>
-		</div>
-		
-		</div><?php
-		} #end of display loop by resource extension
-	} #end of IF sorted relations	
-	
-	# -------- Related Resources (Default)
+	if($sort_relations_by_filetype)
+        {
+        #build array of related resources' file extensions
+        for ($n=0;$n<count($result);$n++)
+            {
+            $related_file_extension=$result[$n]["file_extension"];
+            $related_file_extensions[]=$related_file_extension;
+            }
+        #reduce extensions array to unique values
+        $related_file_extensions=array_unique($related_file_extensions);
+        ?><!--Panel for related resources-->
+        <div class="RecordBox">
+        <div class="RecordPanel">  
+        <div id="RelatedResources">
+        <div class="RecordResouce">
+        <a href="<?php echo $baseurl ?>/pages/search.php?search=<?php echo urlencode("!related" . $ref) ?>" onClick="return CentralSpaceLoad(this,true);"><?php echo LINK_CARET ?><?php echo $lang["clicktoviewasresultset"]?></a>
+        <?php
+        foreach($related_file_extensions as $rext)
+            {
+            ?>
+            <div class="Title"><?php echo str_replace_formatted_placeholder("%extension", $rext, $lang["relatedresources-filename_extension"]); ?></div>
+            <?php
+            # loop and display the results by file extension
+            for ($n=0;$n<count($result);$n++)			
+                {
+                if(in_array($result[$n]["resource_type"],$relatedtypes_shown))
+                    {
+                    // Don't show this type again.
+                    continue;
+                    }
+                if ($result[$n]["file_extension"]==$rext)
+                    {
+                    $rref=$result[$n]["ref"];
+                    $title=$result[$n]["field".$view_title_field];
+                    $access=get_resource_access($rref);
+                    $use_watermark=check_use_watermark();
+                    # swap title fields if necessary
+                    if (isset($metadata_template_title_field) && isset($metadata_template_resource_type))
+                        {
+                        if ($result[$n]['resource_type']==$metadata_template_resource_type)
+                            {
+                            $title=$result[$n]["field".$metadata_template_title_field];
+                            }
+                        }
+                    ?>
+                    <!--Resource Panel-->
+                    <div class="CollectionPanelShell">
+                    <table border="0" class="CollectionResourceAlign"><tr><td>
+                    <a href="<?php echo $baseurl ?>/pages/view.php?ref=<?php echo $rref?>&search=<?php echo urlencode("!related" . $ref)?>" onClick="return CentralSpaceLoad(this,true);"><?php if ($result[$n]["has_image"]==1) { ?><img border=0 src="<?php echo get_resource_path($rref,false,"col",false,$result[$n]["preview_extension"],-1,1,$use_watermark,$result[$n]["file_modified"])?>" class="CollectImageBorder"/><?php } else { ?><img border=0 src="../gfx/<?php echo get_nopreview_icon($result[$n]["resource_type"],$result[$n]["file_extension"],true)?>"/><?php } ?></a></td>
+                    </tr></table>
+                    <div class="CollectionPanelInfo"><a href="<?php echo $baseurl ?>/pages/view.php?ref=<?php echo $rref?>" onClick="return CentralSpaceLoad(this,true);"><?php echo tidy_trim(i18n_get_translated($title),$related_resources_title_trim)?></a>&nbsp;</div>
+                    <?php hook("relatedresourceaddlink");?>
+                    </div>
+                    <?php
+                    }
+                }
+                ?>
+            <div class="clearerleft"> </div>
+            <?php
+            } #end of display loop by resource extension
+        ?>
+        </div>
+        </div>
+        </div>
+        </div>
+        <?php
+        } #end of IF sorted relations
+	elseif($sort_relations_by_restype)
+        {
+        ?> 
+        <!--Panel for related resources-->
+        <div class="RecordBox">
+        <div class="RecordPanel">  
+        <div id="RelatedResources">
+        <div class="RecordResouce">
+        <a href="<?php echo $baseurl ?>/pages/search.php?search=<?php echo urlencode("!related" . $ref) ?>" onClick="return CentralSpaceLoad(this,true);"><?php echo LINK_CARET ?><?php echo $lang["clicktoviewasresultset"]?></a>
+        <?php
+        foreach($related_restypes as $rtype)
+            {
+            if(in_array($rtype,$relatedtypes_shown))
+                {
+                // Don't show this type again.
+                continue;
+                }
+            $restypename=sql_value("select name as value from resource_type where ref = '" . escape_check($rtype) . "'","", "schema");
+            $restypename = lang_or_i18n_get_translated($restypename, "resourcetype-", "-2");
+            ?>
+            <div class="Title"><?php echo str_replace_formatted_placeholder("%restype%", $restypename, $lang["relatedresources-restype"]); ?></div>
+            <?php
+            # loop and display the results by file extension
+            for ($n=0;$n<count($result);$n++)			
+                {
+                if ($result[$n]["resource_type"]==$rtype)
+                    {
+                    $rref=$result[$n]["ref"];
+                    $title=$result[$n]["field".$view_title_field];
+                    $access=get_resource_access($rref);
+                    $use_watermark=check_use_watermark();
+                    # swap title fields if necessary
+                    if (isset($metadata_template_title_field) && isset($metadata_template_resource_type))
+                        {
+                        if ($result[$n]['resource_type']==$metadata_template_resource_type)
+                            {
+                            $title=$result[$n]["field".$metadata_template_title_field];
+                            }
+                        }
+                    ?>
+                    <!--Resource Panel-->
+                    <div class="CollectionPanelShell">
+                    <table border="0" class="CollectionResourceAlign"><tr><td>
+                    <a href="<?php echo $baseurl ?>/pages/view.php?ref=<?php echo $rref?>&search=<?php echo urlencode("!related" . $ref)?>" onClick="return CentralSpaceLoad(this,true);"><?php if ($result[$n]["has_image"]==1) { ?><img border=0 src="<?php echo get_resource_path($rref,false,"col",false,$result[$n]["preview_extension"],-1,1,$use_watermark,$result[$n]["file_modified"])?>" class="CollectImageBorder"/><?php } else { ?><img border=0 src="../gfx/<?php echo get_nopreview_icon($result[$n]["resource_type"],$result[$n]["file_extension"],true)?>"/><?php } ?></a></td>
+                    </tr></table>
+                    <div class="CollectionPanelInfo"><a href="<?php echo $baseurl ?>/pages/view.php?ref=<?php echo $rref?>" onClick="return CentralSpaceLoad(this,true);"><?php echo tidy_trim(i18n_get_translated($title),$related_resources_title_trim)?></a>&nbsp;</div>
+                    <?php hook("relatedresourceaddlink");?>
+                    </div>
+                    <?php
+                    }
+                }
+            ?>
+            <div class="clearerleft"> </div>
+            <?php 
+            } #end of display loop by resource extension
+        ?>
+        </div>
+        </div>
+        </div>
+        </div>
+        <?php
+        } #end of IF sorted relations
+        # -------- Related Resources (Default)
 	else { 
 		 ?><!--Panel for related resources-->
 		<div class="RecordBox">
@@ -2155,6 +2241,8 @@ if (count($result)>0)
          <div id="RelatedResources">
 		<div class="RecordResouce">
 		<div class="Title"><?php echo $lang["relatedresources"]?></div>
+        <a href="<?php echo $baseurl ?>/pages/search.php?search=<?php echo urlencode("!related" . $ref) ?>" onClick="return CentralSpaceLoad(this,true);"><?php echo LINK_CARET ?><?php echo $lang["clicktoviewasresultset"]?></a>
+        <div class="clearerleft"> </div>
 		<?php
     	# loop and display the results
     	for ($n=0;$n<count($result);$n++)            
@@ -2191,9 +2279,6 @@ if (count($result)>0)
         <?php        
         }
     ?>
-    <div class="clearerleft"> </div>
-        <a href="<?php echo $baseurl ?>/pages/search.php?search=<?php echo urlencode("!related" . $ref) ?>" onClick="return CentralSpaceLoad(this,true);"><?php echo LINK_CARET ?><?php echo $lang["clicktoviewasresultset"]?></a>
-
     </div>
     </div>
     </div>
@@ -2276,14 +2361,14 @@ function <?php echo $context ?>UpdateFSResultCount()
 <?php
 generateFormToken("{$context}findsimilar");
 
-$keywords=get_resource_top_keywords($ref,50);
+$keywords=array_values(array_unique(get_resource_top_keywords($ref,50)));
 if (count($keywords)!=0)
 	{
 		for ($n=0;$n<count($keywords);$n++)
 			{
 			?>
 			<div class="SearchSimilar"><input type=checkbox id="<?php echo $context ?>similar_search_<?php echo urlencode($keywords[$n]) . "_" . $n  ?>" name="keyword_<?php echo urlencode($keywords[$n])?>" value="yes"
-			onClick="<?php echo $context ?>UpdateFSResultCount();"><label for="similar_search_<?php echo urlencode($keywords[$n]) . "_" . $n?>">&nbsp;<?php echo htmlspecialchars(i18n_get_translated($keywords[$n]))?></label></div>
+			onClick="<?php echo $context ?>UpdateFSResultCount();"><label class="customFieldLabel" for="<?php echo $context ?>similar_search_<?php echo urlencode($keywords[$n]) . "_" . $n?>"><?php echo htmlspecialchars(i18n_get_translated($keywords[$n]))?></label></div>
 			<?php
 			}
 	

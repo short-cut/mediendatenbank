@@ -539,12 +539,6 @@ function create_resource($resource_type,$archive=999,$user=-1)
 		add_keyword_mappings($insert,$userinfo["username"] . " " . $userinfo["fullname"],-1);
 		}
 
-	# Copying a resource of the 'pending review' state? Notify, if configured.
-	if ($archive==-1)
-		{
-		notify_user_contributed_submitted(array($insert));
-		}
-
 	return $insert;
 	}
     
@@ -565,8 +559,8 @@ function save_resource_data($ref,$multi,$autosave_field="")
 	{
 	# Save all submitted data for resource $ref.
 	# Also re-index all keywords from indexable fields.
-	global $lang, $auto_order_checkbox, $userresourcedefaults, $multilingual_text_fields,
-           $languages, $language, $user_resources_approved_email, $FIXED_LIST_FIELD_TYPES,
+	global $lang, $multilingual_text_fields,
+           $languages, $language, $FIXED_LIST_FIELD_TYPES,
            $DATE_FIELD_TYPES, $date_validator, $range_separator, $reset_date_field, $reset_date_upload_template,
            $edit_contributed_by, $new_checksums, $upload_review_mode, $blank_edit_template, $is_template, $NODE_FIELDS,
            $userref;
@@ -679,23 +673,26 @@ function save_resource_data($ref,$multi,$autosave_field="")
 
                 debug("save_resource_data(): Removed nodes from resource " . $ref . ": " . implode(",",$removed_nodes));           
                 $nodes_to_remove = array_merge($nodes_to_remove, $removed_nodes);
-								
-				if(count($added_nodes)>0 || count($removed_nodes)>0)
-					{  
+
+                if(count($added_nodes) > 0 || count($removed_nodes) > 0)
+                    {
                     # If this is a 'joined' field it still needs to add it to the resource column
                     $joins=get_resource_table_joins();
                     if (in_array($fields[$n]["ref"],$joins))
                         {
-					    $new_nodevals = array();
+                        $new_nodevals = array();
                         // Build new value:
                         foreach($ui_selected_node_values as $ui_selected_node_value)
                             {
                             $new_nodevals[] = $node_options[$ui_selected_node_value];
                             }
                         $new_nodes_val = implode(",", $new_nodevals);
-                        sql_query("update resource set field".$fields[$n]["ref"]."='".escape_check(truncate_join_field_value(strip_leading_comma($new_nodes_val)))."' where ref='$ref'");
+                        if ((1 == $fields[$n]['required'] && "" != $new_nodes_val) || 0 == $fields[$n]['required']) # If joined field is required we shouldn't be able to clear it.
+                            {
+                            sql_query("update resource set field".$fields[$n]["ref"]."='".escape_check(truncate_join_field_value(strip_leading_comma($new_nodes_val)))."' where ref='$ref'");
+                            }
                         }
-					}
+                    }
 
                 // Required fields that didn't change get the current value
                 if(1 == $fields[$n]['required'] && '' == $val)
@@ -742,8 +739,8 @@ function save_resource_data($ref,$multi,$autosave_field="")
 						$rangeend=$rangeendyear . "-" . $rangeendmonth . "-" . $rangeendday;
                         
 						$newval = $rangestart . $range_separator . $rangeend;
-						$daterangenodes[]=set_node(null, $fields[$n]["ref"], $rangestart, null, null,true);
-						$daterangenodes[]=set_node(null, $fields[$n]["ref"], $rangeend, null, null,true);
+						$daterangenodes[]=set_node(null, $fields[$n]["ref"], $rangestart, null, null);
+						$daterangenodes[]=set_node(null, $fields[$n]["ref"], $rangeend, null, null);
 						}
 					else
 						{
@@ -776,7 +773,7 @@ function save_resource_data($ref,$multi,$autosave_field="")
 							$newval.= ($newval!=""?$range_separator:"") . $val;
 							if($val!=="")
 								{
-								$daterangenodes[]=set_node(null, $fields[$n]["ref"], $val, null, null,true);
+								$daterangenodes[]=set_node(null, $fields[$n]["ref"], $val, null, null);
 								}
 							}
                         }
@@ -900,14 +897,11 @@ function save_resource_data($ref,$multi,$autosave_field="")
 				# Check for regular expression match
 				if (trim(strlen($fields[$n]["regexp_filter"]))>=1 && strlen($val)>0)
 					{
-					if(preg_match("#^" . $fields[$n]["regexp_filter"] . "$#",$val,$matches)<=0)
+                    global $regexp_slash_replace;
+					if(preg_match("#^" . str_replace($regexp_slash_replace, '\\',$fields[$n]["regexp_filter"]) . "$#",$val,$matches)<=0)
 						{
 						global $lang;
-						debug($lang["information-regexp_fail"] . ": -" . "reg exp: " . $fields[$n]["regexp_filter"] . ". Value passed: " . $val);
-						if (getval("autosave","")!="")
-							{
-							exit();
-							}
+						debug($lang["information-regexp_fail"] . ": -" . "reg exp: " . str_replace($regexp_slash_replace, '\\',$fields[$n]["regexp_filter"]) . ". Value passed: " . $val);
 						$errors[$fields[$n]["ref"]]=$lang["information-regexp_fail"] . " : " . $val;
 						continue;
 						}
@@ -1467,8 +1461,8 @@ function save_resource_data_multi($collection,$editsearch = array())
                     $rangeend=$rangeendyear . "-" . $rangeendmonth . "-" . $rangeendday;
                     
                     $newval = $rangestart . $range_separator . $rangeend;
-                    $daterangenodes[]=set_node(null, $fields[$n]["ref"], $rangestart, null, null,true);
-                    $daterangenodes[]=set_node(null, $fields[$n]["ref"], $rangeend, null, null,true);
+                    $daterangenodes[]=set_node(null, $fields[$n]["ref"], $rangestart, null, null);
+                    $daterangenodes[]=set_node(null, $fields[$n]["ref"], $rangeend, null, null);
                     }
                 else
                     {
@@ -1500,7 +1494,7 @@ function save_resource_data_multi($collection,$editsearch = array())
                             }
                         $newval.= ($newval!=""?$range_separator:"") . $val;if($val!=="")
                             {
-                            $daterangenodes[]=set_node(null, $fields[$n]["ref"], $val, null, null,true);
+                            $daterangenodes[]=set_node(null, $fields[$n]["ref"], $val, null, null);
                             }
                         }
                     }
@@ -1785,12 +1779,12 @@ function save_resource_data_multi($collection,$editsearch = array())
         $related = explode(',', getvalescaped('related', ''));
 
         // Make sure all submitted values are numeric
-        $ok = array();
+        $resources_to_relate = array();
         for($n = 0; $n < count($related); $n++)
             {
             if(is_numeric(trim($related[$n])))
                 {
-                $ok[] = trim($related[$n]);
+                $resources_to_relate[] = trim($related[$n]);
                 }
             }
 
@@ -1805,17 +1799,30 @@ function save_resource_data_multi($collection,$editsearch = array())
         for($m = 0; $m < count($list); $m++)
             {
             $ref = $list[$m];
+            // Only add new relationships
+            $existing_relations = ps_array("SELECT related value FROM resource_related WHERE resource = ?", array("i", $ref));
 
-            if(0 < count($ok))
+            // Don't relate a resource to itself
+            $for_relate_sql = array();
+            $for_relate_parameters = array();
+            foreach ($resources_to_relate as $resource_to_relate)
                 {
-                sql_query("INSERT INTO resource_related(resource, related) VALUES ($ref, " . join("),(" . $ref . ",",$ok) . ")");
+                if ($ref != $resource_to_relate && !in_array($resource_to_relate, $existing_relations))
+                    {
+                    $for_relate_sql = array_merge($for_relate_sql, array('(?, ?)'));
+                    $for_relate_parameters = array_merge($for_relate_parameters, array("i", $ref, "i", $resource_to_relate));
+                    }
+                }
+
+            if(0 < count($for_relate_sql))
+                {
+                ps_query("INSERT INTO resource_related (resource, related) VALUES " . implode(",", $for_relate_sql), $for_relate_parameters);
                 $successfully_edited_resources[] = $ref;
                 }
             }
         }
 	
-	# Also update archive status
-	global $user_resources_approved_email,$email_notify;	
+	# Also update archive status	
 	if (getval("editthis_status","")!="")
 		{
 		$notifyrefs=array();
@@ -2116,7 +2123,7 @@ function add_keyword_mappings(int $ref,$string,$resource_type_field,$partial_ind
  */
 function add_keyword_to_resource(int $ref,$keyword,$resource_type_field,$position,$optional_column='',$optional_value='',$normalized=false,$stemmed=false)
     {
-    global $unnormalized_index,$stemming,$noadd,$use_mysqli_prepared;
+    global $unnormalized_index,$stemming,$noadd;
     
     debug("add_keyword_to_resource: resource:" . $ref . ", keyword: " . $keyword);
     if(!$normalized)
@@ -2129,10 +2136,10 @@ function add_keyword_to_resource(int $ref,$keyword,$resource_type_field,$positio
             add_keyword_to_resource($ref,$kworig,$resource_type_field,$position,$optional_column,$optional_value,true,$stemmed);
             }
         }
-        
+
+    $kworig=$keyword; // Store non-stemmed word
     if (!$stemmed && $stemming && function_exists("GetStem"))
         {
-        $kworig=$keyword;
         $keyword=GetStem($keyword);debug("Using stem " . $keyword . " for keyword " . $kworig);
         if($keyword!=$kworig)
             {
@@ -2141,13 +2148,10 @@ function add_keyword_to_resource(int $ref,$keyword,$resource_type_field,$positio
             }
         }
 	
-    if (!(in_array($keyword,$noadd)))
+    if (!(in_array($kworig,$noadd))) // Original (non stemmed) word not in the stop list?
             {
             $keyref=resolve_keyword($keyword,true,false,false); // 3rd param set to false as already normalized. Do not stem this keyword as stem has already been added in this function
             debug("Indexing keyword $keyword - keyref is " . $keyref . ", already stemmed? is " . ($stemmed?"TRUE":"FALSE"));
-
-            $stm_bind_data = array('iiii', $ref, $keyref, $position, $resource_type_field);
-            $stm_prep_values = "?,?,?,?";
 
             $sql_extra_select = "";
             $sql_extra_value = "";
@@ -2155,27 +2159,13 @@ function add_keyword_to_resource(int $ref,$keyword,$resource_type_field,$positio
                 {
                 $sql_extra_select = ", `{$optional_column}`";
                 $sql_extra_value = ", '" . escape_check($optional_value) . "'";
-
-                $stm_prep_values .= ",?";
-                $stm_bind_data[0] .= "s";
-                $stm_bind_data[] = $optional_value;
                 }
-
-            # create mapping, increase hit count.
-            if(isset($use_mysqli_prepared) && $use_mysqli_prepared)
-                {
-                sql_query_prepared("INSERT INTO `resource_keyword`(`resource`,`keyword`,`position`,`resource_type_field` {$sql_extra_select}) VALUES ($stm_prep_values)",
-                    $stm_bind_data);
-                }
-            else
-                {
-                $ref = escape_check($ref);
-                $keyref = escape_check($keyref);
-                $position = escape_check($position);
-                $resource_type_field = escape_check($resource_type_field);
-                sql_query("INSERT INTO resource_keyword(resource, keyword, position, resource_type_field {$sql_extra_select})
-                                VALUES ('$ref', '$keyref', '$position', '$resource_type_field' {$sql_extra_value})");
-                }
+            $ref = escape_check($ref);
+            $keyref = escape_check($keyref);
+            $position = escape_check($position);
+            $resource_type_field = escape_check($resource_type_field);
+            sql_query("INSERT INTO resource_keyword(resource, keyword, position, resource_type_field {$sql_extra_select})
+                            VALUES ('$ref', '$keyref', '$position', '$resource_type_field' {$sql_extra_value})");
 
             sql_query("update keyword set hit_count=hit_count+1 where ref='$keyref'");
             
@@ -2264,7 +2254,7 @@ function update_field($resource, $field, $value, array &$errors = array(), $log=
             if('' != $newvalue && !in_array($newvalue, $currentoptions))
                 {
                 # Append the option and update the field
-                $newnode          = set_node(null, $field, escape_check(trim($newvalue)), null, null, true);
+                $newnode          = set_node(null, $field, escape_check(trim($newvalue)), null, null);
                 $nodes_to_add[]   = $newnode;
                 $currentoptions[] = trim($newvalue);
 
@@ -2313,7 +2303,7 @@ function update_field($resource, $field, $value, array &$errors = array(), $log=
             if('' != $newvalue && !in_array($newvalue, $currentoptions))
                 {
                 # Append the option and update the field
-                $newnode          = set_node(null, $field, escape_check(trim($newvalue)), null, null, true);
+                $newnode          = set_node(null, $field, escape_check(trim($newvalue)), null, null);
                 $nodes_to_add[]   = $newnode;
                 $currentoptions[] = trim($newvalue);
 
@@ -2392,7 +2382,7 @@ function update_field($resource, $field, $value, array &$errors = array(), $log=
         }
     else
         {
-        if (trim($value) == trim($existing))
+        if (trim($value) === trim($existing))
             {
             // Nothing to do
             return true;
@@ -3113,21 +3103,34 @@ function get_resource_field_data_batch($resources,$use_permissions=true,$externa
 
     // Add category tree values, reflecting tree structure
     $tree_fields = get_resource_type_fields("","ref","asc",'',array(FIELD_TYPE_CATEGORY_TREE));
-    $alltreenodes = get_resource_nodes_batch($resourceids, array_column($tree_fields,"ref"), true);
+
+    // Construct an array of the selected tree nodes across all resource ids
+    $selected_treenodes = get_resource_nodes_batch($resourceids, array_column($tree_fields,"ref"), true);
+
     foreach($tree_fields as $tree_field)
         {
+        // We need to determine the tree strings for all nodes belonging to the tree field
+        $tree_field_nodes = get_nodes($tree_field["ref"],'', true); # where '' is parent and true is recursive
+        // Each tree field option is the canonical path to a node
+        $tree_field_options = get_tree_strings($tree_field_nodes, true); # where true is full path
+
         $addfield = $tree_field;
+        // Now for each resource, build an array consisting of all of the paths for the selected nodes 
         foreach($getresources as $getresource)
             {
-            if(isset($alltreenodes[$getresource["ref"]][$tree_field["ref"]]) && is_array($alltreenodes[$getresource["ref"]][$tree_field["ref"]]))
+            $treetext_arr = array();
+            $valstring = "";
+            // Are there any selected tree nodes on the resource? 
+            if(isset($selected_treenodes[$getresource["ref"]][$tree_field["ref"]]) && is_array($selected_treenodes[$getresource["ref"]][$tree_field["ref"]]))
                 {
-                $treetext_arr = get_tree_strings($alltreenodes[$getresource["ref"]][$tree_field["ref"]]);
+                // So for each selected tree node, add its corresponding path to the path array
+                foreach($selected_treenodes[$getresource["ref"]][$tree_field["ref"]] as $selected_resource_treenode) 
+                    {
+                    $treetext_arr[]=$tree_field_options[$selected_resource_treenode["ref"]];
+                    }
+                sort($treetext_arr);
                 // Quoting each element is required for csv export
                 $valstring = $csvexport ? ("\"" . implode("\",\"",$treetext_arr) . "\"") : implode(",",$treetext_arr);
-                }
-            else
-                {
-                $treetext_arr = array();
                 }
             $addfield["resource"] = $getresource["ref"];
             $addfield["value"] = count($treetext_arr) > 0 ? $valstring : "";
@@ -3236,24 +3239,42 @@ function get_resource_types($types = "", $translate = true)
     {
     # Returns a list of resource types. The standard resource types are translated using $lang. Custom resource types are i18n translated.
     // support getting info for a comma-delimited list of restypes (as in a search)
+    $parameters=array();
     if ($types==""){$sql="";} else
         {
         # Ensure $types are suitably quoted and escaped
         $cleantypes="";
         $s=explode(",",$types);
+        
         foreach ($s as $type)
             {
             if (is_numeric(str_replace("'","",$type))) # Process numeric types only, to avoid inclusion of collection-based filters (mycol, public, etc.)
                 {
-                if (strpos($type,"'")===false) {$type="'" . $type . "'";}
                 if ($cleantypes!="") {$cleantypes.=",";}
-                $cleantypes.=$type;
+                $cleantypes.="?";
+                $parameters[]="i";$parameters[]=$type;
                 }
             }
-        $sql=" where ref in ($cleantypes) ";
+        $sql=" WHERE ref IN ($cleantypes) ";
         }
     
-    $r=sql_query("select *, colour from resource_type $sql order by order_by,ref","schema");
+    $r=ps_query("SELECT ref,
+                        name,
+                        allowed_extensions,
+                        order_by,
+                        config_options,
+                        tab_name,
+                        push_metadata,
+                        inherit_global_fields,
+                        colour,
+                        icon
+                   FROM resource_type
+                        $sql
+               ORDER BY order_by,
+                        ref",
+                        $parameters,
+                        "schema");
+
     $return=array();
     # Translate names (if $translate==true) and check permissions
     for ($n=0;$n<count($r);$n++)
@@ -3307,7 +3328,7 @@ function get_resource_top_keywords($resource,$count)
         if(isset($r) && trim($r) != '')
             {  
             if (substr($r,0,1)==","){$r=substr($r,1);}
-            $s=split_keywords($r);
+            $s=split_keywords(i18n_get_translated($r));
             # Splitting keywords can result in break words being included in these results
             # These should be removed here otherwise they will show as keywords themselves which is incorrect
             global $noadd; 
@@ -3447,12 +3468,9 @@ function copy_resource($from,$resource_type=-1)
 		add_keyword_mappings($to,$username . " " . $userfullname,-1);
 		}
 
-	# Now copy all data
-	copyResourceDataValues($from,$to,$resource_type);
-	
-    # Copy nodes
-    copy_resource_nodes($from,$to);
-	
+    # Copy Metadata
+    copyAllDataToResource($from,$to);
+
 	# Copy relationships
     copyRelatedResources($from, $to);
 
@@ -3489,13 +3507,6 @@ function copy_resource($from,$resource_type=-1)
 
 	# Reindex the resource so the resource_keyword entries are created
 	reindex_resource($to);
-	
-	# Copying a resource of the 'pending review' state? Notify, if configured.
-	global $send_collection_to_admin;
-	if ($archive==-1 && !$send_collection_to_admin)
-		{
-		notify_user_contributed_submitted(array($to));
-		}
 	
 	# Log this			
 	daily_stat("Create resource",$to);
@@ -3726,7 +3737,7 @@ function get_resource_type_name($type)
 	{
 	global $lang;
 	if ($type==999) {return $lang["archive"];}
-	return lang_or_i18n_get_translated(sql_value("select name value from resource_type where ref='" . escape_check($type) . "'","", "schema"),"resourcetype-");
+	return lang_or_i18n_get_translated(ps_value("select name value from resource_type where ref=?",array("i",$type), "schema"),"resourcetype-");
 	}
 	
 function get_resource_custom_access($resource)
@@ -3824,7 +3835,7 @@ function get_themes_by_resource($ref)
                   %s # access control filter (ok if empty - it means we don't want permission checks or there's nothing to filter out)",
         escape_check($ref),
         COLLECTION_TYPE_FEATURED . ", " . COLLECTION_TYPE_PUBLIC,
-        trim(featured_collections_permissions_filter_sql("WHERE", "c.ref"))
+        trim(featured_collections_permissions_filter_sql("WHERE", "c.ref",true))
     );
 
     $results = sql_query($sql);
@@ -4085,15 +4096,19 @@ function write_metadata($path, $ref, $uniqid="")
                 $group_tag = strtolower($group_tag); # E.g. IPTC:Keywords -> iptc:keywords
                 if (strpos($group_tag,":")===false) {$tag = $group_tag;} # E.g. subject -> subject
                 else {$tag = substr($group_tag, strpos($group_tag,":")+1);} # E.g. iptc:keywords -> keywords
-                
+                if(strpos($group_tag,"-") !== false && stripos($group_tag,"xmp") !== false)
+                    {
+                    // Remove the XMP namespace for XMP data if included
+                    $group_tag = substr($group_tag,0,(strpos($group_tag,"-")));
+                    }                
                 $exifappend=false; // Need to replace values by default
                 if(isset($writtenfields[$group_tag])) 
-                        { 
-                        // This embedded field is already being updated, we need to append values from this field                          
-                        $exifappend=true;
-                        debug("write_metadata - more than one field mappped to the tag '" . $group_tag . "'. Enabling append mode for this tag. ");
-                        }
-                        
+                    { 
+                    // This embedded field is already being updated, we need to append values from this field                          
+                    $exifappend=true;
+                    debug("write_metadata - more than one field mapped to the tag '" . $group_tag . "'. Enabling append mode for this tag. ");
+                    }
+
                 switch ($tag)
                     {
                     case "filesize":
@@ -4105,29 +4120,31 @@ function write_metadata($path, $ref, $uniqid="")
                     case "directory":
                         # Do nothing, we don't want metadata to control this
                         break;
-                    case "keywords":                  
-                        # Keywords shall be written one at a time and not all together.
-						if(!isset($writtenfields["keywords"])){$writtenfields["keywords"]="";} 
-						$keywords = explode(",", $writevalue); # "keyword1,keyword2, keyword3" (with or without spaces)
-						if (implode("", $keywords) != "")
-                        	{
-                        	# Only write non-empty keywords/ may be more than one field mapped to keywords so we don't want to overwrite with blank
-	                        foreach ($keywords as $keyword)
-	                            {
-                                $keyword = trim($keyword);
-	                            if ($keyword != "")
-	                            	{
-                                    debug("[write_metadata()][ref={$ref}] Writing keyword '{$keyword}'");
-									$writtenfields[$group_tag].="," . $keyword;
-										 
-									# Convert the data to UTF-8 if not already.
-									if (!$exiftool_write_omit_utf8_conversion && (!isset($mysql_charset) || (isset($mysql_charset) && strtolower($mysql_charset)!="utf8"))){$keyword = mb_convert_encoding($keyword, mb_detect_encoding($keyword), 'UTF-8');}
-									$command.= escapeshellarg("-" . $group_tag . "-=" . htmlentities($keyword, ENT_QUOTES, "UTF-8")) . " "; // In case value is already embedded, need to manually remove it to prevent duplication
-									$command.= escapeshellarg("-" . $group_tag . "+=" . htmlentities($keyword, ENT_QUOTES, "UTF-8")) . " ";
-									}
-	                            }
-	                        }
-                        break;
+                    case "keywords": 
+                        if(substr($group_tag,0,3) != "xmp")
+                            {
+                            # Only IPTC Keywords are a list type - these are written one at a time and not all together.
+                            if(!isset($writtenfields["keywords"])){$writtenfields["keywords"]="";} 
+                            $keywords = explode(",", $writevalue); # "keyword1,keyword2, keyword3" (with or without spaces)
+                            if (implode("", $keywords) != "")
+                                {
+                                # Only write non-empty keywords/ may be more than one field mapped to keywords so we don't want to overwrite with blank
+                                foreach ($keywords as $keyword)
+                                    { 
+                                    $keyword = trim($keyword);
+                                    if ($keyword != "")
+                                        {                                      
+                                        debug("[write_metadata()][ref={$ref}] Writing keyword '{$keyword}'");
+                                        $writtenfields["keywords"].="," . $keyword;
+                                        # Convert the data to UTF-8 if not already.
+                                        if (!$exiftool_write_omit_utf8_conversion && (!isset($mysql_charset) || (isset($mysql_charset) && strtolower($mysql_charset)!="utf8"))){$keyword = mb_convert_encoding($keyword, mb_detect_encoding($keyword), 'UTF-8');}
+                                        $command.= escapeshellarg("-" . $group_tag . "-=" . htmlentities($keyword, ENT_QUOTES, "UTF-8")) . " "; // In case value is already embedded, need to manually remove it to prevent duplication
+                                        $command.= escapeshellarg("-" . $group_tag . "+=" . htmlentities($keyword, ENT_QUOTES, "UTF-8")) . " ";
+                                        }
+                                    }
+                                }
+                            break; // The break is in here so that Non-IPTC keywords continue to be handled by default
+                            }
                     default:
                         if($exifappend && ($writevalue=="" || ($writevalue!="" && strpos($writtenfields[$group_tag],$writevalue)!==false)))
                             {                                                            
@@ -4366,17 +4383,40 @@ function import_resource($path,$type,$title,$ingest=false,$createPreviews=true, 
 function get_alternative_files($resource,$order_by="",$sort="",$type="")
 	{
 	# Returns a list of alternative files for the given resource
-	if ($order_by!="" && $sort!=""){
+	if ($order_by!="" && $sort!="" 
+        && in_array(strtoupper($order_by),array("ALT_TYPE")) 
+        && in_array(strtoupper($sort),array("ASC","DESC")) )
+        {
 		$ordersort=$order_by." ".$sort.",";
-	} else {
+	    } 
+    else 
+        {
 		$ordersort="";
-	}
+	    }
+
+    # The following hook now returns a query object
     $extrasql=hook("get_alternative_files_extra_sql","",array($resource));
     
-    # Filter by type, if provided.
-    if ($type!="") {$extrasql.= " and alt_type='" . escape_check($type) . "'";}
+    if (!$extrasql)
+        {
+        # Hook inactive, ensure we have an empty query object
+        $extrasql = new PreparedStatementQuery();
+        }
 
-	return sql_query("select ref,name,description,file_name,file_extension,file_size,creation_date,alt_type from resource_alt_files where resource='".escape_check($resource)."' $extrasql order by ".escape_check($ordersort)." name asc, file_size desc");
+    # Filter by type, if provided.
+    if ($type!="") 
+        {
+        $extrasql->sql.=" AND alt_type=?";
+        $extrasql->parameters=array_merge($extrasql->parameters,array("s",$type));
+        }
+
+    $alt_files_sql="SELECT ref,name,description,file_name,file_extension,file_size,creation_date,alt_type 
+                    FROM resource_alt_files where resource=? ". $extrasql->sql . 
+                   " order by ".$ordersort." name asc, file_size desc";
+
+    $alt_files_parameters=array_merge(array("i",$resource), $extrasql->parameters);
+
+	return ps_query($alt_files_sql,$alt_files_parameters);
 	}
 
 /**
@@ -4460,6 +4500,8 @@ function delete_alternative_file($resource,$ref)
 	
 	# Update disk usage
 	update_disk_usage($resource);
+
+    return true;
 	}
 	
 function get_alternative_file($resource,$ref)
@@ -4547,208 +4589,6 @@ function user_rating_save($userref,$ref,$rating)
 	sql_query("update resource set user_rating='$average',user_rating_total='$total',user_rating_count='$count' where ref='$ref'");
 		
 	}
-
-
-/**
- * Get contributed by user formatted for inclusion in notifications
- *
- * @param  int     $ref         ID of resource
- * @param  string  $htmlbreak   HTML break type
- * 
- * @return string
- */
-function process_notify_user_contributed_submitted($ref,$htmlbreak)
-	{
-	global $use_phpmailer,$baseurl, $lang;
-	$url="";
-	$url=$baseurl . "/?r=" . $ref;
-	
-	if ($use_phpmailer){$url="<a href'$url'>$url</a>";}
-	
-	// Get the user (or username) of the contributor:
-	$query = "SELECT user.username, user.fullname FROM resource INNER JOIN user ON user.ref = resource.created_by WHERE resource.ref ='".$ref."'";
-	$result = sql_query($query);
-	$user = '';
-	if(count($result) == 0)
-        {
-        $user = $lang["notavailableshort"];
-        }
-    elseif(trim($result[0]['fullname']) != '') 
-		{
-		$user = $result[0]['fullname'];
-		} 
-	else 
-		{
-		$user = $result[0]['username'];
-		}
-	return $htmlbreak . $user . ': ' . $url;
-	}
-
-/**
- * Send notifications when resources are moved from "User Contributed - Pending Submission" to "User Contributed - Pending Review"
- *
- * @param  array|int  $refs         ID of resource(s)
- * @param  int        $collection   ID of collection
- * 
- * @return boolean|void
- */
-function notify_user_contributed_submitted($refs,$collection=0)
-	{
-	global $notify_user_contributed_submitted,$applicationname,$email_notify,$baseurl,$lang,$use_phpmailer;
-	if (!$notify_user_contributed_submitted) {return false;} # Only if configured.
-	$htmlbreak="\r\n";
-	if ($use_phpmailer){$htmlbreak="<br /><br />";}
-	
-	$list="";
-	if(is_array($refs))
-		{
-		for ($n=0;$n<count($refs);$n++)
-			{
-			$list .= process_notify_user_contributed_submitted($refs[$n],$htmlbreak);
-			}
-		}
-	else
-		{
-		$list=process_notify_user_contributed_submitted($refs,$htmlbreak);
-		}
-		
-	$list.=$htmlbreak;	
-	
-    if($collection != 0) 
-        {
-        $templatevars['url'] = $baseurl . "/pages/search.php?search=!collection" . $collection;
-        }
-    elseif(is_array($refs) && count($refs) < 200)
-        {
-        $templatevars['url'] = $baseurl . "/pages/search.php?search=!list" . implode(":",$refs);
-        }
-    else
-        {
-        $templatevars['url'] = $baseurl . "/pages/search.php?search=!contributions" . $userref . "&archive=-1";
-        }
-	
-	$templatevars['list']=$list;
-	$message=$lang["userresourcessubmitted"] . "\n\n". $templatevars['list'] . "\n\n" . $lang["viewall"] . "\n\n" . $templatevars['url'];
-	$notificationmessage=$lang["userresourcessubmittednotification"];
-	$notify_users=get_notification_users(array("e-1","e0")); 
-	$message_users=array();
-	foreach($notify_users as $notify_user)
-			{
-			get_config_option($notify_user['ref'],'user_pref_resource_notifications', $send_message);		  
-            if($send_message==false){continue;}		
-			
-			get_config_option($notify_user['ref'],'email_user_notifications', $send_email);    
-			if($send_email && $notify_user["email"]!="")
-				{
-				send_mail($notify_user["email"],$applicationname . ": " . $lang["status-1"],$message,"","","emailnotifyresourcessubmitted",$templatevars);
-				}        
-			else
-				{
-				$message_users[]=$notify_user["ref"];
-				}
-			}
-	if (count($message_users)>0)
-		{
-		global $userref;
-		if($collection!=0)
-			{
-			message_add($message_users,$notificationmessage,$templatevars['url'],$userref,MESSAGE_ENUM_NOTIFICATION_TYPE_SCREEN,MESSAGE_DEFAULT_TTL_SECONDS,SUBMITTED_COLLECTION,$collection);
-			}
-		else
-			{
-			message_add($message_users,$notificationmessage,$templatevars['url'],$userref,MESSAGE_ENUM_NOTIFICATION_TYPE_SCREEN,MESSAGE_DEFAULT_TTL_SECONDS,SUBMITTED_RESOURCE,(is_array($refs)?$refs[0]:$refs));
-			}
-		}
-    }
-    
-/**
-* Send notifications when resources are moved from "User Contributed - Pending Review" to "User Contributed - Pending Submission"
-*
-* @param  array|int  $refs    ID of resource(s)
-* @param  mixed $collection   ID of collection
-* 
-* @return boolean
-*/
-function notify_user_contributed_unsubmitted($refs,$collection=0)
-	{
-	// Send notifications when resources are moved from "User Contributed - Pending Review"	to "User Contributed - Pending Submission"
-	global $notify_user_contributed_unsubmitted,$applicationname,$email_notify,$baseurl,$lang,$use_phpmailer;
-	if (!$notify_user_contributed_unsubmitted) {return false;} # Only if configured.
-	
-	$htmlbreak="\r\n";
-	if ($use_phpmailer){$htmlbreak="<br /><br />";}
-	
-	$list="";
-	if(is_array($refs))
-		{
-		for ($n=0;$n<count($refs);$n++)
-			{
-			$url="";	
-			$url=$baseurl . "/?r=" . $refs[$n];
-			
-			if ($use_phpmailer){$url="<a href=\"$url\">$url</a>";}
-			
-			$list.=$htmlbreak . $url . "\n\n";
-			}
-		}
-	else
-		{
-		$url="";	
-		$url=$baseurl . "/?r=" . $refs;
-		if ($use_phpmailer){$url="<a href=\"$url\">$url</a>";}
-		$list.=$htmlbreak . $url . "\n\n";
-		}
-	
-	$list.=$htmlbreak;		
-	$templatevars['list']=$list;
-	
-	if($collection != 0) 
-        {
-        $templatevars['url'] = $baseurl . "/pages/search.php?search=!collection" . $collection;
-        }
-    elseif(is_array($refs) && count($refs) < 200)
-        {
-        $templatevars['url'] = $baseurl . "/pages/search.php?search=!list" . implode(":",$refs);
-        }
-    else
-        {
-        $templatevars['url'] = $baseurl . "/pages/search.php?search=!contributions" . $userref . "&archive=-2";
-        }
-        
-	$message=$lang["userresourcesunsubmitted"]."\n\n". $templatevars['list'] . $lang["viewall"] . "\n\n" . $templatevars['url'];
-
-	$notificationmessage=$lang["userresourcesunsubmittednotification"];
-	$notify_users=get_notification_users(array("e-1","e0")); 
-	$message_users=array();
-	foreach($notify_users as $notify_user)
-			{
-			get_config_option($notify_user['ref'],'user_pref_resource_notifications', $send_message);		  
-            if($send_message==false){continue;}		
-			
-			get_config_option($notify_user['ref'],'email_user_notifications', $send_email);    
-			if($send_email && $notify_user["email"]!="")
-				{
-				send_mail($notify_user["email"],$applicationname . ": " . $lang["status-2"],$message,"","","emailnotifyresourcesunsubmitted",$templatevars);
-				}        
-			else
-				{
-				$message_users[]=$notify_user["ref"];
-				}
-			}
-	if (count($message_users)>0)
-		{
-		global $userref;
-        message_add($message_users,$notificationmessage,$templatevars['url']);
-		}
-	
-	# Clear any outstanding notifications relating to submission of these resources
-	message_remove_related(SUBMITTED_RESOURCE,$refs);
-	if($collection!=0)
-		{
-		message_remove_related(SUBMITTED_COLLECTION,$collection);
-		}
-	}		
-	
 
 /**
 *  A standard field title is translated using $lang.  A custom field title is i18n translated.
@@ -5533,14 +5373,15 @@ function autocomplete_blank_fields($resource, $force_run, $return_changes = fals
     $resource_escaped = escape_check($resource);
     $resource_type = sql_value("SELECT resource_type AS `value` FROM resource WHERE ref = '{$resource_escaped}'", 0);
 
-    $fields = sql_query("
-        SELECT ref,
-               type,
-               autocomplete_macro
-          FROM resource_type_field
-         WHERE (resource_type = 0 || resource_type = '{$resource_type}')
-           AND length(autocomplete_macro) > 0
-    ", "schema");
+    $fields = sql_query(
+        "SELECT rtf.ref, rtf.type, rtf.autocomplete_macro
+          FROM resource_type_field rtf
+          LEFT JOIN resource_type rt ON rt.ref = {$resource_type} 
+          WHERE length(rtf.autocomplete_macro) > 0
+          AND (   (rtf.resource_type<>0 AND rtf.resource_type = rt.ref) 
+               OR (rtf.resource_type=0  AND rt.inherit_global_fields=1)
+              )", 
+        "schema");
 
     $fields_updated = array();
 
@@ -5560,14 +5401,17 @@ function autocomplete_blank_fields($resource, $force_run, $return_changes = fals
             }
 
         $run_autocomplete_macro = $force_run || hook('run_autocomplete_macro');
+        # The autocomplete macro will run if the existing value is blank, or if forced to always run
         if(strlen(trim($value)) == 0 || $run_autocomplete_macro)
             {
-            # Empty value. Autocomplete and set.
+            # Autocomplete and update using the returned value
             $value = eval($field['autocomplete_macro']);
             if(in_array($field['type'], $FIXED_LIST_FIELD_TYPES))
                 {
+                # Multiple values are comma separated
                 $autovals = str_getcsv($value);
                 $autonodes = array();
+                # Establish an array of nodes from the values
                 foreach($autovals as $autoval)
                     {
                     $nodeid = get_node_id($autoval,$field['ref']);
@@ -5576,10 +5420,14 @@ function autocomplete_blank_fields($resource, $force_run, $return_changes = fals
                         $autonodes[] = $nodeid;
                         }
                     }
-                natsort($autonodes);
-                add_resource_nodes($resource,$autonodes,false,false);
-                log_node_changes($resource,$autonodes,array(),$lang["autocomplete_log_note"]);
-                $fields_updated[$field['ref']] = implode(",",$autonodes);
+                # Add nodes if any were established
+                if (count($autonodes) > 0)
+                    {
+                    natsort($autonodes);
+                    add_resource_nodes($resource,$autonodes,false,false);
+                    log_node_changes($resource,$autonodes,array(),$lang["autocomplete_log_note"]);
+                    $fields_updated[$field['ref']] = implode(",",$autonodes);
+                    }
                 }
             else
                 {
@@ -5810,219 +5658,184 @@ function overquota()
 	return false;
 	}
 
-function notify_user_resources_approved($refs)
-	{
-	// Send a notification mail to the user when resources have been approved
-	global $applicationname,$baseurl,$lang;	
-	debug("Emailing user notifications of resource approvals");	
-	$htmlbreak="\r\n";
-	global $use_phpmailer,$userref,$templatevars;
-	if ($use_phpmailer){$htmlbreak="<br /><br />";}
-	$notifyusers=array();
-	
-    if(!is_array($refs))
-        {
-        $refs=array($refs);    
-        }
-	for ($n=0;$n<count($refs);$n++)
-		{
-		$ref=$refs[$n];
-		$contributed=sql_value("select created_by value from resource where ref='$ref'",0);
-		if($contributed!=0 && $contributed!=$userref)
-			{
-			if(!isset($notifyusers[$contributed])) // Add new array entry if not already present
-				{
-				$notifyusers[$contributed]=array();
-				$notifyusers[$contributed]["list"]="";
-				$notifyusers[$contributed]["resources"]=array();
-				$notifyusers[$contributed]["url"]=$baseurl . "/pages/search.php?search=!contributions" . $contributed . "&archive=0";
-				}		
-			$notifyusers[$contributed]["resources"][]=$ref;
-			$url=$baseurl . "/?r=" . $refs[$n];		
-			if ($use_phpmailer){$url="<a href=\"$url\">$url</a>";}
-			$notifyusers[$contributed]["list"].=$htmlbreak . $url . "\n\n";
-			}		
-		}
-	foreach($notifyusers as $key=>$notifyuser)	
-		{
-		$templatevars['list']=$notifyuser["list"];
-		$templatevars['url']=$notifyuser["url"];			
-		$message=$lang["userresourcesapproved"] . "\n\n". $templatevars['list'] . "\n\n" . $lang["viewcontributedsubittedl"] . "\n\n" . $notifyuser["url"];
-		$notificationmessage=$lang["userresourcesapproved"];
-		
-		// Does the user want these messages?
-		get_config_option($key,'user_pref_resource_notifications', $send_message);		  
-        if($send_message==false){continue;}		
-       
-		// Does the user want an email or notification?
-		get_config_option($key,'email_user_notifications', $send_email);    
-		if($send_email)
-			{
-			$notify_user=sql_value("select email value from user where ref='$key'","");
-			if($notify_user!='')
-				{
-				send_mail($notify_user,$applicationname . ": " . $lang["approved"],$message,"","","emailnotifyresourcesapproved",$templatevars);
-				}
-			}        
-		else
-			{
-			global $userref;
-			message_add($key,$notificationmessage,$notifyuser["url"]);
-			}
-		}
-	}
-	
-		
-
+/**
+ * Get size of specified image file
+ *
+ * @param  int $ref             Resource ID
+ * @param  string $path         File path
+ * @param  string $extension    File extension
+ * @param  bool $forcefromfile  Get info from file instead of database cache
+ * 
+ * @return array|bool           Fil size info. Returns false if not available
+ */
 function get_original_imagesize($ref="",$path="", $extension="jpg", $forcefromfile=false)
 	{
 	$fileinfo=array();
 	if($ref=="" || $path==""){return false;}
 	global $imagemagick_path, $imagemagick_calculate_sizes;
-	$file=$path;
+
+    if(!file_exists($path))
+        {
+        return false;
+        }
+
+    $file=$path;
+    
+    // check for valid image
+    if (function_exists('mime_content_type'))
+        {
+        $mime_content_type = mime_content_type($file);
+        }
+    else
+        {
+        $mime_content_type = get_mime_type($file);
+        }
+    $is_image = strpos($mime_content_type, "image/");
+    if ($is_image === false)
+        {
+        return false;
+        }
+
     $ref_escaped = escape_check($ref);
-	$o_size=sql_query("select * from resource_dimensions where resource='{$ref_escaped}'");
-	if(!empty($o_size))
-		{
-		if(count($o_size)>1)
-			{
-			# delete all the records and start fresh. This is a band-aid should there be multiple records as a result of using api_search
-			sql_query("delete from resource_dimensions where resource='{$ref_escaped}'");
-			$o_size=false;
-			$forcefromfile=true;
-			}
-		else
-			{
-			$o_size=$o_size[0];
-			}
-		}
-	else
-		{
-		$o_size=false;
-		}
-		
-	if($o_size!==false && !$forcefromfile){
-		
-		$fileinfo[0]=$o_size['file_size'];
-		$fileinfo[1]=$o_size['width'];
-		$fileinfo[2]=$o_size['height'];
-		return $fileinfo;
-	}
+    $o_size=sql_query("SELECT * FROM resource_dimensions WHERE resource='{$ref_escaped}'");
+    if(!empty($o_size))
+        {
+        if(count($o_size)>1)
+            {
+            # delete all the records and start fresh. This is a band-aid should there be multiple records as a result of using api_search
+            sql_query("DELETE FROM resource_dimensions WHERE resource='{$ref_escaped}'");
+            $o_size=false;
+            $forcefromfile=true;
+            }
+        else
+            {
+            $o_size=$o_size[0];
+            }
+        }
+    else
+        {
+        $o_size=false;
+        }
+        
+    if($o_size!==false && !$forcefromfile && $o_size['file_size'] > 0)
+        {
+        $fileinfo[0]=$o_size['file_size'];
+        $fileinfo[1]=$o_size['width'];
+        $fileinfo[2]=$o_size['height'];
+        return $fileinfo;
+        }
 	
 	$filesize=filesize_unlimited($file);
 	
 	# imagemagick_calculate_sizes is normally turned off 
 	if (isset($imagemagick_path) && $imagemagick_calculate_sizes)
-		{
-		# Use ImageMagick to calculate the size
-		
-		$prefix = '';
-		# Camera RAW images need prefix
-		if (preg_match('/^(dng|nef|x3f|cr2|crw|mrw|orf|raf|dcr)$/i', $extension, $rawext)) { $prefix = $rawext[0] .':'; }
+        {
+        # Use ImageMagick to calculate the size		
+        $prefix = '';
+        # Camera RAW images need prefix
+        if (preg_match('/^(dng|nef|x3f|cr2|crw|mrw|orf|raf|dcr)$/i', $extension, $rawext)) { $prefix = $rawext[0] .':'; }
 
-		# Locate imagemagick.
-		$identify_fullpath = get_utility_path("im-identify");
-		if ($identify_fullpath==false) {exit("Could not find ImageMagick 'identify' utility at location '$imagemagick_path'.");}	
-		# Get image's dimensions.
-		$identcommand = $identify_fullpath . ' -format %wx%h '. escapeshellarg($prefix . $file) .'[0]';
-		$identoutput=run_command($identcommand);
-		preg_match('/^([0-9]+)x([0-9]+)$/ims',$identoutput,$smatches);
-		@list(,$sw,$sh) = $smatches;
-		if (($sw!='') && ($sh!=''))
-			{
-			if(!$o_size)
-				{
-				sql_query("insert into resource_dimensions (resource, width, height, file_size) values('{$ref_escaped}', '". escape_check($sw) ."', '". escape_check($sh) ."', '" . escape_check((int)$filesize) . "')");
-				}
-			else
-				{
-				sql_query("update resource_dimensions set width='". escape_check($sw) ."', height='". escape_check($sh) ."', file_size='" . escape_check($filesize) . "' where resource='{$ref_escaped}'");
-				}
-			}
-		}	
-	else 
-		{
-		# check if this is a raw file.	
-		$rawfile = false;
-		if (preg_match('/^(dng|nef|x3f|cr2|crw|mrw|orf|raf|dcr)$/i', $extension, $rawext)){$rawfile=true;}
-			
-		# Use GD to calculate the size
-		if (!((@list($sw,$sh) = @getimagesize($file))===false)&& !$rawfile)
-			{
-			if(!$o_size)
-				{	
-				sql_query("insert into resource_dimensions (resource, width, height, file_size) values('{$ref_escaped}', '". escape_check($sw) ."', '". escape_check($sh) ."', '" . escape_check((int)$filesize) . "')");
-				}
-			else
-				{
-				sql_query("update resource_dimensions set width='". escape_check($sw) ."', height='". escape_check($sh) ."', file_size='" . escape_check($filesize) . "' where resource='{$ref_escaped}'");
-				}
-			}
-		else
-			{
+        # Locate imagemagick.
+        $identify_fullpath = get_utility_path("im-identify");
+        if ($identify_fullpath==false) {exit("Could not find ImageMagick 'identify' utility at location '$imagemagick_path'.");}	
+        # Get image's dimensions.
+        $identcommand = $identify_fullpath . ' -format %wx%h '. escapeshellarg($prefix . $file) .'[0]';
+        $identoutput=run_command($identcommand);
+        preg_match('/^([0-9]+)x([0-9]+)$/ims',$identoutput,$smatches);
+        @list(,$sw,$sh) = $smatches;
+        if (($sw!='') && ($sh!=''))
+            {
+            if(!$o_size)
+                {
+                sql_query("insert into resource_dimensions (resource, width, height, file_size) values('{$ref_escaped}', '". escape_check($sw) ."', '". escape_check($sh) ."', '" . escape_check((int)$filesize) . "')");
+                }
+            else
+                {
+                sql_query("update resource_dimensions set width='". escape_check($sw) ."', height='". escape_check($sh) ."', file_size='" . escape_check($filesize) . "' where resource='{$ref_escaped}'");
+                }
+            }
+        }	
+    else 
+        {
+        # check if this is a raw file.	
+        $rawfile = false;
+        if (preg_match('/^(dng|nef|x3f|cr2|crw|mrw|orf|raf|dcr)$/i', $extension, $rawext)){$rawfile=true;}
+            
+        # Use GD to calculate the size
+        if (!((@list($sw,$sh) = @getimagesize($file))===false)&& !$rawfile)
+            {
+            if(!$o_size)
+                {	
+                sql_query("insert into resource_dimensions (resource, width, height, file_size) values('{$ref_escaped}', '". escape_check($sw) ."', '". escape_check($sh) ."', '" . escape_check((int)$filesize) . "')");
+                }
+            else
+                {
+                sql_query("update resource_dimensions set width='". escape_check($sw) ."', height='". escape_check($sh) ."', file_size='" . escape_check($filesize) . "' where resource='{$ref_escaped}'");
+                }
+            }
+        else
+            {
 
-			# Assume size cannot be calculated.
-			$sw="?";$sh="?";
+            # Assume size cannot be calculated.
+            $sw="?";$sh="?";
 
-			global $ffmpeg_supported_extensions;
-			if (in_array(strtolower($extension), $ffmpeg_supported_extensions) && function_exists('json_decode'))
-			    {
-			    $file=get_resource_path($ref,true,"",false,$extension);
-			    $ffprobe_array=get_video_info($file);
+            global $ffmpeg_supported_extensions;
+            if (in_array(strtolower($extension), $ffmpeg_supported_extensions) && function_exists('json_decode'))
+                {
+                $file=get_resource_path($ref,true,"",false,$extension);
+                $ffprobe_array=get_video_info($file);
                 
-			    # Different versions of ffprobe store the dimensions in different parts of the json output. Test both.
-			    if (!empty($ffprobe_array['width'] )) { $sw = intval($ffprobe_array['width']);  }
-			    if (!empty($ffprobe_array['height'])) { $sh = intval($ffprobe_array['height']); }
-			    if (isset($ffprobe_array['streams']) && is_array($ffprobe_array['streams']))
-					{
-					foreach( $ffprobe_array['streams'] as $stream )
-						{
-						if (!empty($stream['codec_type']) && $stream['codec_type'] === 'video')
-							{
-							$sw = intval($stream['width']);
-							$sh = intval($stream['height']);
-							break;
-							}
-						}
-					}
-				}
+                # Different versions of ffprobe store the dimensions in different parts of the json output. Test both.
+                if (!empty($ffprobe_array['width'] )) { $sw = intval($ffprobe_array['width']);  }
+                if (!empty($ffprobe_array['height'])) { $sh = intval($ffprobe_array['height']); }
+                if (isset($ffprobe_array['streams']) && is_array($ffprobe_array['streams']))
+                    {
+                    foreach( $ffprobe_array['streams'] as $stream )
+                        {
+                        if (!empty($stream['codec_type']) && $stream['codec_type'] === 'video')
+                            {
+                            $sw = intval($stream['width']);
+                            $sh = intval($stream['height']);
+                            break;
+                            }
+                        }
+                    }
+                }
 
-			if ($sw!=='?' && $sh!=='?')
-			    {
-			    # Size could be calculated after all
-			    if(!$o_size)
-					{
-					sql_query("insert into resource_dimensions (resource, width, height, file_size) values('{$ref_escaped}', '". escape_check($sw) ."', '". escape_check($sh) ."', '" . escape_check((int)$filesize) . "')");
-					}
-				else
-					{
-					sql_query("update resource_dimensions set width='". escape_check($sw) ."', height='". escape_check($sh) ."', file_size='" . escape_check($filesize) . "' where resource='{$ref_escaped}'");
-					}
-			    }
-			else
+            if ($sw!=='?' && $sh!=='?')
+                {
+                # Size could be calculated after all
+                if(!$o_size)
+                    {
+                    sql_query("INSERT INTO resource_dimensions (resource, width, height, file_size) VALUES ('{$ref_escaped}', '". escape_check($sw) ."', '". escape_check($sh) ."', '" . escape_check((int)$filesize) . "')");
+                    }
+                else
+                    {
+                    sql_query("UPDATE resource_dimensions SET width='". escape_check($sw) ."', height='". escape_check($sh) ."', file_size='" . escape_check($filesize) . "' WHERE resource='{$ref_escaped}'");
+                    }
+                }
+            else
 			    {
 
 			    # Size cannot be calculated.
-			    $sw="?";$sh="?";
-				if(!$o_size)
-					{
-					# Insert a dummy row to prevent recalculation on every view.
-					sql_query("insert into resource_dimensions (resource, width, height, file_size) values('{$ref_escaped}','0', '0', '" . escape_check((int)$filesize) . "')");
-					}
-				else
-					{
-					sql_query("update resource_dimensions set width='0', height='0', file_size='" . escape_check($filesize) . "' where resource='{$ref_escaped}'");
-					}
-				}
-			}
-		}
-		
-		
-		$fileinfo[0]=$filesize;
-		$fileinfo[1]=$sw;
-		$fileinfo[2]=$sh;
-		return $fileinfo;
-	
+                $sw="?";$sh="?";
+                if(!$o_size)
+                    {
+                    # Insert a dummy row to prevent recalculation on every view.
+                    sql_query("INSERT INTO resource_dimensions (resource, width, height, file_size) VALUES ('{$ref_escaped}','0', '0', '" . escape_check((int)$filesize) . "')");
+                    }
+                else
+                    {
+                    sql_query("UPDATE resource_dimensions SET width='0', height='0', file_size='" . escape_check($filesize) . "' WHERE resource='{$ref_escaped}'");
+                    }
+                }
+            }
+        }		
+
+    $fileinfo[0]=$filesize;
+    $fileinfo[1]=$sw;
+    $fileinfo[2]=$sh;
+    return $fileinfo;	
 	}
         
 function generate_resource_access_key($resource,$userref,$access,$expires,$email,$group="",$sharepwd="")
@@ -6062,14 +5875,31 @@ function delete_resource_access_key($resource,$access_key)
     resource_log($resource,LOG_CODE_DELETED_ACCESS_KEY,'', '',str_replace('%access_key', $access_key, $lang['access_key_deleted']),'');
     }
 
-function resource_type_config_override($resource_type)
+function resource_type_config_override($resource_type, $only_onchange=true)
     {
     # Pull in the necessary config for a given resource type
-    # As this could be called many times, e.g. during search result display, only execute if the passed resourcetype is different from the previous.
+    # As this could be called many times, e.g. during search result display
+    # By default (only_onchange) only execute the override if the passed resourcetype is different from the previous
     global $resource_type_config_override_last,$resource_type_config_override_snapshot, $ffmpeg_alternatives;
 
-    # If the resource type has changed or if this is the first resource....
-    if (!isset($resource_type_config_override_last) || $resource_type_config_override_last!=$resource_type)
+    $config_override_required=false;
+    # If the overrides are only to be executed on change of resource type
+    if ($only_onchange) 
+        {
+        # If the resource type has changed or if this is the first resource....
+        if (!isset($resource_type_config_override_last) || $resource_type_config_override_last!=$resource_type)
+            {
+            $config_override_required=true;
+            $resource_type_config_override_last=$resource_type;
+            }
+        }
+    else
+        # The overrides are to be executed for every resource
+        {
+        $config_override_required=true;
+        }
+        
+    if ($config_override_required)
         {
         # Look for config and execute.
         $config_options=sql_value("select config_options value from resource_type where ref='" . escape_check($resource_type) . "'","","schema");
@@ -6080,7 +5910,6 @@ function resource_type_config_override($resource_type)
             eval($config_options);
             debug_track_vars('end@resource_type_config_override', get_defined_vars());
             }
-        $resource_type_config_override_last=$resource_type;
         }
     }
 
@@ -6096,8 +5925,6 @@ function resource_type_config_override($resource_type)
 */
 function update_archive_status($resource, $archive, $existingstates = array(), $collection  = 0)
     {
-    global $userref, $user_resources_approved_email;
-
     if(!is_array($resource))
         {
         $resource = array($resource);
@@ -6131,42 +5958,6 @@ function update_archive_status($resource, $archive, $existingstates = array(), $
     hook('after_update_archive_status', '', array($resource, $archive,$existingstates));
     // Send notifications
     debug("update_archive_status - resources=(" . implode(",",$resource) . "), archive: " . $archive . ", existingstates:(" . implode(",",$existingstates) . "), collection: " . $collection);
-    switch ($archive)
-        {
-        case '0':
-            if (isset($existingstates[0]) && $existingstates[0] == -1 && $user_resources_approved_email)
-                {
-                notify_user_resources_approved($resource);
-                # Clear any outstanding notifications relating to submission of these resources
-                message_remove_related(SUBMITTED_RESOURCE,$resource);
-                if($collection != 0)
-                    {
-                    message_remove_related(SUBMITTED_COLLECTION,$collection);
-                    }
-                }
-            break;
-        
-        case '-1':
-            if (isset($existingstates[0]) && $existingstates[0] == -2)
-                {
-                notify_user_contributed_submitted($resource, $collection);
-                }
-            break;
-    
-        case '-2':
-            if (isset($existingstates[0]) && $existingstates[0] == -1)
-                {
-                notify_user_contributed_unsubmitted($resource);
-                }
-            # Clear any outstanding notifications relating to submission of these resources
-            message_remove_related(SUBMITTED_RESOURCE,$resource);
-            if($collection != 0)
-                {
-                message_remove_related(SUBMITTED_COLLECTION,$collection);
-                }
-            break;
-        }
-    
     return;
     }
 
@@ -6276,8 +6067,8 @@ function update_related_resource($ref,$related,$add=true)
                          WHERE (resource='$ref' AND related IN ('" . implode("','",$related) . "'))
                             OR (resource IN ('" . implode("','",$related) . "') AND related='$ref')");
 		}
-	else
-		{
+    else if($add)
+        {
         $newrelated = array();
         foreach($related as $torelate)
             {
@@ -6449,6 +6240,8 @@ function get_video_info($file)
 */
 function copyAllDataToResource($from, $to, $resourcedata = false)
     {
+    global $userref;
+
     if((int)(string)$from !== (int)$from || (int)(string)$to !== (int)$to)
         {
         return false;
@@ -6458,12 +6251,16 @@ function copyAllDataToResource($from, $to, $resourcedata = false)
         {
         $resourcedata = get_resource_data($to);
         }
-        
-    if(!get_edit_access($to,$resourcedata["archive"],false,$resourcedata))
+
+    # Permission check isn't required if copying data from the user's upload template as with edit then upload mode.
+    if ($from != 0 - $userref)
         {
-        return false;
+        if(!get_edit_access($to,$resourcedata["archive"],false,$resourcedata))
+            {
+            return false;
+            }
         }
-        
+
     copyResourceDataValues($from, $to);
     copy_resource_nodes($from, $to);
     
@@ -6527,6 +6324,19 @@ function copyResourceDataValues($from, $to, $resource_type = "")
         $resource_type_sql = "";
         }
 
+    // This is for logging after the insert statement
+    $data_to_add = sql_query("
+        SELECT
+            rd.resource_type_field AS field,
+            rd.value AS value
+        FROM resource_data AS rd
+        JOIN resource AS r ON rd.resource = r.ref
+        JOIN resource_type_field AS rtf ON rd.resource_type_field = rtf.ref
+        {$resource_type_sql}
+        WHERE rd.resource = '{$from}'
+        {$omit_fields_sql}
+    ");
+
     sql_query("
         INSERT INTO resource_data(resource, resource_type_field, value)
              SELECT '{$to}',
@@ -6539,6 +6349,11 @@ function copyResourceDataValues($from, $to, $resource_type = "")
               WHERE rd.resource = '{$from}'
                 {$omit_fields_sql}
     ");
+    
+    foreach($data_to_add as $data)
+        {
+        resource_log($to,LOG_CODE_EDITED,$data["field"],'','',$data["value"]);
+        }
 
     return;
     }
@@ -6968,7 +6783,7 @@ function save_original_file_as_alternative($ref)
 
     global $lang, $alternative_file_previews, $alternative_file_previews_batch, $filename_field;
 
-    // Values may be passed in POST or GET data from upload_plupload.php
+    // Values may be passed in POST or GET data from upload_batch.php
     $replace_resource_original_alt_filename = getvalescaped('replace_resource_original_alt_filename', ''); // alternative filename
     $filename_field_use                     = getval('filename_field', $filename_field); // GET variable - field to use for filename
 
@@ -7325,8 +7140,6 @@ function update_resource_keyword_hitcount($resource,$search)
     if (count($keys)>0)
         {
         // Get all nodes matching these keywords
-        $nodes = get_nodes_from_keywords($keys);
-        update_resource_node_hitcount($resource,$nodes);
         sql_query("update resource_keyword set new_hit_count=new_hit_count+1 where resource='$resource' and keyword in (" . join(",",$keys) . ")",false,-1,true,0);
         }
     }
@@ -7356,12 +7169,13 @@ function copy_hitcount_to_live()
  * 
  * @return array    $return
  */
-function get_image_sizes($ref,$internal=false,$extension="jpg",$onlyifexists=true)
+function get_image_sizes(int $ref,$internal=false,$extension="jpg",$onlyifexists=true)
     {
     global $imagemagick_calculate_sizes;
 
     # Work out resource type
-    $resource_type=sql_value("select resource_type value from resource where ref='$ref'","");
+    $resource_data = get_resource_data($ref);
+    $resource_type = $resource_data["resource_type"];
 
     # add the original image
     $return=array();
@@ -7392,9 +7206,18 @@ function get_image_sizes($ref,$internal=false,$extension="jpg",$onlyifexists=tru
         else
             {
             $fileinfo=get_original_imagesize($ref,$path2,$extension);
-            $filesize = $fileinfo[0];
-            $sw = $fileinfo[1];
-            $sh = $fileinfo[2];
+            if($fileinfo !== false)
+                {
+                $filesize = $fileinfo[0];
+                $sw= $fileinfo[1];
+                $sh = $fileinfo[2];
+                }
+            else
+                {
+                $filesize = $resource_data["file_size"];
+                $sw = 0;
+                $sh = 0;
+                }
             }
         if (!is_numeric($filesize)) {$returnline["filesize"]="?";$returnline["filedown"]="?";}
         else {$returnline["filedown"]=ceil($filesize/50000) . " seconds @ broadband";$returnline["filesize"]=formatfilesize($filesize);}
@@ -7746,7 +7569,6 @@ function get_hidden_indexed_fields()
         }
     }
 
-
 function get_OR_fields()
     {
     # Returns a list of fields that should retain semicolon separation of keywords in a search string
@@ -8022,7 +7844,7 @@ function get_resource_type_fields($restypes="", $field_order_by="ref", $field_so
     }
 
 
-    function notify_resource_change($resource)
+function notify_resource_change($resource)
     {
     debug("notify_resource_change " . $resource);
     global $notify_on_resource_change_days;
@@ -8872,4 +8694,125 @@ function get_video_duration(string $file_path)
             {
             return 0;
             }
+    }
+
+/**
+ * Relate all resources in the passed array with each other
+ *
+ * @param  array $related Array of resource IDs
+ * @return boolean
+ */
+function relate_all_resources(array $related = [])
+    {
+    $error = false;
+    array_filter($related,"is_int_loose");
+    foreach($related as $ref)
+        {
+        $other_refs = array_diff($related,array($ref));
+        $success = update_related_resource($ref,$other_refs,true);
+        if(!$success)
+            {
+            $error = true;
+            }
+        }
+    return !$error;
+    }
+
+/**
+ * Apply new order to metadata fields
+ *
+ * @param  array $neworder  Field IDs in new order
+ *
+ * @return void
+ */
+function update_resource_type_field_order($neworder)
+	{
+	global $lang;
+	if (!is_array($neworder)) {
+		exit ("Error: invalid input to update_resource_type_field_order function.");
+	}
+
+	$updatesql= "update resource_type_field set order_by=(case ref ";
+	$counter = 10;
+	foreach ($neworder as $restype){
+		$updatesql.= "when '$restype' then '$counter' ";
+		$counter = $counter + 10;
+	}
+	$updatesql.= "else order_by END)";
+	sql_query($updatesql);
+	clear_query_cache("schema");
+	log_activity($lang['resourcetypefieldreordered'],LOG_CODE_REORDERED,implode(', ',$neworder),'resource_type_field','order_by');
+	}
+	
+/**
+ * Apply a new order to resource types
+ *
+ * @param  array $neworder  Resource type IDs in new order
+ *
+ * @return void
+ */
+function update_resource_type_order($neworder)
+	{
+	global $lang;
+	if (!is_array($neworder)) {
+		exit ("Error: invalid input to update_resource_type_field_order function.");
+	}
+
+	$updatesql= "update resource_type set order_by=(case ref ";
+	$counter = 10;
+	foreach ($neworder as $restype){
+		$updatesql.= "when '$restype' then '$counter' ";
+		$counter = $counter + 10;
+	}
+	$updatesql.= "else order_by END)";
+	sql_query($updatesql);
+	clear_query_cache("schema");
+	log_activity($lang['resourcetypereordered'],LOG_CODE_REORDERED,implode(', ',$neworder),'resource_type','order_by');
+	}
+
+/**
+ * Check if file can be rendered in browser via download.php
+ * 
+ * @param  string $path Path to file
+ * 
+ * @return bool
+ */
+function allow_in_browser($path)
+    {
+    if(!file_exists($path) || is_dir($path))
+        {
+        return false;
+        }
+    // Permitted mime types can only be overridden by plugins
+    $permitted_mime[] = "application/pdf";
+    $permitted_mime[] = "image/jpeg";
+    $permitted_mime[] = "image/png";
+    $permitted_mime[] = "image/gif";
+    $permitted_mime[] = "audio/mpeg";
+    $permitted_mime[] = "video/mp4";
+    $permitted_mime[] = "text/plain";
+    $permitted_mime[] = "text/csv";
+    $allow = hook('allow_in_browser',"",[$permitted_mime]);
+    if(is_array($allow))
+        {
+        $permitted_mime = $allow;
+        }
+
+    $type = mime_content_type($path);
+    if($type == "application/octet-stream")
+        {
+        # Not properly detected, try and get mime type via exiftool if possible
+        $exiftool_fullpath = get_utility_path("exiftool");
+        if ($exiftool_fullpath!=false)
+            {
+            $command=$exiftool_fullpath . " -s -s -s -t -mimetype %PATH";
+            $cmd_args['%PATH'] = $path;
+            $type = run_command($command, false, $cmd_args);
+            }
+        }
+    if(in_array($type,$permitted_mime))
+        {
+        return true;
+        }
+    return false;
     }

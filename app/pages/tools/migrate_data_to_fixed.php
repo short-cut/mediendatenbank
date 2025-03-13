@@ -99,6 +99,7 @@ if(getval("submit","") != "")
             // No need to process any further if no data is found set for this resource
             if(trim($resdata_row['value']) == '' || ($maxrows != 0 && $migrated >= $maxrows))
                 {
+                $migrated++;
                 continue;
                 }
 
@@ -135,7 +136,7 @@ if(getval("submit","") != "")
                     {
                     if(!$dryrun)
                         {
-                        $newnode = set_node(NULL, $migrate_field, escape_check($data_value), NULL, '',true);
+                        $newnode = set_node(NULL, $migrate_field, escape_check($data_value), NULL, '');
                         $logtext .= " - New option added for '" . htmlspecialchars($data_value) . "' - ref: " . $newnode . PHP_EOL;
                         $nodes_to_add[] = $newnode;
                         $newnodecounter = count($existing_nodes);

@@ -6,7 +6,7 @@ include_once "../../../include/image_processing.php";
 include_once "../../../include/slideshow_functions.php";
 include_once "../include/transform_functions.php";
 
-global $cropper_allowed_extensions;
+global $cropper_allowed_extensions, $custom_cropper_preset_sizes;
 
 $ref        = getval("ref",0,true);
 $search     = getval("search","");
@@ -196,7 +196,7 @@ $terms_url = $baseurl_short."pages/terms.php?ref=".$ref;
 
 if ($saveaction != '' && enforcePostRequest(false))
     {
-    $actions["repage"] = $cropper_use_repage;
+    $imgactions["repage"] = $cropper_use_repage;
 
     // Get values from jcrop selection
     $width       = getvalescaped('width',0,true);
@@ -369,14 +369,18 @@ if ($saveaction != '' && enforcePostRequest(false))
             $dlfile = get_temp_dir(false,'user_downloads') . "/" . $ref . "_" . md5($username . $randstring . $scramble_key) . "." . $new_ext;
             rename($newpath,$dlfile);
             
-            $dlparams = array(
+            $download_url = generateURL($baseurl_short . "pages/download.php", 
+            [
                 "userfile" => $ref . "_" . $randstring . "." . $new_ext,
-                "filename" => strip_extension($filename)
-                );
+                "filename" => strip_extension($filename) 
+            ]);
 
-            $dlurl = generateURL($baseurl_short . "pages/download.php", $dlparams);
+            $dlurl = generateURL($baseurl_short . "pages/download_progress.php", ['url' => $download_url, 'ref' => $ref]);
+            if ($download_usage)
+                {
+                $dlurl = generateURL("pages/download_usage.php",["url" => $dlurl]);
+                }
             $url_params["url"]=$dlurl;
-            
             $redirect_to_terms_url=generateURL("pages/terms.php",$url_params);
             redirect($redirect_to_terms_url);
             exit();
@@ -891,14 +895,12 @@ renderBreadcrumbs($links_trail);
             jQuery(document).ready(function ()
                 {
                 jQuery('input[type=radio][name=saveaction]').change(function()
-                    {                
+                    {        
                     jQuery('.imagetools_save_action').hide();
                     if(this.value=='alternative')
                         {
                         slideshow_edit=false;
                         jQuery('#imagetools_alternative_actions').show();
-                        jQuery('#new_width').val('');
-                        jQuery('#new_height').val('');
                         evaluate_values();
                         cropper_always=false;
                         }
@@ -906,8 +908,6 @@ renderBreadcrumbs($links_trail);
                         {
                         slideshow_edit=false;
                         jQuery('#imagetools_download_actions').show();
-                        jQuery('#new_width').val('');
-                        jQuery('#new_height').val('');
                         evaluate_values();
                         cropper_always=false;
                         }
@@ -917,6 +917,7 @@ renderBreadcrumbs($links_trail);
                         jQuery('#imagetools_slideshow_actions').show();
                         jQuery('#new_width').val('<?php echo (int)$sswidth; ?>');
                         jQuery('#new_height').val('<?php echo (int)$ssheight; ?>');
+                        jQuery('#size_preset_select').val('');
                         if(typeof jcrop_active == 'undefined' || !jcrop_active)
                             {
                             CropManager.attachCropper();
@@ -928,8 +929,6 @@ renderBreadcrumbs($links_trail);
                         {
                         slideshow_edit=false;
                         jQuery('#imagetools_original_actions').show();
-                        jQuery('#new_width').val('');
-                        jQuery('#new_height').val('');
                         evaluate_values();
                         cropper_always=false;
                         }
@@ -937,8 +936,6 @@ renderBreadcrumbs($links_trail);
                         {
                         slideshow_edit=false;
                         jQuery('#imagetools_preview_actions').show();
-                        jQuery('#new_width').val('');
-                        jQuery('#new_height').val('');
                         evaluate_values();
                         cropper_always=false;
                         }
@@ -1207,6 +1204,11 @@ renderBreadcrumbs($links_trail);
                 <select class="stdwidth" onchange="setCropperSize(this.value);" id="size_preset_select">
                     <option value=""><?php echo $lang["select"]?></option>
                     <?php
+                    if(isset($custom_cropper_preset_sizes))
+                        {
+                        $cropper_preset_sizes = array_merge($cropper_preset_sizes,$custom_cropper_preset_sizes);
+                        }
+
                     foreach($cropper_preset_sizes as $category=>$categorysizes)
                             {
                             echo "<optgroup label='" . htmlspecialchars($category) . "'>\n";

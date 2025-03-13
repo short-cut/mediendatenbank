@@ -198,7 +198,7 @@ $lang["gotoadvancedsearch"]="Mene kehittyneempään hakuun";
 $lang["viewnewmaterial"]="Katso uutta materiaalia";
 $lang["researchrequestservice"]="Tutkimuspyyntöhaku";
 
-# Team Centre
+# Admin
 $lang["manageresources"]="Hallitse resursseja";
 $lang["overquota"]="Levytila täynnä; ei voi lisätä resursseja";
 $lang["managearchiveresources"]="Hallitse arkistoresursseja";
@@ -231,7 +231,7 @@ $lang["pluginssetup"]="Hallitse lisäosia";
 $lang["pluginmanager"]="Lisäosien hallinta";
 $lang["users"]="käyttäjiä";
 
-# Team Centre - Bulk E-mails
+# Admin - Bulk E-mails
 $lang["emailrecipients"]="Sähköpostin vastaanottajat";
 $lang["emailsubject"]="Sähköpostin aihe";
 $lang["emailtext"]="Sähköpostin teksti";
@@ -241,10 +241,10 @@ $lang["emailsent"]="Sähköposti on lähetetty.";
 $lang["mustspecifyoneuser"]="Sinun täytyy lisätä ainakin yksi käyttäjä";
 $lang["couldnotmatchusers"]="Kaikkia käyttäjänimiä ei löydy, tai käyttäjänimiä on kahteen kertaan";
 
-# Team Centre - User management
+# Admin - User management
 $lang["comments"]="Kommentit";
 
-# Team Centre - Resource management
+# Admin - Resource management
 $lang["viewuserpending"]="Näytä arviointia odottavat käyttäjien tuottamat resurssit";
 $lang["userpending"]="Arviointia odottavat käyttäjien tuottamat resurssit";
 $lang["viewuserpendingsubmission"]="Näytä käyttäjien tuottamat lähetystä odottavat resurssit";
@@ -1134,10 +1134,6 @@ $lang['plugins-upload-title'] = 'Hanki asetukset tiedostosta';
 $lang['plugins-upload'] = 'Lataa asetukset';
 $lang['plugins-getrsc'] = 'Käytettävä tiedosto:';
 $lang['plugins-saveconfig'] = 'Tallenna asetukset';
-$lang['plugins-didnotwork'] = 'Tämä ei valitettavasti toiminut. Valitse kelvollinen .rsc-tiedosto tälle lisäosalle ja napsauta \'Lataa asetukset\'-nappia.';
-$lang['plugins-goodrsc'] = 'Asetukset ladattu onnistuneesti. Napsauta \'Tallenna asetukset\'-nappia tallentaaksesi.';
-$lang['plugins-badrsc'] = 'Valitettavasti tämä ei ollut kelvollinen .rsc-tiedosto.';
-$lang['plugins-wrongplugin'] = 'Valitettavasti tämä on .rsc-tiedosto lisäosalle %plugin. Valitse tämän lisäosan asetustiedosto.'; // %plugin is replaced by the name of the plugin being configured.
 $lang['plugins-configvar'] = 'Asettaa asetusten muuttujan: $%cvn'; //%cvn is replaced by the name of the config variable being set
 
 #Location Data

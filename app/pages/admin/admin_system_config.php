@@ -107,6 +107,14 @@ $page_def[] = config_add_colouroverride_input(
     true,
     "jQuery('.CollectionPanelShell').css('background-color',value);jQuery('#CollectionDiv select').css('background-color',value); jQuery('.ui-layout-resizer').css('background',value);"
 );
+$page_def[] = config_add_colouroverride_input(
+    'button_colour_override',
+    $lang["setup-buttoncolouroverride"],
+    '',
+    null,
+    true,
+    "jQuery('button:not(.search-icon),input[type=submit],input[type=button],.RecordPanel .RecordDownloadSpace .DownloadDBlend a,.UploadButton a').css('background-color',value);"
+);
 $page_def[] = config_add_single_select('thumbs_default', $lang['userpreference_thumbs_default_label'], array('show' => $lang['showthumbnails'], 'hide' => $lang['hidethumbnails']), true, 420, '', true);
 $page_def[] = config_add_boolean_select('resource_view_modal', $lang['userpreference_resource_view_modal_label'], $enable_disable_options, 420, '', true);
 $page_def[] = config_add_boolean_select('modal_default', $lang['systemconfig_modal_default'], $enable_disable_options, 420, '', true);
@@ -233,7 +241,6 @@ $page_def[] = config_add_html('</div>');
 $page_def[] = config_add_html('<h3 class="CollapsibleSectionHead collapsed">' . $lang['actions'] . '</h3><div id="SystemConfigActionsSection" class="CollapsibleSection">');
 $page_def[] = config_add_boolean_select('actions_enable', $lang['actions-enable'], $enable_disable_options, 420, '', true);
 $page_def[] = config_add_boolean_select('actions_resource_requests', $lang['actions_resource_requests_default'], $enable_disable_options, 300, '', true);
-$page_def[] = config_add_boolean_select('actions_resource_review', $lang['actions_resource_review_default'], $enable_disable_options, 300, '', true);
 $page_def[] = config_add_boolean_select('actions_account_requests', $lang['actions_account_requests_default'], $enable_disable_options, 300, '', true);
 	
 $page_def[] = config_add_html('</div>');

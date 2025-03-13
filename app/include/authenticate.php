@@ -11,39 +11,44 @@ $is_authenticated=false;
 if (array_key_exists("user",$_COOKIE) || array_key_exists("user",$_GET) || isset($anonymous_login) || hook('provideusercredentials'))
     {
     $username="";
-	// Resolve anonymous login user if it is configured at domain level
-	if(isset($anonymous_login) && is_array($anonymous_login))
-		{
-		foreach($anonymous_login as $key => $val)
-			{
-			if($baseurl==$key){$anonymous_login=$val;}
-			}
-		}
-	// Establish session hash
-	if (array_key_exists("user",$_GET))
-		{
-	    $session_hash=escape_check($_GET["user"]);
-		}
-	elseif (array_key_exists("user",$_COOKIE))
-  		{
-	  	$session_hash=escape_check($_COOKIE["user"]);
-	  	}
-	elseif (isset($anonymous_login))
-		{
-		$username=$anonymous_login;
-		$session_hash="";
-		$rs_session=get_rs_session_id(true);
-		}
-
-    $user_select_sql = "u.session='{$session_hash}'";
+    // Resolve anonymous login user if it is configured at domain level
+    if(isset($anonymous_login) && is_array($anonymous_login))
+        {
+        foreach($anonymous_login as $key => $val)
+            {
+            if($baseurl==$key){$anonymous_login=$val;}
+            }
+        }
+    // Establish session hash
+    if (array_key_exists("user",$_GET))
+        {
+        $session_hash=escape_check($_GET["user"]);
+        }
+    elseif (array_key_exists("user",$_COOKIE))
+        {
+        $session_hash=escape_check($_COOKIE["user"]);
+        }
+    elseif (isset($anonymous_login))
+        {
+        $username=$anonymous_login;
+        $session_hash="";
+        $rs_session=get_rs_session_id(true);
+        }  
 
     // Automatic anonymous login, do not require session hash.
+    $user_select_sql = new PreparedStatementQuery();
     if(isset($anonymous_login) && $username == $anonymous_login)
         {
-        $user_select_sql = "AND u.username = '{$username}' AND usergroup IN (SELECT ref FROM usergroup)";
+        $user_select_sql->sql = "u.username = ? AND usergroup IN (SELECT ref FROM usergroup)";
+        $user_select_sql->parameters = ["s",$username];
+        }
+    else
+        {
+        $user_select_sql->sql = "u.session=?";
+        $user_select_sql->parameters = ["s",$session_hash];            
         }
 
-	hook('provideusercredentials');
+    hook('provideusercredentials');
 
     $userdata = validate_user($user_select_sql, true); // validate user and get user details 
 
@@ -78,7 +83,7 @@ if (array_key_exists("user",$_COOKIE) || array_key_exists("user",$_GET) || isset
 					# Reached the end of valid session time, auto log out the user.
 					
 					# Remove session
-					sql_query("update user set logged_in=0,session='' where ref='$userref'");
+					ps_query("update user set logged_in = 0, session = '' where ref= ?",array("i",$userref));
 					hook("removeuseridcookie");
 					# Blank cookie / var
 					rs_setcookie("user", "", time() - 3600, "", "", substr($baseurl,0,5)=="https", true);					
@@ -124,12 +129,12 @@ if (!$valid && isset($anonymous_autouser_group))
     
 	# Prepare to create the user.
 	$email=trim(getvalescaped("email","")) ;
-    $username="anonymous" . sql_value("select max(ref)+1 value from user",0); # Make up a username.
+	$username="anonymous" . ps_value("select max(ref)+1 value from user", array(), 0); # Make up a username.
 	$password=make_password();
     $password_hash = rs_password_hash("RS{$username}{$password}");
 
     # Create the user
-	sql_query("insert into user (username,password,fullname,email,usergroup,approved) values ('" . $username . "','" . $password_hash . "','" . $username . "','','" . $anonymous_autouser_group . "',1)");
+	ps_query("insert into user (username,password,fullname,email,usergroup,approved) values (?, ?, ?, '', ?, 1)",array("s",$username,"s",$password_hash,"s",$username,"i",$anonymous_autouser_group));
 	$new = sql_insert_id();
    
     $login_data = perform_login();
@@ -137,13 +142,15 @@ if (!$valid && isset($anonymous_autouser_group))
 
     // Setup the user
     $login_session_hash = (isset($login_data['session_hash']) ? escape_check($login_data['session_hash']) : '');
-    $user_data          = validate_user("u.session = '{$login_session_hash}'", true);
+    $user_select_sql = new PreparedStatementQuery();
+    $user_select_sql->sql = "u.session=?";
+    $user_select_sql->parameters = ["s",$login_session_hash];
+    $user_data = validate_user($user_select_sql, true);
 
     $valid = false;
     if(0 < count($user_data))
         {
         $valid = true;
-
         setup_user($user_data[0]);
         }
     }
@@ -247,7 +254,7 @@ else
 
 // don't update this table if the System is doing its own operations
 if (!isset($system_login)){
-	sql_query("update user set lang='$language', last_active=now(),logged_in=1,last_ip='" . escape_check(get_ip()) . "',last_browser='" . $last_browser . "' where ref='$userref'",false,-1,true,0);
+	ps_query("update user set lang = ?, last_active = now(), logged_in = 1, last_ip = ? , last_browser = ? where ref = ?", array("s",$language,"s",get_ip(),"s",$last_browser,"s",$userref), false, -1, true, 0);
 }
 
 # Add group specific text (if any) when logged in.
@@ -261,20 +268,27 @@ else
 	if (isset($usergroup))
 		{
 		// Fetch user group specific content.
-		$site_text_query = sprintf("
+		$site_text_query = "
 				SELECT `name`,
 				       `text`,
 				       `page` 
 				  FROM site_text 
-				 WHERE language = '%s'
-				   %s #pagefilter
-				   AND specific_to_group = '%s';
-			",
-			escape_check($language),
-			$pagefilter,
-			$usergroup
-		);
-		$results = sql_query($site_text_query,"sitetext",-1,true,0);
+				 WHERE language = ?
+				   AND specific_to_group = ?
+			";
+		$parameters=array
+			(
+			"s",$language,
+			"s",$usergroup
+			);
+
+		if ($pagename!="admin_content") // Load all content on the admin_content page to allow management.
+			{
+			$site_text_query.="AND (page = ? OR page = 'all' OR page = '' " .  (($pagename=="dash_tile")?" OR page = 'home'":"") . ")";
+			$parameters[]="s";$parameters[]=$pagename;
+			}
+
+		$results = ps_query($site_text_query,$parameters,"sitetext",-1,true,0);
 
 		for($n = 0; $n < count($results); $n++)
 			{
@@ -294,7 +308,7 @@ else
 
 # Load group specific plugins and reorder plugins list
 $plugins= array();
-$active_plugins = (sql_query("SELECT name,enabled_groups, config, config_json, disable_group_select FROM plugins WHERE inst_version>=0 ORDER BY priority","plugins"));
+$active_plugins = (ps_query("SELECT name,enabled_groups, config, config_json, disable_group_select FROM plugins WHERE inst_version >= 0 ORDER BY priority", array(), "plugins"));
 
 
 foreach($active_plugins as $plugin)
@@ -349,8 +363,6 @@ if(
     && !defined("API_CALL")
 )
     {
-    debug("WARNING: CSRF verification failed!");
-
     http_response_code(400);
 
     if(filter_var(getval("ajax", false), FILTER_VALIDATE_BOOLEAN))

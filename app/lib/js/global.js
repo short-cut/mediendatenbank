@@ -370,6 +370,10 @@ function CentralSpaceLoad (anchor,scrolltop,modal)
 					{
 					pageScrolltop(scrolltopElementModal);
 					}
+				else if (jQuery(window).width() <= 1280)
+					{
+					pageScrolltop(scrolltopElementContainer);
+					}
 				else
 					{
 					pageScrolltop(scrolltopElementCentral);
@@ -445,12 +449,13 @@ top.window.onpopstate = function(event)
 
 
 /* AJAX posting of a form, result are displayed in the CentralSpace area. */
-function CentralSpacePost (form,scrolltop,modal,update_history)
+function CentralSpacePost (form, scrolltop, modal, update_history, container_id)
 	{
 	update_history = (typeof update_history !== "undefined" ? update_history : true);
 	ajaxinprogress=true;
 	var url=form.action;
-	var CentralSpace=jQuery('#CentralSpace');// for ajax targeting top div
+	let CentralSpaceCtID = typeof container_id !== "undefined" ? container_id : 'CentralSpace';
+	var CentralSpace=jQuery('#' + CentralSpaceCtID);// for ajax targeting top div
 
     for(instance in CKEDITOR.instances)
         {
@@ -580,7 +585,6 @@ function CentralSpacePost (form,scrolltop,modal,update_history)
 	return false;
 	}
 
-
 function CentralSpaceShowLoading()
 	{ 
 	CentralSpaceLoading=true;
@@ -595,8 +599,6 @@ function CentralSpaceHideLoading()
 	jQuery('#LoadingBox').fadeOut('fast');  
 	jQuery('#CentralSpace').fadeTo('fast',1);
 	}
-
-
 
 /* AJAX loading of CollectionDiv contents given a link */
 function CollectionDivLoad (anchor,scrolltop)
@@ -644,8 +646,12 @@ function CollectionDivLoad (anchor,scrolltop)
 		jQuery('div.ResourcePanel a.removeFromCollection').addClass('DisplayNone');
 
 		// For each resource in the collection bar, set all matching items in central space to hide + icon and show - icon 
-		jQuery('.CollectionPanelShell').each(function(elemindex, elem) {
-			var resource_in_centralspace=jQuery('#ResourceShell' + elem.id.substr(13)+'.ResourcePanel');
+		collection_resources.forEach(function(value) {
+			var resource_in_centralspace=jQuery('#ResourceShell' + value +'.ResourcePanel');
+			if(resource_in_centralspace.length == 0)
+				{
+				resource_in_centralspace=jQuery('#CentralSpace [data-identifier="'+jQuery(this).attr('data-identifier')+'"]');
+				}
 			resource_in_centralspace.find('div.ResourcePanelIcons > a.addToCollection').addClass('DisplayNone');
 			resource_in_centralspace.find('div.ResourcePanelIcons > a.removeFromCollection').removeClass('DisplayNone');
 			});
@@ -658,6 +664,7 @@ function CollectionDivLoad (anchor,scrolltop)
 
 function directDownload(url)
     {
+    console.debug('directDownload(url = %o)', url);
     dlIFrma = document.getElementById('dlIFrm');
 
     if(typeof dlIFrma != "undefined")
@@ -730,7 +737,7 @@ function relateresources (ref,related,action)
 	}
 
 /*
-When an object of class "CollapsibleSectionHead" is clicked then next element is collpased or expanded.
+When an object of class "CollapsibleSectionHead" is clicked then next element is collapsed or expanded.
  */
 function registerCollapsibleSections(use_cookies)
 	{
@@ -1130,6 +1137,7 @@ function styledalert(title,text,minwidth){
         resizable: false,
         minWidth: minwidth,
         dialogClass: 'no-close',
+        modal: true,
          buttons: [{
                   text: oktext,
                   click: function() {
@@ -1669,7 +1677,7 @@ function api(name, params, callback)
     for (var key in params) {
         query[key] = params[key];
         }
-	console.log("API Query",query);
+	console.debug("API Query",query);
     postobj = {};
     postobj['query'] = jQuery.param(query);
     postobj['authmode'] = "native";
@@ -1781,3 +1789,13 @@ function HideHelp(id)
         document.getElementById(el_id).style.display = 'none';
         }
     }
+
+function CentralSpaceShowProcessing()
+	{ 
+	jQuery('#ProcessingBox').fadeIn('fast');
+	}
+
+function CentralSpaceHideProcessing()
+	{
+	jQuery('#ProcessingBox').fadeOut('fast'); 
+	}

@@ -63,10 +63,6 @@ $mysql_bin_path = '/usr/bin';
 $mysql_log_transactions = false;
 # $mysql_log_location     = '/var/resourcespace_backups/sql_log.sql';
 
-# Use prepared statements
-# Default is false until technology proven
-$use_mysqli_prepared = false;
-
 # Enable establishing secure connections using SSL
 # Requires setting up mysqli_ssl_server_cert and mysqli_ssl_ca_cert
 $use_mysqli_ssl = false;
@@ -214,6 +210,9 @@ $home_colour_style_override='';
 $collection_bar_background_override='';
 $collection_bar_foreground_override='';
 
+# Used for changing colour of default blue buttons
+$button_colour_override='';
+
 # Available languages
 # If $defaultlanguage is not set, the brower's default language will be used instead
 $defaultlanguage="en"; # default language, uses ISO 639-1 language codes ( en, es etc.)
@@ -306,11 +305,11 @@ $home_dash = true;
 # Define the available styles per type.
 $tile_styles['srch']  = array('thmbs', 'multi', 'blank');
 $tile_styles['ftxt']  = array('ftxt');
-$tile_styles['conf']  = array('blank');
+$tile_styles['conf']  = array('blank', 'analytics');
 $tile_styles['fcthm'] = array('thmbs', 'multi', 'blank');
 
 # All user permissions for the dash are revoked and the dash admin can manage a single dash for all users. 
-# Only those with admin privileges can modify the dash and this must be done from the Team Centre > Manage all user dash tiles (One dash for all)
+# Only those with admin privileges can modify the dash and this must be done from the Admin > Manage all user dash tiles (One dash for all)
 $managed_home_dash = false;
 
 # Options to show/hide the tiles on the home page
@@ -775,12 +774,6 @@ $list_display_array=array(15,30,60);
 # How many results per page? (default)
 $default_perpage_list=15;
 
-
-# Group based upload folders? (separate local upload folders for each group)
-$groupuploadfolders=false;
-# Username based upload folders? (separate local upload folders for each user based on username)
-$useruploadfolders=false;
-
 # Enable order by rating? (require rating field updating to rating column)
 $orderbyrating=false;
 
@@ -839,22 +832,14 @@ $zipped_collection_textfile_default_no=false;
 # A list of types which get the extra video icon in the search results
 $videotypes=array(3);
 
-# Small icon above thumbnails showing the resource type
-$resource_type_icons=false;
-# Map the resource type to a font awesome 4 icon
-$resource_type_icons_mapping = array(1 => "camera", 2 => "file", 3 => "video-camera", 4 => "music");
-
-
 /** USER PREFERENCES **/
 $user_preferences = true;
 
 /* Should the "purge users" function be available? */
 $user_purge=true;
 
-# List of active plugins.
-# Note that multiple plugins must be specified within array() as follows:
-# $plugins=array("loader","rss","messaging","googledisplay"); 
-$plugins = array('transform', 'rse_version', 'lightbox_preview', 'rse_search_notifications', 'rse_workflow', 'licensemanager');
+# List of active plugins, enabled by default and cannot be disabled in the UI.
+$plugins = array('transform', 'rse_version', 'lightbox_preview', 'rse_search_notifications', 'rse_workflow', 'licensemanager', 'consentmanager');
 
 # Optional list of plugins that cannot be enabled through the UI. Can be useful to lock down system for hosting situations
 $disabled_plugins=array();
@@ -985,11 +970,11 @@ $contact_sheet_link_on_collection_bar = true;
 # e.g.
 # <option value="216x343">Foolscap</option>
 $papersize_select = '
-<option value="a4">A4 - 210mm x 297mm</option>
-<option value="a3">A3 - 297mm x 420mm</option>
-<option value="letter">US Letter - 8.5" x 11"</option>
-<option value="legal">US Legal - 8.5" x 14"</option>
-<option value="tabloid">US Tabloid - 11" x 17"</option>';
+<option value="A4">A4 - 210mm x 297mm</option>
+<option value="A3">A3 - 297mm x 420mm</option>
+<option value="LETTER">US Letter - 8.5" x 11"</option>
+<option value="LEGAL">US Legal - 8.5" x 14"</option>
+<option value="TABLOID">US Tabloid - 11" x 17"</option>';
 
 #Optional array to set customised title and margins for named templates
 # e.g.
@@ -1238,8 +1223,12 @@ $show_extension_in_search=false;
 # Should the category tree field (if one exists) default to being open instead of closed?
 $category_tree_open=false;
 
-# Should searches using the category tree use AND for hierarchical keys?
+# Should parent nodes also be selected when selecting a child node?
 $category_tree_search_use_and=false;
+
+# If set to true any resources returned will need to contain all of the category tree nodes selected
+# If false then a returned resource could contain one or more of the selected nodes
+$category_tree_search_use_and_logic=false;
 
 # Force selection of parent nodes when selecting a sub node? 
 # If set to false then each node should be unique to avoid possible corruption when exporting/importing data
@@ -1303,6 +1292,11 @@ $date_d_m_y=true;
 # What is the default resource type to use for batch upload templates?
 $default_resource_type=1;
 
+# If ResourceSpace is behind a proxy, enabling this will mean the "X-Forwarded-For" Apache header is used
+# for the IP address. Do not enable this if you are not using such a proxy as it will mean IP addresses can be
+# easily faked.
+$ip_forwarded_for=false;
+
 # When extracting text from documents (e.g. HTML, DOC, TXT, PDF) which field is used for the actual content?
 # Comment out the line to prevent extraction of text content
 $extracted_text_field=72;
@@ -1360,11 +1354,6 @@ $registration_group_select=false;
 #   3: Drop down box (set options using $custom_request_options["Field Name"]=array("Option 1","Option 2","Option 3");
 #   4: HTML block, e.g. help text paragraph (set HTML usign $custom_request_html="<b>Some HTML</b>";
 
-
-# Send an e-mail to the address set at $email_notify above when user contributed
-# resources are submitted (status changes from "User Contributed - Pending Submission" to "User Contributed - Pending Review").
-$notify_user_contributed_submitted=true;
-
 # When requesting feedback, allow the user to select resources (e.g. pick preferred photos from a photo shoot).
 $feedback_resource_select=false;
 # When requesting feedback, display the contents of the specified field (if available) instead of the resource ID. 
@@ -1383,7 +1372,7 @@ $log_resource_views=false;
 
 # A list of file extentions of file types that cannot be uploaded for security reasons.
 # For example; uploading a PHP file may allow arbirtary execution of code, depending on server security settings.
-$banned_extensions=array("php","cgi","pl","exe","asp","jsp", 'sh', 'bash', 'phtml', 'phps', 'phar');
+$banned_extensions=array("php","cgi","pl","exe","asp","jsp", 'sh', 'bash', 'phtml', 'phps', 'phar', 'py', 'jar');
 
 #Set a default access value for the upload page. This will override the default resource template value.
 #Change the value of this option to the access id number
@@ -1424,6 +1413,7 @@ $mime_type_by_extension = array(
     'avi'  => 'video/msvideo',
     'mp3'  => 'audio/mpeg',
     'wav'  => 'audio/x-wav',
+    'weba' => 'audio/webm',    
     'jpg'  => 'image/jpeg',
     'jpeg' => 'image/jpeg',
     'gif'  => 'image/gif',
@@ -1454,8 +1444,6 @@ $simple_search_display_condition=array();
 
 # When searching, also include themes/public collections at the top?
 $search_includes_themes=false;
-$search_includes_public_collections=false;
-$search_includes_user_collections=false;
 $search_includes_resources=true;
 
 # Should the Clear button leave collection searches off by default?
@@ -1488,6 +1476,17 @@ $global_permissions="";
 # Useful for temporarily disabling permissions globally, e.g. to make the system readonly during maintenance.
 # Suggested setting for a 'read only' mode: $global_permissions_mask="a,t,c,d,e0,e1,e2,e-1,e-2,i,n,h,q";
 $global_permissions_mask="";
+
+# Define user groups who can manage users and requests in other user groups only. An alternative to setting a parent with U permission. 
+# Useful if parent user group is set for permissions inheritance but requests / users are to be managed by a different user group.
+# Config. consists of array in which the key is the user group to manage users and user requests (equivalent of U permission) and 
+# the value is an array of subordinate groups to be managed. Approvers (array key in config) must be unique but its possible to have
+# the same user group managed by multiple user groups.
+/*
+$usergroup_approval_mappings = array(
+    18 => array(19,20)
+    );
+*/
 
 # User account application - auto creation
 # By default this is switched off and applications for new user accounts will be sent as e-mails
@@ -1603,14 +1602,13 @@ $themes_in_my_collections=false;
 $top_nav_upload=true;
 # Show an upload link in the top navigation in addition to 'my contributions' for standard user? (if 'd' permission for the current user)
 $top_nav_upload_user=false;
-$top_nav_upload_type="plupload"; # The upload type. Options are plupload, ftp, local
+$top_nav_upload_type="batch"; # The upload type. Options are batch, ftp, local
 
 # Configure the maximum upload file size; this directly translates into plupload's max_file_size if set
-# $plupload_max_file_size = '50M';
+# $upload_max_file_size = '50M';
 
-# You can set the following line to ''  to disable chunking. May resolve issues with flash uploader.
-$plupload_chunk_size='5mb';
-
+# You can set the following line to ''  to disable chunking.
+$upload_chunk_size='5mb';
 
 # Resource deletion state
 # When resources are deleted, the variable below can be set to move the resources into an alternative state instead of removing the resource and its files from the system entirely.
@@ -1685,7 +1683,8 @@ $ffmpeg_audio_extensions = array(
     'aac',
     'ra',
     'rm',
-    'gsm'
+    'gsm',
+    'weba',
     );
 	
 # The audio settings for mp3 previews
@@ -1699,6 +1698,9 @@ $no_preview_extensions=array("icm","icc");
 # If this is not set and the script is executed notifications will be sent to resource admins, or users in groups specified in $email_notify_usergroups 
 # $expiry_notification_mail="myaddress@mydomain.example";
 
+// Send a notification X days prior to expiry to all users who have ever downloaded the resource. If set to zero, it will notify on expiry.
+// $notify_on_resource_expiry_days = 1;
+
 # What is the default display mode for search results? (smallthumbs/thumbs/list)
 $default_display="thumbs";
 
@@ -1706,9 +1708,7 @@ $default_display="thumbs";
 $alternative_file_previews=true;
 $alternative_file_previews_batch=true;
 
-
-# Permission to show the replace file, preview image only and alternative files options on the resource edit page.
-# Overrides required permission of F*
+# Permission to show the upload preview image link on the resource view page. Overrides required permission of F*
 $custompermshowfile=false;
 
 # enable support for storing an alternative type for each alternate file
@@ -1745,11 +1745,13 @@ $themes_simple_images=true;
 # Option to show single home slideshow image on featured collection page (collections_featured.php) if $themes_simple_view is enabled
 $featured_collection_static_bg = false;
 
+// Change featured collections root by pointing at a new featured collection category (using a collection has an undefined behaviour).
+// Used mainly in combination with "$use_theme_as_home = true;"
+// IMPORTANT: access control must still be enforced through permissions. DO NOT rely on this configuration to hide featured collections from users!
+$featured_collections_root_collection = 0;
+
 # Navigate to deeper levels in theme category trees? Set to false to link to matching resources directly.
 $themes_category_navigate_levels=false;
-# If a theme header contains a single collection, allow the title to be a direct link to the collection.
-# Drilling down is still possible via the >Expand tool, which replaces >Select when a deeper level exists
-$themes_single_collection_shortcut=false;
 
 // Enable to have a background image when $themes_simple_view is enabled
 $themes_show_background_image = false;
@@ -2294,6 +2296,11 @@ $qlpreview_exclude_extensions = array("tif","tiff");
 // Log developer debug information to the debug log (filestore/tmp/debug.txt)?  As the default location is world-readable it is recommended for production systems to change the location to somewhere outside of the web directory by also setting $debug_log_location.
 $debug_log=false;
 
+// Allow debug log to be readable by ResourceSpace? This must be set to true if using the sytem console to access the log.
+// Unless this is set to true ResourceSpace will attempt to make the file write-only (this will not work on Windows servers). 
+// Please note that if the debug log is located under the web root then extra care should be taken to prevent unauthorised access e.g. by configuring web server rules to deny direct access
+$debug_log_readable=false;
+
 // Optional extended debugging information from backtrace (records pagename and calling functions).
 $debug_extended_info = false;
 
@@ -2371,6 +2378,9 @@ $collection_purge=false;
 $camera_autorotation = false;
 $camera_autorotation_ext = array('jpg','jpeg','tif','tiff','png'); // only try to autorotate these formats
 $camera_autorotation_gm = false;
+
+// Default for upload rotation. Will be overridden by user preference.
+$camera_autorotation_checked = true;
 
 # if gnash_dump (gnash w/o gui) is compiled, previews are possible:
 # Note: gnash-dump must be compiled on the server. http://www.xmission.com/~ink/gnash/gnash-dump/README.txt
@@ -2545,6 +2555,7 @@ $comments_responses_max_level=10 ;				# maximum number of nested comments / thre
 $comments_max_characters=2000;					# maximum number of characters for a comment
 $comments_email_notification_address="";		# email address to use for flagged comment notifications
 $comments_show_anonymous_email_address=false;	# by default keep anonymous commenter's email address private
+$comments_policy_enable=false;                  # show a Comments Policy link to the site text comments_policy
 $comments_policy_external_url="";				# if specified, will popup a new window fulfilled by URL (when clicking on "comment policy" link)
 $comments_view_panel_show_marker=true;			# show an asterisk by the comment view panel title if comments exist
 
@@ -2555,12 +2566,6 @@ $do_not_add_to_new_collection_default=false;  # will set "do not add to a collec
 $no_metadata_read_default=false; // If set to true and $metadata_read is false then metadata will be imported by default
 $removenever=false; # Remove 'never' option for resource request access expiration and sets default expiry date to 7 days
 $hide_resource_share_link=false; // Configurable option to hide the "Share" link on the resource view page.
-
-# Option to email the contributor when their resources have been approved (moved from pending submission/review to active)
-$user_resources_approved_email=false; 
-
-# Set to true to move the Search button before the Clear button
-$swap_clear_and_search_buttons=false;
 
 # Option to have default date left blank, instead of current date.
 $blank_date_upload_template=false;
@@ -2681,7 +2686,7 @@ $merge_filename_with_title = FALSE;
 $merge_filename_with_title_default = 'do_not_use';
 
 # Add collection link to email when user submits a collection of resources for review (upload stage only)
-# Note: this will send a collection containing only the newly uploaded resources
+# Note: this will send a collection containing only the newly uploaded resources. Not used when uploading to external shares.
 $send_collection_to_admin = FALSE;
 
 # Set to true if you want to share internally a collection which is not private
@@ -2763,11 +2768,6 @@ $custom_access_overrides_search_filter=false;
 
 # When requesting a resource or resources, is the "reason for request" field mandatory?
 $resource_request_reason_required=true;
-
-# Allow ResourceSpace to upload multiple times the same file in a row
-# Set to true only if you want RS to create duplicates when client is losing
-# connection with the server and tries again to send the last chunk
-$plupload_allow_duplicates_in_a_row = false;
 
 # Create all preview sizes at the full target size if image is smaller (except for HPR as this would result in massive images)
 $previews_allow_enlarge=false;
@@ -2882,9 +2882,6 @@ $replace_resource_preserve_default=false;
 # Option to allow replacement of multiple resources by filename using the "Replace resource batch" functionality
 $replace_batch_existing = false;
 
-# When searching collections, return results based on the metadata of the resources inside also
-$collection_search_includes_resource_metadata=false;
-
 # E-mail address to send a report to if any of the automated tests (tests/test.php) fail.
 # This is used by Montala to automatically test the RS trunk on a nightly basis.
 # $email_test_fails_to="example@example.com";
@@ -2922,13 +2919,17 @@ $fstemplate_alt_scramblekey="";
 $responsive_ui = true;
 
 # Default action settings
-$actions_enable=false;
+$actions_enable = true;
 # If $actions_enable is false, option to enable actions only for users with certain permissions, To enable actions based on users having more than one permission, separate with a comma.
 $actions_permissions=array("a","t","R","u","e0");
 $actions_resource_requests=true;
 $actions_account_requests=true;
-$actions_resource_review=true;
-$actions_notify_states="-1";
+
+// $actions_notify_states . If unset then default values are set based on permissions
+// - Standard users with permission 'e-2' and 'd' will include -2 so they see their 'Pending submission' resources as actions
+// - Users with the e-1 permission will include -1 so they see 'Pending review' resources as actions
+$actions_notify_states="";
+
 $actions_resource_types_hide="";  // Resource types to exclude from notifications
 $actions_approve_hide_groups=""; // Groups to exclude from notifications
 
@@ -2944,8 +2945,8 @@ $daterange_edtf_support=false;
 $resource_type_extension_mapping_default = 1;
 $resource_type_extension_mapping         = array(
     2 => array('pdf', 'doc', 'docx', 'epub', 'ppt', 'pptx', 'odt', 'ods', 'tpl', 'ott' , 'rtf' , 'txt' , 'xml'),
-    3 => array('mov', '3gp', 'avi', 'mpg', 'mp4', 'flv', 'wmv'),
-    4 => array('flac', 'mp3', '3ga', 'cda', 'rec', 'aa', 'au', 'mp4a', 'wav', 'aac', 'ogg'),
+    3 => array('mov', '3gp', 'avi', 'mpg', 'mp4', 'flv', 'wmv', 'webm'),
+    4 => array('flac', 'mp3', '3ga', 'cda', 'rec', 'aa', 'au', 'mp4a', 'wav', 'aac', 'ogg', 'weba'),
 );
 
 # New mode that means the upload goes first, then the users edit and approve resources moving them to the correct stage.
@@ -3071,7 +3072,7 @@ $social_media_links = array("facebook", "twitter", "linkedin");
 
 /*
 Set the suffix used to identify alternatives for a particular resource when both the original file and its alternatives
-are being uploaded in a batch using the UI (plupload)
+are being uploaded in a batch using upload_batch.php 
 IMPORTANT: This will only work if the user uploads all files (resource and its alternatives) into the same 
 collection.
 */
@@ -3096,7 +3097,7 @@ $CORS_whitelist = array();
 
 
 /* Font selection */
-$global_font="WorkSans";
+$global_font="Montserrat";
 
 // Sort tabs alphabetically
 $sort_tabs = true;
@@ -3321,3 +3322,11 @@ $preview_keep_alpha_extensions = array("gif","png","tif","svg");
 
 // Array of sizes that will always be permitted through download.php and won't require terms/usage to be entered - needed when hide_real_filepath=true;
 $sizes_always_allowed = array('col', 'thm', 'pre', 'snapshot','videojs');
+
+// String to act as a placeholder for back slashes for the regexp filter field in the metadata field setup as they cannot be inserted into the database
+$regexp_slash_replace = 'SLASH';
+
+// Optional - $valid_upload_paths
+// Any file paths  passed to the upload_file() function must be located under one of the $valid_upload_paths
+// The function will always permit the following: $storagedir, $syncdir, $batch_replace_local_folder - these don't need to be added to the array
+// $valid_upload_paths = [];

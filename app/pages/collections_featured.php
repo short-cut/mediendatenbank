@@ -2,10 +2,11 @@
 include_once "../include/db.php";
 
 $k = trim(getval("k", ""));
-$parent = (int) getval("parent", 0, true);
+$parent = (int) getval("parent", $featured_collections_root_collection, true);
 if($k == "" || !check_access_key_collection($parent, $k))
     {
     include "../include/authenticate.php";
+    $parent = (int) getval("parent", $featured_collections_root_collection, true);
     }
 
 if(!$enable_themes)
@@ -51,13 +52,19 @@ if($enable_theme_breadcrumbs && $parent > 0)
         )
     );
 
+    $fc_branch_path = move_featured_collection_branch_path_root(compute_node_branch_path($all_fcs, $parent));
+    if(empty($fc_branch_path))
+        {
+        $links_trail = [];
+        }
+
     $branch_trail = array_map(function($branch) use ($baseurl_short, $general_url_params)
         {
         return array(
             "title" => strip_prefix_chars(i18n_get_translated($branch["name"]),"*"),
             "href"  => generateURL("{$baseurl_short}pages/collections_featured.php", $general_url_params, array("parent" => $branch["ref"]))
         );
-        }, compute_node_branch_path($all_fcs, $parent));
+        }, $fc_branch_path);
 
     renderBreadcrumbs(array_merge($links_trail, $branch_trail), "", "BreadcrumbsBoxTheme");
     }
@@ -73,7 +80,10 @@ $rendering_options = array(
 
 $featured_collections = ($smart_rtf == 0 ? get_featured_collections($parent, array()) : array());
 usort($featured_collections, "order_featured_collections");
-render_featured_collections($rendering_options, $featured_collections);
+render_featured_collections(
+    array_merge($rendering_options, ["reorder" => can_reorder_featured_collections()]),
+    $featured_collections
+);
 
 $smart_fcs_list = array();
 if($parent == 0 && $smart_rtf == 0)
@@ -149,7 +159,7 @@ if($k == "" && $smart_rtf == 0)
         );
         if($upload_then_edit)
             {
-            $upload_url = generateURL("{$baseurl_short}pages/upload_plupload.php", array("collection_add" => $parent));
+            $upload_url = generateURL("{$baseurl_short}pages/upload_batch.php", array("collection_add" => $parent));
             }
 
         $rendering_options["html_h2_span_class"] = "fa fa-fw fa-upload";
@@ -196,6 +206,36 @@ jQuery(document).ready(function ()
             });
         }
     });
+
+
+// Re-order capability
+jQuery(function() {
+    // Disable for touch screens
+    if(is_touch_device())
+        {
+        return false;
+        }
+
+    jQuery('.BasicsBox.FeaturedSimpleLinks').sortable({
+        items: '.SortableItem',
+        update: function(event, ui)
+            {
+            let html_ids_new_order = jQuery('.BasicsBox.FeaturedSimpleLinks').sortable('toArray');
+            let fcs_new_order = html_ids_new_order.map(id => jQuery('#' + id).data('fc-ref'));
+            console.debug('fcs_new_order=%o', fcs_new_order);
+            <?php
+            if($descthemesorder)
+                {
+                ?>
+                fcs_new_order = fcs_new_order.reverse();
+                console.debug('fcs_new_order_reversed=%o', fcs_new_order);
+                <?php
+                }
+                ?>
+            api('reorder_featured_collections', {'refs': fcs_new_order});
+            }
+    });
+});
 </script>
 <?php
 if($themes_show_background_image && !$full_width)

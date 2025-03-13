@@ -536,7 +536,8 @@ function get_all_site_text($findpage="",$findname="",$findtext="")
 
         $i++;
         }
-    $return = array_values($unique_returned_records);
+    // Reverse again so that the default language appears first in results
+    $return = array_values(array_reverse($unique_returned_records));
 
     return $return;
     }
@@ -644,58 +645,76 @@ function check_site_text_custom($page,$name)
  */
 function save_site_text($page,$name,$language,$group)
     {
-    global $lang;
-
-    if ($group=="") {$g="null";$gc="is";} else {$g="'" . $group . "'";$gc="=";}
+    global $lang,$custom,$newcustom,$defaultlanguage,$newhelp;
     
-    global $custom,$newcustom,$defaultlanguage;
-    
+    if(!is_int_loose($group))
+        {
+        $group = NULL;
+        }
+    $text = getval("text","");
     if($newcustom)
         {
-        $test=sql_query("select * from site_text where page='$page' and name='$name'");
-        if (count($test)>0){return true;}
+        $params = ["s",$page,"s",$name];
+        $test=ps_query("SELECT ref,page,name,text,language,specific_to_group,custom FROM site_text WHERE page=? AND name=?",$params);
+        if (count($test)>0)
+            {
+            return true;
+            }
         }
-    if ($custom==""){$custom=0;}
+    if (trim($custom)=="")
+        {
+        $custom=0;
+        }
     if (getval("deletecustom","")!="")
         {
-        sql_query("delete from site_text where page='$page' and name='$name'");
+        $params = ["s",$page,"s",$name];
+        ps_query("DELETE FROM site_text WHERE page=? AND name=?",$params);
         }
     elseif (getval("deleteme","")!="")
         {
-        sql_query("delete from site_text where page='$page' and name='$name' and specific_to_group $gc $g");
+        $params = ["s",$page,"s",$name,"i",$group];
+        ps_query("DELETE FROM site_text WHERE page=? AND name=? AND specific_to_group <=> ?",$params);
         }
     elseif (getval("copyme","")!="")
         {
-        sql_query("insert into site_text(page,name,text,language,specific_to_group,custom) values ('$page','$name','" . getvalescaped("text","") . "','$language',$g,'$custom')");
+        $params = ["s",$page,"s",$name,"s",$text,"s",$language,"i",$group,"i",$custom];
+        ps_query("INSERT INTO site_text(page,name,text,language,specific_to_group,custom) VALUES (?,?,?,?,?,?)",$params);
         }
     elseif (getval("newhelp","")!="")
         {
-        global $newhelp;
-        $check=sql_query("select * from site_text where page = 'help' and name='$newhelp'");
-        if (!isset($check[0])){
-            sql_query("insert into site_text(page,name,text,language,specific_to_group) values ('$page','$newhelp','','$language',$g)");
+        $params = ["s",$newhelp];
+        $check=ps_query("SELECT ref,page,name,text,language,specific_to_group,custom FROM site_text where page = 'help' and name=?",$params);
+        if (!isset($check[0]))
+            {
+            $params = ["s",$page,"s",$newhelp,"s","","s",$language,"i",$group];
+            ps_query("INSERT INTO site_text(page,name,text,language,specific_to_group) VALUES (?,?,?,?,?)",$params);
             }
-        }   
+        }
     else
         {
-        $text=sql_query ("select * from site_text where page='$page' and name='$name' and language='$language' and specific_to_group $gc $g");
-        if (count($text)==0)
+        $params = ["s",$page,"s",$name,"s",$language,"i",$group];
+        $curtext=ps_query("SELECT ref,page,name,text,language,specific_to_group,custom FROM site_text WHERE page=? AND name=? AND language=? AND specific_to_group <=> ?",$params);
+        if (count($curtext)==0)
             {
             # Insert a new row for this language/group.
-            sql_query("insert into site_text(page,name,language,specific_to_group,text,custom) values ('$page','$name','$language',$g,'" . getvalescaped("text","") . "','$custom')");
-            log_activity($lang["text"],LOG_CODE_CREATED,getvalescaped("text",""),'site_text',null,"'{$page}','{$name}','{$language}',{$g}");
+            $params = ["s",$page,"s",$name,"s",$text,"s",$language,"i",$group,"i",$custom];
+            ps_query("INSERT INTO site_text(page,name,text,language,specific_to_group,custom) VALUES (?,?,?,?,?,?)",$params);
+            log_activity($lang["text"],LOG_CODE_CREATED,$text,'site_text',null,"'{$page}','{$name}','{$language}',{$group}");
             }
         else
             {
             # Update existing row
-            sql_query("update site_text set text='" . getvalescaped("text","") . "' where page='$page' and name='$name' and language='$language' and specific_to_group $gc $g");
-            log_activity($lang["text"],LOG_CODE_EDITED,getvalescaped("text",""),'site_text',null,"'{$page}','{$name}','{$language}',{$g}");
+            $params = ["s",$text,"s",$page,"s",$name,"s",$language,"i",$group];
+            ps_query("UPDATE site_text SET text=? WHERE page=? AND name=? AND language=? AND specific_to_group <=> ?",$params);
+            log_activity($lang["text"],LOG_CODE_EDITED,$text,'site_text',null,"'{$page}','{$name}','{$language}',{$group}");
             }
-                        
-                # Language clean up - remove all entries that are exactly the same as the default text.
-                $defaulttext=sql_value ("select text value from site_text where page='$page' and name='$name' and language='$defaultlanguage' and specific_to_group $gc $g","");
-                sql_query("delete from site_text where page='$page' and name='$name' and language!='$defaultlanguage' and trim(text)='" . trim(escape_check($defaulttext)) . "'");
-                
+
+        # Language clean up - remove all entries that are exactly the same as the default text.
+        $params = ["s",$page,"s",$name,"s",$defaultlanguage,"i",$group];
+        $defaulttext=ps_value("SELECT text value FROM site_text WHERE page=? AND name=? AND language=? AND specific_to_group<=>?",$params,"");
+
+        $params = ["s",$page,"s",$name,"s",$defaultlanguage,"s",trim($defaulttext)];
+        ps_query("DELETE FROM site_text WHERE page=? AND name=? AND language != ? AND trim(text)=?",$params);
         }
 
     // Clear cache
@@ -806,7 +825,28 @@ function get_mime_type($path, $ext = null)
     return "application/octet-stream";
     }
 
-
+/**
+ * Convert the permitted resource type extension to MIME type. Used by upload_batch.php
+ *
+ * @param  string $extension    File extension
+ * @return string               MIME type e.g. image/jpeg
+ */
+function allowed_type_mime($allowedtype)
+    {
+    global $mime_types_by_extension;
+    if(strpos($allowedtype,"/") === false)
+        {        
+        // Get extended list of mime types to convert legacy extensions 
+        // to Uppy mime type syntax
+        include_once 'mime_types.php';
+        return $mime_types_by_extension[$allowedtype] ?? $allowedtype;        
+        }
+    else
+        {
+        // already a mime type
+        return $allowedtype;
+        }
+    }
     
 /**
  * Send a mail - but correctly encode the message/subject in quoted-printable UTF-8.
@@ -834,19 +874,17 @@ function get_mime_type($path, $ext = null)
  */
 function send_mail($email,$subject,$message,$from="",$reply_to="",$html_template="",$templatevars=null,$from_name="",$cc="",$bcc="",$files = array())
     {
-    global $always_email_from_user;
+    global $applicationname, $use_phpmailer, $email_from, $email_notify, $always_email_copy_admin, $username, $useremail, $userfullname;
+    global $email_footer, $always_email_from_user, $disable_quoted_printable_enc, $header_colour_style_override;
     if($always_email_from_user)
         {
-        global $username, $useremail, $userfullname;
         $from_name=($userfullname!="")?$userfullname:$username;
         $from=$useremail;
         $reply_to=$useremail;
         }
 
-    global $always_email_copy_admin;
     if($always_email_copy_admin)
         {
-        global $email_notify;
         $bcc.="," . $email_notify;
         }
 
@@ -905,9 +943,8 @@ function send_mail($email,$subject,$message,$from="",$reply_to="",$html_template
         $attachfiles[$filename] = $file;
         }
 
-            
+            //exit($message);
     # Send a mail - but correctly encode the message/subject in quoted-printable UTF-8.
-    global $use_phpmailer;
     if ($use_phpmailer)
         {
         send_mail_phpmailer($email,$subject,$message,$from,$reply_to,$html_template,$templatevars,$from_name,$cc,$bcc,$attachfiles); 
@@ -916,8 +953,6 @@ function send_mail($email,$subject,$message,$from="",$reply_to="",$html_template
         }
     
     # Include footer
-    global $email_footer;
-    global $disable_quoted_printable_enc;
     
     # Work out correct EOL to use for mails (should use the system EOL).
     if (defined("PHP_EOL")) {$eol=PHP_EOL;} else {$eol="\r\n";}
@@ -959,10 +994,8 @@ function send_mail($email,$subject,$message,$from="",$reply_to="",$html_template
         $subject=rs_quoted_printable_encode_subject($subject);
         }
    
-    global $email_from;
     if ($from=="") {$from=$email_from;}
     if ($reply_to=="") {$reply_to=$email_from;}
-    global $applicationname;
     if ($from_name==""){$from_name=$applicationname;}
     
     if (substr($reply_to,-1)==","){$reply_to=substr($reply_to,0,-1);}
@@ -986,7 +1019,6 @@ function send_mail($email,$subject,$message,$from="",$reply_to="",$html_template
     $headers .= "Reply-To: $reply_to" . $eol;
     
     if ($cc!=""){
-        global $userfullname;
         #allow multiple emails, and fix for long format emails
         $ccs=explode(",",$cc);
         $headers .= "Cc: ";
@@ -1005,7 +1037,6 @@ function send_mail($email,$subject,$message,$from="",$reply_to="",$html_template
     }
     
     if ($bcc!=""){
-        global $userfullname;
         #add bcc 
         $bccs=explode(",",$bcc);
         $headers .= "Bcc: ";
@@ -1141,87 +1172,56 @@ function send_mail_phpmailer($email,$subject,$message="",$from="",$reply_to="",$
                 if(isset($lang["all__" . $html_template])){$template=$lang["all__" . $html_template];}
                 elseif(isset($lang[$html_template])){$template=$lang[$html_template];}
                 }
-            }       
-
+            }
 
         if (isset($template) && $template!="")
             {
             preg_match_all('/\[[^\]]*\]/',$template,$test);
-            foreach($test[0] as $variable)
+            $setvalues=[];
+            foreach($test[0] as $placeholder)
                 {
-            
-                $variable=str_replace("[","",$variable);
-                $variable=str_replace("]","",$variable);
-            
-                
-                # get lang variables (ex. [lang_mycollections])
-                if (substr($variable,0,5)=="lang_"){
+                $placeholder=str_replace("[","",$placeholder);
+                $placeholder=str_replace("]","",$placeholder);
+
+                if (substr($placeholder,0,5)=="lang_")
+                    {
+                    // Get lang variables (ex. [lang_mycollections])
                     global $lang;
-                    $$variable=$lang[substr($variable,5)];
-                }
-                
-                # get server variables (ex. [server_REMOTE_ADDR] for a user request)
-                else if (substr($variable,0,7)=="server_"){
-                    $$variable=$_SERVER[substr($variable,7)];
-                }
-                
-                # [embed_thumbnail] (requires url in templatevars['thumbnail'])
-                else if (substr($variable,0,15)=="embed_thumbnail"){
+                    $setvalues[$placeholder] = $lang[substr($placeholder,5)];
+                    }           
+                else if (substr($placeholder,0,5)=="text_")
+                    {
+                    // Get text string (legacy)
+                    $setvalues[$placeholder] =text(substr($placeholder,5));
+                    }
+                else if ($placeholder=="client_ip")
+                    {
+                    // Get server variables (ex. [server_REMOTE_ADDR] for a user request)
+                    $setvalues[$placeholder] = get_ip();
+                    }         
+                else if($placeholder == 'img_headerlogo')
+                    {
+                    $img_url = get_header_image(true);
+                    $setvalues[$placeholder]  = '<img src="' . $img_url . '"/>';
+                    }
+                else if ($placeholder=="embed_thumbnail")
+                    {                    
+                    # [embed_thumbnail] (requires url in templatevars['thumbnail'])
                     $thumbcid=uniqid('thumb');
-                    $$variable="<img style='border:1px solid #d1d1d1;' src='cid:$thumbcid' />";
-                }
-                
-                # deprecated by improved [img_] tag below
-                # embed images (find them in relation to storagedir so that templates are portable)...  (ex [img_storagedir_/../gfx/whitegry/titles/title.gif])
-                else if (substr($variable,0,15)=="img_storagedir_"){
-                    $$variable="<img src='cid:".basename(substr($variable,15))."'/>";
-                    $images[]=dirname(__FILE__).substr($variable,15);
-                }
-
-                // embed images - ex [img_gfx/whitegry/titles/title.gif]
-                else if('img_headerlogo' == substr($variable, 0, 14))
-                    {
-                    $img_url = get_header_image(true);                    
-                    $$variable = '<img src="' . $img_url . '"/>';
+                    $embed_thumbnail = true;
+                    $setvalues[$placeholder] ="<img style='border:1px solid #d1d1d1;' src='cid:$thumbcid' />";
                     }
-                else if('img_' == substr($variable, 0, 4))
+                else
                     {
-                    $image_path = substr($variable, 4);
-
-                    // absolute paths
-                    if('/' == substr($image_path, 0, 1))
-                        {
-                        $images[] = $image_path;
-                        }
-                    // relative paths
-                    else
-                        {
-                        $image_path = str_replace('../', '', $image_path);
-                        $images[]   = dirname(__FILE__) . '/../' . $image_path;
-                        }
-
-                    $$variable = '<img src="cid:' . basename($image_path) . '"/>';
+                    // Not recognised, skip this
+                    continue;
                     }
 
-                # attach files (ex [attach_/var/www/resourcespace/gfx/whitegry/titles/title.gif])
-                else if (substr($variable,0,7)=="attach_"){
-                    $$variable="";
-                    $attachments[]=substr($variable,7);
-                }
-                
-                # get site text variables (ex. [text_footer], for example to 
-                # manage html snippets that you want available in all emails.)
-                else if (substr($variable,0,5)=="text_"){
-                    $$variable=text(substr($variable,5));
-                }
-
-                # try to get the variable from POST
-                else{
-                    $$variable=getval($variable,"");
-                }
-                
-                # avoid resetting templatevars that may have been passed here
-                if (!isset($templatevars[$variable])){$templatevars[$variable]=$$variable;}
+                # Don't overwrite templatevars that have been explicitly passed
+                if (!isset($templatevars[$placeholder]) && isset($setvalues[$placeholder]))
+                    {
+                    $templatevars[$placeholder]=$setvalues[$placeholder];
+                    }
                 }
 
             if (isset($templatevars))
@@ -1331,18 +1331,18 @@ function send_mail_phpmailer($email,$subject,$message="",$from="",$reply_to="",$
                 $mail->AddBCC($bccemail,$userfullname);
             }
         }
-    }
-    
+    }    
     
     $mail->CharSet = "utf-8"; 
     
-    if (is_html($body)) {$mail->IsHTML(true);}      
+    if (is_html($body)) {$mail->IsHTML(true);}
     else {$mail->IsHTML(false);}
-    
+
     $mail->Subject = $subject;
     $mail->Body    = $body;
-    
-    if (isset($embed_thumbnail)&&isset($templatevars['thumbnail'])){
+
+    if (isset($embed_thumbnail)&&isset($templatevars['thumbnail']))
+        {
         $mail->AddEmbeddedImage($templatevars['thumbnail'],$thumbcid,$thumbcid,'base64','image/jpeg'); 
         }
 
@@ -1989,22 +1989,15 @@ function get_temp_dir($asUrl = false,$uniqid="")
         }
     }
     
-    if ($uniqid!=""){
-        $uniqid=str_replace("../","",$uniqid);//restrict to forward-only movements
-        $result.="/$uniqid";
+    if ($uniqid!="")
+        {
+        $uniqid = md5($uniqid);
+        $result .= "/$uniqid";
         if(!is_dir($result))
             {
-            $GLOBALS["use_error_exception"] = true; 
-            // If it does not exist, create it.
-            try {
-                mkdir($result, 0777,true);
-            } 
-            catch (Exception $e) {
-                debug("get_temp_dir: Attempt to create folder '$result' failed. Reason: {$e->getMessage()}");  
+            mkdir($result, 0777, true);
             }
-            unset($GLOBALS["use_error_exception"]);    
         }
-    }
     
     // return the result.
     if($asUrl==true)
@@ -2012,6 +2005,7 @@ function get_temp_dir($asUrl = false,$uniqid="")
         $result = convert_path_to_url($result);
     $result = str_replace('\\','/',$result);
     }
+
     return $result;
     }
 
@@ -2123,6 +2117,8 @@ function run_external($command)
     # Pipes for stdin, stdout and stderr
     $descriptorspec = array(0 => array("pipe", "r"), 1 => array("pipe", "w"), 2 => array("pipe", "w"));
 
+    debug("CLI command: $command");
+
     # Execute the command
     $process = proc_open($command, $descriptorspec, $pipes);
 
@@ -2179,10 +2175,7 @@ function run_external($command)
     fclose($pipes[1]);
     fclose($pipes[2]);
     
-    if ($debug_log)
-        {
-        debug("CLI output: ". implode("\n", $output));
-        }
+    debug("CLI output: ". implode("\n", $output));
  
     proc_close($process);
  
@@ -2216,7 +2209,7 @@ function error_alert($error, $back = true, $code = 403)
         jQuery(document).ready(function()
             {
             ModalClose();
-            styledalert('" . $lang["error"] . "', '$error');
+            styledalert('" . $lang["error"] . "', '" . htmlspecialchars($error, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML401) . "');
             " . ($back ? "window.setTimeout(function(){history.go(-1);},2000);" : "") ."
             });
         </script>";
@@ -2837,33 +2830,69 @@ function generateURL($url, array $parameters = array(), array $set_params = arra
  * 
  * As of 2020-06-29 the website is showing that all contents/code are CC BY 3.0
  * https://creativecommons.org/licenses/by/3.0/
+ * 
+ * Example:
+ *   tail($file_path, 10, 4096, [
+ *       'name' => 'resourcespace.tail_search',
+ *       'params' => ['search_terms' => ['term1', 'term2']]
+ *   ]);
  *
  * @param  string $filename
  * @param  integer $lines
  * @param  integer $buffer
+ * @param  array   $filters  List of stream filters. Each value is an array containing the "name" and "params" keys. These
+ *                           represent the filter name and its params.
  * @return string
  */
-function tail($filename, $lines = 10, $buffer = 4096)
+function tail($filename, $lines = 10, $buffer = 4096, array $filters = [])
     {
-    $f = fopen($filename, "rb");        // Open the file
-    fseek($f, -1, SEEK_END);        // Jump to last character
+    $f = fopen($filename, "rb");
 
-    // Read it and adjust line number if necessary
+    // Jump to the last character, read it and adjust line number if necessary
     // (Otherwise the result would be wrong if file doesn't end with a blank line)
-    if(fread($f, 1) != "\n") $lines -= 1;
+    fseek($f, -1, SEEK_END);
+    if(fread($f, 1) != "\n")
+        {
+        $lines -= 1;
+        }
+
+    // Create a temp output file resource so we can attach stream filters for whatever reason the calling code needs to
+    $output_fp = fopen('php://temp','r+');
+    foreach($filters as $filter)
+        {
+        if(isset($filter['name'], $filter['params']) && trim($filter['name']) !== '' && is_array($filter['params']))
+            {
+            stream_filter_append($output_fp, $filter['name'], STREAM_FILTER_READ , $filter['params']);
+            }
+        }
 
     // Start reading
     $output = '';
     $chunk = '';
+    $lines_pre_filtering = $lines;
 
     // While we would like more
     while(ftell($f) > 0 && $lines >= 0)
         {
-        $seek = min(ftell($f), $buffer);        // Figure out how far back we should jump
-        fseek($f, -$seek, SEEK_CUR);        // Do the jump (backwards, relative to where we are)
-        $output = ($chunk = fread($f, $seek)).$output;      // Read a chunk and prepend it to our output
-        fseek($f, -mb_strlen($chunk, '8bit'), SEEK_CUR);        // Jump back to where we started reading
-        $lines -= substr_count($chunk, "\n");       // Decrease our line counter
+        // Figure out how far back we should jump
+        $seek = min(ftell($f), $buffer);
+
+        // Do the jump (backwards, relative to where we are)
+        fseek($f, -$seek, SEEK_CUR);
+
+        // Read a chunk and prepend it to our output
+        $chunk = fread($f, $seek);
+        ftruncate($output_fp, 0);
+        rewind($output_fp);
+        fwrite($output_fp, $chunk);
+        fwrite($output_fp, $output);
+        rewind($output_fp);
+        $output = stream_get_contents($output_fp);
+
+        // Jump back to where we started reading
+        fseek($f, -mb_strlen($chunk, '8bit'), SEEK_CUR);
+
+        $lines = $lines_pre_filtering - substr_count($output, "\n");
         }
 
     // While we have too many lines
@@ -2874,8 +2903,8 @@ function tail($filename, $lines = 10, $buffer = 4096)
         $output = substr($output, strpos($output, "\n") + 1);
         }
 
-    // Close file and return
     fclose($f);
+    fclose($output_fp);
     return $output;
     }   
     
@@ -3002,286 +3031,6 @@ function form_value_display($row,$name,$default="")
     return htmlspecialchars(getval($name,$default));
     }
 
-/**
- * Adds a job to the job_queue table.
- *
- * @param  string $type
- * @param  array $job_data
- * @param  string $user
- * @param  string $time
- * @param  string $success_text
- * @param  string $failure_text
- * @param  string $job_code
- * @return string|integer ID of newly created job or error text
- */
-function job_queue_add($type="",$job_data=array(),$user="",$time="", $success_text="", $failure_text="", $job_code="")
-    {
-    global $lang, $userref;
-    if($time==""){$time=date('Y-m-d H:i:s');}
-    if($type==""){return false;}
-    if($user==""){$user=isset($userref)?$userref:0;}
-    $job_data_json=json_encode($job_data,JSON_UNESCAPED_SLASHES); // JSON_UNESCAPED_SLASHES is needed so we can effectively compare jobs
-    
-    if($job_code == "")
-        {
-        // Generate a code based on job data to avoid incorrect duplicate job detection
-        $job_code = $type . "_" . substr(md5(serialize($job_data)),10);
-        }
-
-    // Check for existing job matching
-    $existing_user_jobs=job_queue_get_jobs($type,STATUS_ACTIVE,"",$job_code);
-    if(count($existing_user_jobs)>0)
-            {
-            return $lang["job_queue_duplicate_message"];
-            }
-    sql_query("INSERT INTO job_queue (type,job_data,user,start_date,status,success_text,failure_text,job_code) VALUES('" . escape_check($type) . "','" . escape_check($job_data_json) . "','" . $user . "','" . $time . "','" . STATUS_ACTIVE .  "','" . escape_check($success_text) . "','" . escape_check($failure_text) . "','" . escape_check($job_code) . "')");
-    return sql_insert_id();
-    }
-    
-/**
- * Update the data/status/time of a job queue record.
- *
- * @param  integer $ref
- * @param  array $job_data - pass empty array to leave unchanged
- * @param  string $newstatus
- * @param  string $newtime
- * @return void
- */
-function job_queue_update($ref,$job_data=array(),$newstatus="", $newtime="")
-    {
-    $update_sql = array();
-    if (count($job_data) > 0)
-        {
-        $update_sql[] = "job_data='" . escape_check(json_encode($job_data)) . "'";
-        } 
-    if($newtime!="")
-        {
-        $update_sql[] = "start_date='" . escape_check($newtime) . "'";
-        }
-    if($newstatus!="")
-        {
-        $update_sql[] = "status='" . escape_check($newstatus) . "'";
-        }
-    if(count($update_sql) == 0)
-        {
-        return false;
-        }
-    
-    $sql = "UPDATE job_queue SET " . implode(",",$update_sql) . " WHERE ref='" . $ref . "'";
-    sql_query($sql);
-    }
-
-/**
- * Delete a job queue entry if user owns job or user is admin
- *
- * @param  mixed $ref
- * @return void
- */
-function job_queue_delete($ref)
-    {
-    global $userref;
-    $limitsql = (checkperm('a') || php_sapi_name() == "cli") ? "" : " AND user='" . $userref . "'";
-    sql_query("DELETE FROM job_queue WHERE ref='" . $ref . "' " .  $limitsql);
-    }
-
-/**
- * Gets a list of offline jobs
- *
- * @param  string $type         Job type
- * @param  string $status       Job status - see definitions.php
- * @param  int    $user         Job user
- * @param  string $job_code     Unique job code
- * @param  string $job_order_by 
- * @param  string $job_sort
- * @param  string $find
- * @return array
- */
-function job_queue_get_jobs($type="", $status="", $user="", $job_code="", $job_order_by="ref", $job_sort="desc", $find="")
-    {
-    global $userref;
-    $condition=array();
-    if($type!="")
-        {
-        $condition[] = " type ='" . escape_check($type) . "'";
-        }
-    if(!checkperm('a') && PHP_SAPI != 'cli')
-        {
-        // Don't show certain jobs for normal users
-        $hiddentypes = array();
-        $hiddentypes[] = "delete_file";
-        $condition[] = " type NOT IN ('" . implode("','",$hiddentypes) . "')";  
-        }
-    if($status != "" && (int)$status > -1){$condition[] =" status ='" . escape_check($status) . "'";}
-    if($user!="" && (int)$user > 0 && ($user == $userref || checkperm_user_edit($user)))
-        {
-        $condition[] = " user ='" . escape_check($user) . "'";
-        }
-    elseif(PHP_SAPI != "CLI" && isset($userref))
-        {
-        $condition[] = " user ='" . $userref . "'";
-        }
-    if($job_code!=""){$condition[] =" job_code ='" . escape_check($job_code) . "'";}
-    if($find!="")
-        {
-        $find=escape_check($find);
-        $condition[] = " (j.ref LIKE '%" . $find . "%'  OR j.job_data LIKE '%" . $find . "%' OR j.success_text LIKE '%" . $find . "%' OR j.failure_text LIKE '%" . $find . "%' OR j.user LIKE '%" . $find . "%' OR u.username LIKE '%" . $find . "%' or u.fullname LIKE '%" . $find . "%')";
-        }
-    $conditional_sql="";
-    if (count($condition)>0){$conditional_sql=" where " . implode(" and ",$condition);}
-        
-    $sql = "SELECT j.ref,j.type,j.job_data,j.user,j.status, j.start_date, j.success_text, j.failure_text,j.job_code, u.username, u.fullname FROM job_queue j LEFT JOIN user u ON u.ref=j.user " . $conditional_sql . " ORDER BY " . escape_check($job_order_by) . " " . escape_check($job_sort);
-    $jobs=sql_query($sql);
-    return $jobs;
-    }
-
-/**
- * Get details of specified offline job
- *
- * @param  int $job identifier
- * @return array
- */
-function job_queue_get_job($ref)
-    {
-    $sql = "SELECT j.ref,j.type,j.job_data,j.user,j.status, j.start_date, j.success_text, j.failure_text,j.job_code, u.username, u.fullname FROM job_queue j LEFT JOIN user u ON u.ref=j.user WHERE j.ref='" . (int)$ref . "'";
-    $job_data=sql_query($sql);
-
-    return (is_array($job_data) && count($job_data)>0) ? $job_data[0] : array();
-    }    
-
-/**
- * Delete all jobs in the specified state
- *
- * @param  int $status to purge, whole queue will be purged if not set
- * @return void
- */
-function job_queue_purge($status=0)
-    {
-    $deletejobs = job_queue_get_jobs('',$status == 0 ? '' : $status);
-    if(count($deletejobs) > 0)
-        {
-        sql_query("DELETE FROM job_queue WHERE ref IN ('" . implode("','",array_column($deletejobs,"ref")) . "')");
-        }
-    }
-
-/**
-* Run offline job
-* 
-* @param  array    $job                 Metadata of the queued job as returned by job_queue_get_jobs()
-* @param  boolean  $clear_process_lock  Clear process lock for this job
-* 
-* @return void
-*/
-function job_queue_run_job($job, $clear_process_lock)
-    {
-    // Runs offline job using defined job handler
-    $jobref = $job["ref"];
-    
-    // Control characters in job_data can cause decoding issues
-    //$job["job_data"] = escape_check($job["job_data"]);
-
-    $job_data=json_decode($job["job_data"], true);
-
-    $jobuser = $job["user"];
-    if (!isset($jobuser) || $jobuser == 0 || $jobuser == "")
-        {
-        $logmessage = " - Job could not be run as no user was supplied #{$jobref}" . PHP_EOL;
-        echo $logmessage;
-        debug($logmessage);
-        job_queue_update($jobref,$job_data,STATUS_ERROR);
-        return;
-        }
-
-    $jobuserdata = get_user($jobuser);
-    setup_user($jobuserdata);
-    $job_success_text=$job["success_text"];
-    $job_failure_text=$job["failure_text"];
-
-    // Variable used to avoid spinning off offline jobs from an already existing job.
-    // Example: create_previews() is using extract_text() and both can run offline.
-    global $offline_job_in_progress, $plugins;
-    $offline_job_in_progress = false;
-
-    if(is_process_lock('job_' . $jobref) && !$clear_process_lock)
-        {
-        $logmessage =  " - Process lock for job #{$jobref}" . PHP_EOL;
-        echo $logmessage;
-        debug($logmessage);
-        return;
-        }
-    else if($clear_process_lock)
-        {
-        $logmessage =  " - Clearing process lock for job #{$jobref}" . PHP_EOL;
-        echo $logmessage;
-        debug($logmessage);
-        clear_process_lock("job_{$jobref}");
-        }
-    
-    set_process_lock('job_' . $jobref);
-    
-    $logmessage =  "Running job #" . $jobref . PHP_EOL;
-    echo $logmessage;
-    debug($logmessage);
-
-    $logmessage =  " - Looking for " . __DIR__ . "/job_handlers/" . $job["type"] . ".php" . PHP_EOL;
-    echo $logmessage;
-    debug($logmessage);
-
-    if (file_exists(__DIR__ . "/job_handlers/" . $job["type"] . ".php"))
-        {
-        $logmessage=" - Attempting to run job #" . $jobref . " using handler " . $job["type"]. PHP_EOL;
-        echo $logmessage;
-        debug($logmessage);
-        job_queue_update($jobref, $job_data,STATUS_INPROGRESS);
-        $offline_job_in_progress = true;
-        include __DIR__ . "/job_handlers/" . $job["type"] . ".php";
-        job_queue_update($jobref, $job_data,STATUS_COMPLETE);
-        }
-    else
-        {
-        // Check for handler in plugin
-        $offline_plugins = $plugins;
-
-        // Include plugins for this job user's group
-        $group_plugins = sql_query("SELECT name, config, config_json, disable_group_select FROM plugins WHERE inst_version>=0 AND disable_group_select=0 AND find_in_set('" . $jobuserdata["usergroup"] . "',enabled_groups) ORDER BY priority","plugins");
-        foreach($group_plugins as $group_plugin)
-            {
-            include_plugin_config($group_plugin['name'],$group_plugin['config'],$group_plugin['config_json']);
-            register_plugin($group_plugin['name']);
-            register_plugin_language($group_plugin['name']);
-            $offline_plugins[]=$group_plugin['name'];
-            }	
-
-        foreach($offline_plugins as $plugin)
-            {
-            if (file_exists(__DIR__ . "/../plugins/" . $plugin . "/job_handlers/" . $job["type"] . ".php"))
-                {
-                $logmessage=" - Attempting to run job #" . $jobref . " using handler " . $job["type"]. PHP_EOL;
-                echo $logmessage;
-                debug($logmessage);
-                job_queue_update($jobref, $job_data,STATUS_INPROGRESS);
-                $offline_job_in_progress = true;
-                include __DIR__ . "/../plugins/" . $plugin . "/job_handlers/" . $job["type"] . ".php";
-                job_queue_update($jobref, $job_data,STATUS_COMPLETE);
-                break;
-                }
-            }
-        }
-    
-    if(!$offline_job_in_progress)
-        {
-        $logmessage="Unable to find handlerfile: " . $job["type"]. PHP_EOL;
-        echo $logmessage;
-        debug($logmessage);
-        job_queue_update($jobref,$job_data,STATUS_ERROR);
-        }
-    
-    $logmessage =  " - Finished job #" . $jobref . PHP_EOL;
-    echo $logmessage;
-    debug($logmessage);
-    
-    clear_process_lock('job_' . $jobref);
-    }
-        
 /**
  * Change the user's user group
  *
@@ -3846,7 +3595,8 @@ function hook($name,$pagename="",$params=array(),$last_hook_value_wins=false)
 						break;
 					}
 					if($numeric_key){
-						$GLOBALS['hook_return_value'] = array_values(array_unique(array_merge_recursive($GLOBALS['hook_return_value'], $function_return_value), SORT_REGULAR));
+						$merged_arrays = array_merge($GLOBALS['hook_return_value'], $function_return_value);
+						$GLOBALS['hook_return_value'] = array_intersect_key($merged_arrays,array_unique(array_column($merged_arrays,'value'),SORT_REGULAR));
 					}
 					else{
 						$GLOBALS['hook_return_value'] = array_unique(array_merge_recursive($GLOBALS['hook_return_value'], $function_return_value), SORT_REGULAR);
@@ -3926,7 +3676,7 @@ function strip_tags_and_attributes($html, array $tags = array(), array $attribut
         }
 
     //Convert to html before loading into libxml as we will lose non-ASCII characters otherwise
-    $html = mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8');
+    $html = mb_convert_encoding(htmlspecialchars_decode($html), 'HTML-ENTITIES', 'UTF-8');
 
     // Basic way of telling whether we had any tags previously
     // This allows us to know that the returned value should actually be just text rather than HTML
@@ -4144,7 +3894,7 @@ function debug($text,$resource_log_resource_ref=null,$resource_log_code=LOG_CODE
 
     # Output some text to a debug file.
     # For developers only
-    global $debug_log, $debug_log_override, $debug_log_location, $debug_extended_info;
+    global $debug_log, $debug_log_override, $debug_log_location, $debug_extended_info, $debug_log_readable;
     if (!$debug_log && !$debug_log_override) {return true;} # Do not execute if switched off.
 
     # Cannot use the general.php: get_temp_dir() method here since general may not have been included.
@@ -4168,7 +3918,14 @@ function debug($text,$resource_log_resource_ref=null,$resource_log_code=LOG_CODE
             {
             // Set the permissions if we can to prevent browser access (will not work on Windows)
             $f=fopen($debug_log_location,"a");
-            chmod($debug_log_location,0333);
+            if($debug_log_readable)
+                {
+                chmod($debug_log_location,0666);
+                }
+            else
+                {
+                chmod($debug_log_location,0222);
+                }
             }
         else
             {
@@ -4219,10 +3976,11 @@ function debug($text,$resource_log_resource_ref=null,$resource_log_code=LOG_CODE
  * Recursively removes a directory.
  *  
  * @param string $path Directory path to remove.
+ * @param array $ignore List of directories to ignore.
  *
  * @return boolean
  */
-function rcRmdir ($path)
+function rcRmdir ($path,$ignore=array())
     {
     debug("rcRmdir: " . $path);
     if (is_dir($path))
@@ -4230,7 +3988,7 @@ function rcRmdir ($path)
         $foldercontents = new DirectoryIterator($path);
         foreach($foldercontents as $objectindex => $object)
             {
-            if($object->isDot())
+            if($object->isDot() || in_array($path,$ignore))
                 {
                 continue;
                 }
@@ -4238,11 +3996,11 @@ function rcRmdir ($path)
 
             if ($object->isDir() && $object->isWritable())
                 {
-                $success = rcRmdir($path . DIRECTORY_SEPARATOR . $objectname);
+                $success = rcRmdir($path . DIRECTORY_SEPARATOR . $objectname,$ignore);
                 }				
             else
                 {
-                $success = @unlink($path . DIRECTORY_SEPARATOR . $objectname);
+                $success = try_unlink($path . DIRECTORY_SEPARATOR . $objectname);
                 }
 
             if(!$success)
@@ -4574,19 +4332,10 @@ function permission_negative_j(int $ref)
 function cleanup_files($files)
     {
     // Clean up any temporary files
-    $GLOBALS["use_error_exception"] = true;
     foreach($files as $deletefile)
         {
-        try
-            {
-            unlink($deletefile);
-            }
-        catch(Exception $e)
-            {
-            debug("Unable to delete - file not found: " . $deletefile);
-            }
+        try_unlink($deletefile);
         }
-    unset($GLOBALS["use_error_exception"]);
     }
 
 /**
@@ -4681,4 +4430,497 @@ function set_unique_filename(&$filename,&$filenames)
 function build_permission(string $perm)
     {
     return function($v) use ($perm) { return "{$perm}{$v}"; };
+    }
+
+
+/**
+ * Attempt to validate remote code.
+ * 
+ * IMPORTANT: Never use this function or eval() on any code received externally from a source that can't be trusted!
+ * 
+ * @param  string  $code  Remote code to validate
+ * 
+ * @return boolean
+ */
+function validate_remote_code(string $code)
+    {
+    $GLOBALS['use_error_exception'] = true;
+    try
+        {
+        extract($GLOBALS, EXTR_SKIP);
+        eval($code);
+        }
+    catch(Throwable $t)
+        {
+        debug('validate_remote_code: Failed to validate remote code. Reason: ' . $t->getMessage());
+        $invalid = true;
+        }
+    unset($GLOBALS['use_error_exception']);
+
+    return !isset($invalid);
+    }
+
+
+/**
+ * Get system status information
+ * 
+ * @return array
+ */
+function get_system_status()
+    {
+    $return = [
+        'results' => [
+            // Example of a test result
+            // [
+            // 'name' => 'Short name of what is being tested',
+            // 'status' => 'OK/FAIL/WARNING',
+            // 'info' => 'Any relevant information',
+            // ]
+        ],
+        'status' => 'FAIL',
+    ];
+    $warn_tests = 0;
+    $rs_root = dirname(__DIR__);
+
+
+    // Checking requirements must be done before db.php. If that's the case always stop after testing for required PHP modules
+    // otherwise the function will break because of undefined global variables or functions (as expected).
+    $check_requirements_only = false;
+    if(!defined('SYSTEM_REQUIRED_PHP_MODULES'))
+        {
+        include_once $rs_root . '/include/definitions.php';
+        $check_requirements_only = true;
+        }
+
+    // Check required PHP modules
+    $missing_modules = [];
+    foreach(SYSTEM_REQUIRED_PHP_MODULES as $module => $test_fn)
+        {
+        if(!function_exists($test_fn))
+            {
+            $missing_modules[] = $module;
+            }
+        }
+    if(count($missing_modules) > 0)
+        {
+        $return['results']['required_php_modules'] = [
+            'status' => 'FAIL',
+            'info' => 'Missing PHP modules: ' . implode(', ', $missing_modules),
+        ];
+
+        // Return now as this is considered fatal to the system. If not, later checks might crash process because of missing one of these modules.
+        return $return;
+        }
+    else if($check_requirements_only)
+        {
+        return ['results' => [], 'status' => 'OK'];
+        }
+
+
+    // Check configured utility paths
+    $system_utilities = [
+        'im-convert' => 'imagemagick_path',
+        'im-identify' => 'imagemagick_path',
+        'im-composite' => 'imagemagick_path',
+        'im-mogrify' => 'imagemagick_path',
+        'ghostscript' => 'ghostscript_path',
+        'ffmpeg' => 'ffmpeg_path',
+        'ffprobe' => 'ffmpeg_path',
+        'exiftool' => 'exiftool_path',
+        'php' => 'php_path',
+        'python' => 'python_path',
+        'archiver' => 'archiver_path',
+        'fits' => 'fits_path',
+    ];
+    $missing_utility_paths = [];
+    foreach($system_utilities as $name => $path_var_name)
+        {
+        if(isset($GLOBALS[$path_var_name]) && get_utility_path($name) === false)
+            {
+            $missing_utility_paths[$name] = $path_var_name;
+            }
+        }
+    if(!empty($missing_utility_paths))
+        {
+        $return['results']['system_utilities'] = [
+            'status' => 'FAIL',
+            'info' => 'Unable to get utility path',
+            'affected_utilities' => array_unique(array_keys($missing_utility_paths)),
+            'affected_utility_paths' => array_unique(array_values($missing_utility_paths)),
+        ];
+
+        return $return;
+        }
+
+
+    // Check database connectivity.
+    $check = sql_value('SELECT count(ref) value FROM resource_type', 0);
+    if ($check <= 0)
+        {
+        $return['results']['database_connection'] = [
+            'status' => 'FAIL',
+            'info' => 'SQL query produced unexpected result',
+        ];
+
+        return $return;
+        }
+
+
+    // Check write access to filestore
+    if(!is_writable($GLOBALS['storagedir']))
+        {
+        $return['results']['filestore_writable'] = [
+            'status' => 'FAIL',
+            'info' => '$storagedir is not writeable',
+        ];
+
+        return $return;
+        }
+
+    // Check ability to create a file in filestore
+    $hash = md5(time());
+    $file = sprintf('%s/write_test_%s.txt', $GLOBALS['storagedir'], $hash);
+    if(file_put_contents($file, $hash) === false)
+        {
+        $return['results']['create_file_in_filestore'] = [
+            'status' => 'FAIL',
+            'info' => 'Unable to write to configured $storagedir. Folder permissions are: ' . fileperms($GLOBALS['storagedir']),
+        ];
+
+        return $return;
+        }
+
+    if(!file_exists($file) || !is_readable($file))
+        {
+        $return['results']['filestore_file_exists_and_is_readable'] = [
+            'status' => 'FAIL',
+            'info' => 'Hash not saved or unreadable in file ' . $file,
+        ];
+
+        return $return;
+        }
+
+    $check = file_get_contents($file);
+    if(file_exists($file))
+        {
+        $GLOBALS['use_error_exception'] = true;
+        try
+            {
+            unlink($file);
+            }
+        catch (Throwable $t)
+            {
+            $return['results']['filestore_file_delete'] = [
+                'status' => 'WARNING',
+                'info' => sprintf('Unable to delete file "%s". Reason: %s', $file, $t->getMessage()),
+            ];
+
+            ++$warn_tests;
+            }
+        $GLOBALS['use_error_exception'] = false;
+        }
+    if($check !== $hash)
+        {
+        $return['results']['filestore_file_check_hash'] = [
+            'status' => 'FAIL',
+            'info' => sprintf('Test write to disk returned a different string ("%s" vs "%s")', $hash, $check),
+        ];
+
+        return $return;
+        }
+
+
+    // Check filestore folder browseability
+    $cfb = check_filestore_browseability();
+    if(!$cfb['index_disabled'])
+        {
+        $return['results']['filestore_indexed'] = [
+            'status' => 'FAIL',
+            'info' => $cfb['info'],
+        ];
+        return $return;
+        }
+
+
+    // Check write access to sql_log
+    if(isset($GLOBALS['mysql_log_transactions']) && $GLOBALS['mysql_log_transactions'])
+        {
+        $mysql_log_location = $GLOBALS['mysql_log_location'] ?? '';
+        $mysql_log_dir = dirname($mysql_log_location);
+        if(!is_writeable($mysql_log_dir) || (file_exists($mysql_log_location) && !is_writeable($mysql_log_location)))
+            {
+            $return['results']['mysql_log_location'] = [
+                'status' => 'FAIL',
+                'info' => 'Invalid $mysql_log_location specified in config file',
+            ];
+
+            return $return;
+            }
+        }
+
+
+    // Check write access to debug_log
+    $debug_log_location = $GLOBALS['debug_log_location'] ?? get_debug_log_dir() . '/debug.txt';
+    $debug_log_dir = dirname($debug_log_location);
+    if(!is_writeable($debug_log_dir) || (file_exists($debug_log_location) && !is_writeable($debug_log_location)))
+        {
+        $debug_log = isset($GLOBALS['debug_log']) && $GLOBALS['debug_log'];
+        $debug_log_location_test_status = ($debug_log ? 'FAIL' : 'WARNING');
+
+        $return['results']['debug_log_location'] = [
+            'status' => $debug_log_location_test_status,
+            'info' => 'Invalid $debug_log_location specified in config file',
+        ];
+
+        if($debug_log)
+            {
+            return $return;
+            }
+        else
+            {
+            ++$warn_tests;
+            }
+        }
+
+
+    // Check that the cron process executed within the last day (FAIL)
+    $last_cron = strtotime(get_sysvar('last_cron', ''));
+    $diff_days = (time() - $last_cron) / (60 * 60 * 24);
+    if($diff_days > 1.5)
+        {
+        $return['results']['cron_process'] = [
+            'status' => 'FAIL',
+            'info' => 'Cron was executed ' . round($diff_days, 1) . ' days ago.',
+        ];
+
+        return $return;
+        }
+
+
+    // Check free disk space is sufficient -  WARN (or FAIL if critical low)
+    $avail = disk_total_space($GLOBALS['storagedir']);
+    $free = disk_free_space($GLOBALS['storagedir']);
+    $calc = $free / $avail;
+    if($calc < 0.05)
+        {
+        $return['results']['free_disk_space'] = [
+            'status' => 'WARNING',
+            'info' => 'Less than 5% disk space free.',
+        ];
+        ++$warn_tests;
+        }
+    else if($calc < 0.01)
+        {
+        $return['results']['free_disk_space'] = [
+            'status' => 'FAIL',
+            'info' => 'Less than 1% disk space free.',
+        ];
+        return $return;
+        }
+
+
+    // Check the disk space against the quota limit - WARN (FAIL if exceeded)
+    if(isset($GLOBALS['disksize']))
+        {
+        $avail = $GLOBALS['disksize'] * (1000 * 1000 * 1000); # Get quota in bytes
+        $used = get_total_disk_usage(); # Total usage in bytes
+        $percent = ceil(((int) $used / $avail) * 100);
+
+        if($percent >= 95 && $percent <= 100)
+            {
+            $return['results']['quota_limit'] = [
+                'status' => 'WARNING',
+                'info' => $percent . '% used - nearly full.',
+                'avail' => $avail, 'used' => $used, 'percent' => $percent
+            ];
+            ++$warn_tests;
+            }
+        else if($percent > 100)
+            {
+            $return['results']['quota_limit'] = [
+                'status' => 'FAIL',
+                'info' => $percent . '% used - over quota.',
+                'avail' => $avail, 'used' => $used, 'percent' => $percent
+            ];
+            return $return;
+            }
+        else
+            {
+            $return['results']['quota_limit'] = [
+                'status' => 'OK',
+                'info' => $percent . '% used.',
+                'avail' => $avail, 'used' => $used, 'percent' => $percent
+            ];
+            }
+        }
+
+
+    // Check if plugins have their tests FAILed
+    $extra_fail_checks = hook('extra_fail_checks');
+    if($extra_fail_checks !== false && is_array($extra_fail_checks))
+        {
+        $return['results'][$extra_fail_checks['name']] = [
+            'status' => 'FAIL',
+            'info' => $extra_fail_checks['info'],
+        ];
+
+        return $return;
+        }
+
+
+    // Return the version number
+    $return['results']['version'] = [
+        'status' => 'OK',
+        'info' => $GLOBALS['productversion'],
+    ];
+
+
+    // Return the SVN information, if possible
+    $svn_data = '';
+
+    // - If a SVN branch, add on the branch name.
+    $svninfo = run_command('svn info '  . $rs_root);
+    $matches = [];
+    if(preg_match('/\nURL: .+\/branches\/(.+)\\n/', $svninfo, $matches) != 0)
+        {
+        $svn_data .= ' BRANCH ' . $matches[1];
+        }
+
+    // - Add on the SVN revision if we can find it.
+    // If 'svnversion' is available, run this as it will produce a better output with 'M' signifying local modifications.
+    $matches = [];
+    $svnversion = run_command('svnversion ' . $rs_root);
+    if($svnversion != '')
+        {
+        # 'svnversion' worked - use this value and also flag local mods using a detectable string.
+        $svn_data .= ' r' . str_replace('M', '(mods)', $svnversion);    
+        }
+    else if(preg_match('/\nRevision: (\d+)/i', $svninfo, $matches) != 0)
+        {
+        // No 'svnversion' command, but we found the revision in the results from 'svn info'.
+        $svn_data .= ' r' . $matches[1];
+        }
+    if($svn_data !== '')
+        {
+        $return['results']['svn'] = [
+            'status' => 'OK',
+            'info' => $svn_data];
+        }
+
+
+    // Return a list with names of active plugins
+    $return['results']['plugins'] = [
+        'status' => 'OK',
+        'info' => implode(', ', array_column(get_active_plugins(), 'name')),
+    ];
+
+    // Return active user count (last 7 days)
+    $return['results']['recent_user_count'] = [
+        'status' => 'OK',
+        'info' => get_recent_users(7),
+        'within_year' => get_recent_users(365)
+    ];
+
+    // Check if plugins have any warnings
+    $extra_warn_checks = hook('extra_warn_checks');
+    if($extra_warn_checks !== false && is_array($extra_warn_checks) )
+        {
+        foreach ($extra_warn_checks as $extra_warn_check)
+            {
+            $return['results'][$extra_warn_check['name']] = [
+                'status' => 'WARN',
+                'info' => $extra_warn_check['info'],
+                ];
+            }
+        }
+
+    if($warn_tests > 0)
+        {
+        $return['status'] = 'WARNING';
+        }
+    else
+        {
+        $return['status'] = 'OK';
+        }
+
+    return $return;
+    }
+
+
+/**
+ * Try and delete a file without triggering a fatal error
+ *
+ * @param  string $deletefile   Full path to file
+ * @return bool|string          Returns TRUE on success or a string containing error
+ */
+function try_unlink($deletefile)
+    {
+    $GLOBALS["use_error_exception"] = true;
+    try
+        {
+        $deleted = unlink($deletefile);
+        }
+    catch (Throwable $t)
+        {
+        $message = "Unable to delete : " . $deletefile . ". Reason" . $t->getMessage();
+        debug($message);
+        return $message;
+        }        
+    unset($GLOBALS["use_error_exception"]);
+    return $deleted;
+    }
+
+
+/**
+ * Check filestore folder browseability.
+ * For security reasons (e.g data breach) the filestore location shouldn't be indexed by the web server (in Apache2 - disable autoindex module)
+ * 
+ * @return array Returns data structure with following keys:-
+ *               - status: An end user status of OK/FAIL
+ *               - info: Any extra relevant information (aimed at end users)
+ *               - filestore_url: ResourceSpace URL to the filestore location
+ *               - index_disabled: PHP bool (used by code). FALSE if web server allows indexing/browsing the filestore, TRUE otherwise
+ */
+function check_filestore_browseability()
+    {
+    $filestore_url = $GLOBALS['storageurl'] ?? "{$GLOBALS['baseurl']}/filestore";
+    $timeout = 5;
+    $return = [
+        'status' => $GLOBALS['lang']['status-fail'],
+        'info' => $GLOBALS['lang']['noblockedbrowsingoffilestore'],
+        'filestore_url' => $filestore_url,
+        'index_disabled' => false,
+    ];
+
+    $GLOBALS['use_error_exception'] = true;
+    try
+        {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $filestore_url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $timeout);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_MAXREDIRS, 2);
+        $output = curl_exec($ch);
+        $response_status_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);        
+        }
+    catch (Throwable $t)
+        {
+        $return['status'] = $GLOBALS['lang']['unknown'];
+        $return['info'] = $GLOBALS['show_error_messages'] && $GLOBALS['show_detailed_errors'] ? $t->getMessage() : '';
+        return $return;
+        }
+    unset($GLOBALS['use_error_exception']);
+
+    // Web servers (RFC 2616) shouldn't return a "200 OK" if the server has indexes disabled. Usually it's "404 Not Found".
+    if($response_status_code !== 200)
+        {
+        $return['status'] = $GLOBALS['lang']['status-ok'];
+        $return['info'] = '';
+        $return['index_disabled'] = true;
+        }
+
+    return $return;
     }

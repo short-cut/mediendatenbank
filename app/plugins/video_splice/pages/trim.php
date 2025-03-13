@@ -1,8 +1,7 @@
 <?php
 include "../../../include/db.php";
-
 include "../../../include/authenticate.php";
-include "../../../include/image_processing.php";
+include_once "../../../include/image_processing.php";
 
 $ref=getvalescaped("ref","",true);
 $alt=getvalescaped("alternative","",true);
@@ -28,6 +27,7 @@ $collection_add = getval("collection_add",null);
 $start_time = getval("input_start",null);
 $end_time = getval("input_end",null);
 $upload_type = getval("upload_type",null);
+$access = get_resource_access($ref);
 
 $urlparams= array(
     "resource" => $ref,

@@ -187,7 +187,7 @@ if ($submitted != "")
             'includetext'           => $includetext,
             'count_data_only_types' => $count_data_only_types,
             'usage'                 => $usage,
-            'usagecomment'          => $usagecomment,
+            'usagecomment'          => str_replace(array('\r','\n'), " ", $usagecomment),
             'settings_id'           => $settings_id,
             'include_csv_file'      => $include_csv_file
         );
@@ -204,7 +204,10 @@ if ($submitted != "")
             '',
             '',
             $lang["oj-collection-download-success-text"],
-            $lang["oj-collection-download-failure-text"]);
+            $lang["oj-collection-download-failure-text"],
+            '',
+            JOB_PRIORITY_USER
+            );
 
         exit();
         }
@@ -313,9 +316,9 @@ if ($submitted != "")
     # Build a list of files to download
     for ($n=0;$n<count($result);$n++)
         {
-        resource_type_config_override($result[$n]["resource_type"]);
-        $copy=false; 
         $ref=$result[$n]["ref"];
+        resource_type_config_override($result[$n]["resource_type"], false); # False means execute override for every resource
+        $copy=false; 
         # Load access level
         $access=get_resource_access($result[$n]);
         $use_watermark=check_use_watermark();
@@ -575,13 +578,13 @@ function ajax_download(download_offline, tar)
 
     if(download_offline && !tar)
         {
-        styledalert('<?php echo $lang['collection_download']; ?>', '<?php echo $lang['jq_notify_user_preparing_archive']; ?>');
+        styledalert("<?php echo $lang['collection_download']; ?>", "<?php echo $lang['jq_notify_user_preparing_archive']; ?>");
         document.getElementById('downloadbuttondiv').style.display='none';
         return false;
         }
 
 	document.getElementById('downloadbuttondiv').style.display='none';	
-	document.getElementById('progress').innerHTML='<br /><br /><?php echo $lang["collectiondownloadinprogress"];?>';
+	document.getElementById('progress').innerHTML="<br /><br /><?php echo $lang['collectiondownloadinprogress'];?>";
 	document.getElementById('progress3').style.display='none';
 	document.getElementById('progressdiv').style.display='block';
 

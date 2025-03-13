@@ -1,7 +1,7 @@
 <?php
 
 // current upgrade level of ResourceSpace (used for migration scripts, will set sysvar using this if not already defined)
-define('SYSTEM_UPGRADE_LEVEL', 17);
+define('SYSTEM_UPGRADE_LEVEL', 18);
 
 // PHP VERSION AND MINIMUM SUPPORTED
 if (!defined('PHP_VERSION_ID'))
@@ -10,7 +10,7 @@ if (!defined('PHP_VERSION_ID'))
     $version = explode('.', PHP_VERSION);
     define('PHP_VERSION_ID', ($version[0] * 10000 + $version[1] * 100 + $version[2]));
     }
-define('PHP_VERSION_SUPPORTED', 70000); // 7.0 is the minimum supported.
+define('PHP_VERSION_SUPPORTED', 70205); // 7.2.5 is the minimum supported, a requirement for Uppy.
 
 // ------------------------- FIELD TYPES -------------------------
 
@@ -110,6 +110,7 @@ define ('LOG_CODE_DISABLED',            '-');
 define ('LOG_CODE_LOCKED',              'X');
 define ('LOG_CODE_UNLOCKED',            'Y');
 define ('LOG_CODE_DELETED_ACCESS_KEY',  'XK');
+define ('LOG_CODE_FAILED_LOGIN_ATTEMPT','Xl');
 define ('LOG_CODE_EXTERNAL_UPLOAD',     'EUP');
 define ('LOG_CODE_COLLECTION_REMOVED_RESOURCE',				'r');
 define ('LOG_CODE_COLLECTION_REMOVED_ALL_RESOURCES',		'R');
@@ -171,6 +172,12 @@ define ('STATUS_ACTIVE',				1);
 define ('STATUS_COMPLETE',				2);	
 define ('STATUS_INPROGRESS',            3);	
 define ('STATUS_ERROR',					5);
+
+// ------------------------- JOB PRIORITY CODES -------------------------
+define ('JOB_PRIORITY_IMMEDIATE',   0);
+define ('JOB_PRIORITY_USER',		1);
+define ('JOB_PRIORITY_SYSTEM',		2);
+define ('JOB_PRIORITY_COMPLETED',   9);
 
 // -------------------- General definitions --------------------
 define ('RESOURCE_LOG_APPEND_PREVIOUS', -1);    // used to specify that we want to append the previous resource_log entry
@@ -277,11 +284,9 @@ $permitted_html_tags =  array(
 $permitted_html_attributes = array('id', 'class', 'style');
 
 // Standard paths (e.g libraries)
-$jquery_path = "/lib/js/jquery-3.5.1.min.js";
+$jquery_path = "/lib/js/jquery-3.6.0.min.js";
 $jquery_ui_path = "/lib/js/jquery-ui-1.12.1.min.js";
 define('LIB_OPENSEADRAGON', '/lib/openseadragon_2.4.2');
-const LIB_PLUPLOAD = '/lib/plupload_2.3.7';
-
 
 // Define dropdown action categories
 define ('ACTIONGROUP_RESOURCE',     1);
@@ -365,7 +370,12 @@ define("RESOURCE_ACCESS_RESTRICTED", 1); # 1 = Restricted Access (download only 
 define("RESOURCE_ACCESS_CONFIDENTIAL", 2); # Confidential (no access)
 define("RESOURCE_ACCESS_CUSTOM_GROUP", 3); # custom group access
 define("RESOURCE_ACCESS_INVALID_REQUEST", 99); # invalid resource request eg. invalid resource ref
-
+const RESOURCE_ACCESS_TYPES = [
+    RESOURCE_ACCESS_FULL,
+    RESOURCE_ACCESS_RESTRICTED,
+    RESOURCE_ACCESS_CONFIDENTIAL,
+    RESOURCE_ACCESS_CUSTOM_GROUP,
+];
 
 // ----------------------------------------------
 // MESSAGES
@@ -441,3 +451,65 @@ $MARKER_COLORS = array(
 
 // Reports
 const REPORT_PLACEHOLDER_NON_CORRELATED_SQL = '[non_correlated_sql]';
+
+// SYSTEM - GENERAL
+const SYSTEM_REQUIRED_PHP_MODULES = [
+    'curl' => 'curl_init',
+    'gd' => 'imagecrop',
+    'xml' => 'xml_parser_create',
+    'mbstring' => 'mb_strtoupper',
+    'intl' => 'locale_get_default',
+    'json' => 'json_decode',
+    'zip' => 'zip_open',
+    'apcu' => 'apcu_fetch',
+];
+
+const SENSITIVE_VARIABLE_NAMES = [
+    'mysql_server',
+    'mysql_username',
+    'mysql_password',
+    'mysql_db',
+    'mysql_log_location',
+    'mysqli_ssl_server_cert',
+    'mysqli_ssl_ca_cert',
+    'read_only_db_username',
+    'read_only_db_password',
+    'storagedir',
+    'storageurl',
+    'email_notify',
+    'spider_password',
+    'scramble_key',
+    'scramble_key_old',
+    'api_scramble_key',
+    'smtp_username',
+    'smtp_password',
+    'homeanim_folder',
+    'remote_config_url',
+    'remote_config_key',
+    'syncdir',
+    'debug_log_location',
+    'log_error_messages_url',
+    'CORS_whitelist',
+    'facial_recognition_face_recognizer_models_location',
+    'fstemplate_alt_scramblekey',
+
+    // Plugins
+    'checkmail_email',
+    'checkmail_password',
+    'doi_username',
+    'doi_password',
+    'ldapauth_rootdn',
+    'ldapauth_rootpass',
+    'ldapauth',
+    'tms_link_user',
+    'tms_link_password',
+    'wordpress_sso_secret',
+    'youtube_publish_username',
+    'youtube_publish_password',
+    'vimeo_publish_client_id',
+    'vimeo_publish_client_secret',
+    'vimeo_publish_access_token',
+    'museumplus_api_user',
+    'museumplus_api_pass',
+    'emu_email_notify',
+];

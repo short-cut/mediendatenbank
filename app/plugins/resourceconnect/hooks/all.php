@@ -17,10 +17,15 @@ function HookResourceconnectAllCheck_access_key($resource,$key)
     if ($key!=substr(md5($access_key . $resource),0,10)) {return false;} # Invalid access key. Fall back to user logins.
 
     global $resourceconnect_user; # Which user to use for remote access?
-    $userdata=validate_user("u.ref='$resourceconnect_user'");
-    setup_user($userdata[0]);
-    
-    
+    $user_select_sql = new PreparedStatementQuery();
+    $user_select_sql->sql = "u.ref = ?";
+    $user_select_sql->parameters = ["i",$resourceconnect_user];
+    $user_data = validate_user($user_select_sql);
+    if(!is_array($user_data) || !isset($user_data[0]))
+        {
+        return false;
+        }
+    setup_user($user_data[0]);
     
     # Set that we're being accessed via resourceconnect.
     global $is_resourceconnect;
@@ -282,3 +287,20 @@ function HookResourceconnectAllCountresult($collection,$count)
 	return $count+sql_value("select count(*) value from resourceconnect_collection_resources where collection='$collection'",0);
 
 	}
+
+function HookResourceConnectAllgetRemoteResources($collection)
+    {
+    return count(sql_array("SELECT ref AS value FROM resourceconnect_collection_resources WHERE collection='". escape_check($collection) ."'"));
+    }
+
+function HookResourceConnectAllrenderadditionalthumbattributes($resource)
+    {
+    if($resource['ref'] == -87412 && !empty($resource['source_ref']))
+        {
+        echo "data-identifier='".htmlspecialchars($resource['source_ref'])."'";
+        }
+    elseif($resource['ref'] == -87412 && empty($resource['source_ref']))
+        {
+        echo "data-identifier='".htmlspecialchars($resource['ref_tab'])."'";
+        }
+    }  

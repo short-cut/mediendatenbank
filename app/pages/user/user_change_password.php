@@ -117,31 +117,32 @@ else
     include '../../include/login_background.php';
     ?>
     <div id="LoginHeader">
-        <img src="<?php echo get_header_image(); ?>" class="LoginHeaderImg"></img>
+        <img src="<?php echo get_header_image(); ?>" class="LoginHeaderImg">
     </div>
     <?php
     }
 
-    if ($userpassword=="b58d18f375f68d13587ce8a520a87919" || $userpassword=="b58d18f375f68d13587ce8a520a87919")
+    if ($userpassword=="b58d18f375f68d13587ce8a520a87919")
         {
         ?><div class="FormError" style="margin:0;"><?php echo $lang['secureyouradminaccount'];?></div><p></p><?php
         }
 	
     if (!hook("replaceuserpreferencesheader")) { ?>
-	<h1><?php echo $lang["changeyourpassword"]?></h1>
-	<?php } ?> <!-- End hook("replaceuserpreferencesheader") -->
+	<p>
+        <h1><?php echo $lang["changeyourpassword"]?></h1>
+        <?php } ?> <!-- End hook("replaceuserpreferencesheader") -->
 
-    <p><?php 
-	if($password_reset_mode && $last_active=="")
-		{
-		// The user is a new account setting a password for the first time
-		echo text("introtext_new");
-		}
-	else
-		{
-		echo text("introtext");
-		}
-		?>
+        <?php 
+        if($password_reset_mode && $last_active=="")
+            {
+            // The user is a new account setting a password for the first time
+            echo text("introtext_new");
+            }
+        else
+            {
+            echo text("introtext");
+            }
+            ?>
 	</p>
 
 	<?php if (getval("expired","")!="") { ?><div class="FormError">!! <?php echo $lang["password_expired"]?> !!</div><?php } ?>
@@ -168,11 +169,6 @@ else
 	else
 	    {?>
 	    <input type="hidden" name="rp" id="resetkey" value="<?php echo htmlspecialchars($resetuserref) . htmlspecialchars($resetkey)  ?>" />    
-	    <div class="Question">
-	    <label for="username"><?php echo $lang["username"]?></label>
-	    <div class="fixed" ><?php echo $username ?></div>
-	    <div class="clearerleft"> </div>
-	    </div>
 	    <?php
 	    }
 	    ?>

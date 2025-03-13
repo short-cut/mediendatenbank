@@ -40,7 +40,7 @@ if($camera_autorotation)
 
     if($autorotate == "")
         {
-        $autorotate = (isset($autorotation_preference) ? $autorotation_preference : false);
+        $autorotate = (isset($autorotation_preference) ? $autorotation_preference : $camera_autorotation_checked);
         }
     else
         {
@@ -73,7 +73,7 @@ $uploadparams["autorotate"] = $autorotate;
 $uploadparams["entercolname"] = getvalescaped("entercolname","");
 $uploadparams["k"] = $k;
 
-# Upload review mode will be true if we are coming from upload_plupload and then editing (config $upload_then_edit)
+# Upload review mode will be true if we are coming from upload_batch and then editing (config $upload_then_edit)
 #   or if it's a special collection search where the collection is the negated user reference meaning its resources are to be edited 
 $upload_review_mode=(getval("upload_review_mode","")!="" || $search=="!collection-" . $userref);
 $lastedited = getval('lastedited',0,true);
@@ -102,6 +102,7 @@ if ($upload_review_mode)
         {
         $collection=0-$userref;
         }
+
     # Make sure review collection is clear of any resources moved out of users archive status permissions by other users
     if ($edit_access_for_contributor == false)
         {
@@ -144,7 +145,8 @@ if ($upload_review_mode)
                 "sort"=>"DESC",
                 "archive"=>$defaultarchivestate,
                 "refreshcollectionframe"=>"true",
-                "resetlockedfields"=>"true"
+                "resetlockedfields"=>"true",
+                "collection_add"=>$collection_add
                 );
                 
             if ($defaultarchivestate == -2 && $pending_submission_prompt_review && checkperm("e-1"))
@@ -314,12 +316,15 @@ if($ref < 0 && $resource_type_force_selection)
   $resource["resource_type"] = "";
   }
 
+// Create metadata resource record without uploading a file e.g. template, text only resource.
+$create_record_only = getval("recordonly", "") != "";
+
 // Set initial value for noupload
 $noupload = getval("noupload","") != "" || in_array($resource['resource_type'], $data_only_resource_types);
 
 # Allow to specify resource type from url for new resources
 $resource_type=getval("resource_type","");
-if ($ref<0 && $resource_type != "" && $resource_type!=$resource["resource_type"] && !checkperm("XU{$resource_type}"))     // only if new resource specified and user has permission for that resource type
+if ($ref<0 && !$create_record_only && $resource_type != "" && $resource_type!=$resource["resource_type"] && !checkperm("XU{$resource_type}"))     // only if new resource specified and user has permission for that resource type
     {
     update_resource_type($ref,intval($resource_type));
     $resource["resource_type"] = $resource_type;
@@ -450,7 +455,17 @@ if ($ref<0 && isset($disk_quota_limit_size_warning_noupload))
         redirect($explain);
         }
     }
-  
+
+// Check if upload should be disabled because the filestore location is indexed and browseable
+if($ref < 0)
+    {
+    $cfb = check_filestore_browseability();
+    if(!$cfb['index_disabled'])
+        {
+        exit(error_alert($lang['error_generic_misconfiguration'], true, 200)); 
+        }
+    }
+
 $urlparams= array(
 	'ref'				=> $ref,
     'search'			=> $search,
@@ -463,6 +478,7 @@ $urlparams= array(
     'uploader'          => $uploader,
     'single'            => ($single ? "true" : ""),
     'collection'        => $collection,
+    "collection_add"    => $collection_add,
     'editsearchresults' => ($editsearch ? "true" : ""),
     'k'                 => $k,
 );
@@ -613,7 +629,8 @@ if ((getval("autosave","")!="") || (getval("tweak","")=="" && getval("submitted"
                                 # Also check for regular expression match
                                 if (trim(strlen($field["regexp_filter"]))>=1)
                                     {
-                                    if(preg_match("#^" . $field["regexp_filter"] . "$#",$field["value"],$matches) <= 0)
+                                    global $regexp_slash_replace;
+                                    if(preg_match("#^" . str_replace($regexp_slash_replace, '\\', $field["regexp_filter"]) . "$#",$field["value"],$matches) <= 0)
                                         {
                                         $fielderror = true;
                                         }
@@ -665,7 +682,8 @@ if ((getval("autosave","")!="") || (getval("tweak","")=="" && getval("submitted"
                                     "sort"=>"DESC",
                                     "archive"=>$setarchivestate,
                                     "refreshcollectionframe"=>"true",
-                                    "resetlockedfields"=>"true"
+                                    "resetlockedfields"=>"true",
+                                    "collection_add"=>$collection_add
                                     );
                                 if ($setarchivestate == -2 && $pending_submission_prompt_review && checkperm("e-1"))
                                     {
@@ -731,12 +749,12 @@ if ((getval("autosave","")!="") || (getval("tweak","")=="" && getval("submitted"
                             redirect(generateURL($baseurl_short . "pages/view.php",$urlparams, array("refreshcollectionframe"=>"true")));
                             exit();
                             }
-                        redirect(generateURL($baseurl_short . "pages/upload_plupload.php",array_merge($urlparams,$uploadparams)) . hook("addtouploadurl"));
+                        redirect(generateURL($baseurl_short . "pages/upload_batch.php",array_merge($urlparams,$uploadparams)) . hook("addtouploadurl"));
                         }
                     else
                         {
                         // Default
-                        redirect(generateURL($baseurl_short . "pages/upload_plupload.php",array_merge($urlparams,$uploadparams)) . hook("addtouploadurl"));
+                        redirect(generateURL($baseurl_short . "pages/upload_batch.php",array_merge($urlparams,$uploadparams)) . hook("addtouploadurl"));
                         }
                     }
                 }
@@ -1134,6 +1152,10 @@ if($ref < 0)
         $uploadparams["forcesingle"] = "";
         $uploadparams["noupload"] = "";
         }
+    if ($create_record_only)
+        {
+        $uploadparams["recordonly"] = "true";
+        }
     $form_action = generateURL($baseurl_short . "pages/edit.php",array_merge($urlparams,$uploadparams));
     }
 else
@@ -1279,7 +1301,7 @@ else
             }
         else
             {
-            // Defualt - batch upload using plupload
+            // Default - batch upload
             $titleh1 = $lang["addresourcebatchbrowser"];
             }?>        
         <h1><?php echo $titleh1 ?></h1>
@@ -1692,7 +1714,7 @@ if($tabs_on_edit)
     {
         sort($tab_names);
     }
-    
+
     // create new array of fields, maintaining field order, and the tab order as defined above
     $fields_tab_ordered = array();
 
@@ -1711,18 +1733,12 @@ if($tabs_on_edit)
     #  -----------------------------  Draw tabs ---------------------------
   $tabname="";
   $tabcount=0;
-  if (count($fields)>0 && ($n==0 || $fields[0]["tab_name"]!=""))
+  if (count($fields)>0)
     { 
     $extra="";
     $tabname=null;
     $tabcount=0;
     $tabtophtml="";
-    $tabs_set = false;
-
-    foreach ($fields as $field)
-        {
-        $field["tab_name"] != "" ? $tabs_set = true : $tabs_set = $tabs_set;
-        }
 
     $fields_count = count($fields);
     for ($n=0;$n<$fields_count;$n++)
@@ -1732,14 +1748,8 @@ if($tabs_on_edit)
             {
             if ( $fields[$n]["tab_name"] !== $tabname )
                 {
-                if ($tabs_set === true)
-                    {
-                    $newtabname = $fields[$n]["tab_name"] != "" ? $fields[$n]["tab_name"] : $lang["default"];
-                    }
-                else
-                    {
-                    $newtabname = "";
-                    }
+                $newtabname = $fields[$n]["tab_name"] != "" ? $fields[$n]["tab_name"] : $lang["default"];
+
                 if($tabcount==0){$tabtophtml.="<div class=\"BasicsBox\" id=\"BasicsBoxTabs\"><div class=\"TabBar\">";}
                 $tabtophtml.="<div id=\"".($modal ? "Modal" : "")."tabswitch" . $tabcount . "-".$ref."\" class=\"Tab";
                 if($tabcount==0){$tabtophtml.=" TabSelected ";}
@@ -2026,18 +2036,22 @@ else
            </label><?php
 
         # Autosave display
-          if ($edit_autosave  || $ctrls_to_save) { ?><div class="AutoSaveStatus" id="AutoSaveStatusRelated" style="display:none;"></div><?php } ?>
+        if ($edit_autosave  || $ctrls_to_save) { ?><div class="AutoSaveStatus" id="AutoSaveStatusRelated" style="display:none;"></div><?php } ?>
 
-          <textarea class="stdwidth" rows=3 cols=50 name="related" id="related"<?php
-          if ($edit_autosave) {?>onChange="AutoSave('Related');"<?php } ?>><?php
-          
-          $relatedref = ($lockable_fields && in_array("related_resources",$locked_fields) && $lastedited > 0) ? $lastedited : $ref;
-          $related = get_related_resources($relatedref);
+        <textarea class="stdwidth" rows=3 cols=50 name="related" id="related"<?php
+        if ($edit_autosave) {?>onChange="AutoSave('Related');"<?php } ?>><?php
+        
+        if (!$editsearch)
+            {
+            $relatedref = ($lockable_fields && in_array("related_resources",$locked_fields) && $lastedited > 0) ? $lastedited : $ref;
+            $related = get_related_resources($relatedref);
 
-          echo ((getval("resetform","")!="")?"":join(", ", $related))?></textarea>
+            echo ((getval("resetform","")!="")?"":join(", ", $related));
+            }
+        ?></textarea>
 
-          <div class="clearerleft"> </div>
-          </div><?php
+        <div class="clearerleft"> </div>
+        </div><?php
        } 
     }
     
@@ -2246,30 +2260,35 @@ if ($multiple && !$disable_geocoding)
             map3.setView([geoLat, geoLong], currentZoom);
         });
     </script>
-
+    </div>
     <div class="clearerleft"> </div> <?php
     hook("locationextras");
     }
 
 if($disablenavlinks)
-        { ?>
-        <input type=hidden name="disablenav" value="true">
-        <?php
-        }
+    { ?>
+    <input type=hidden name="disablenav" value="true">
+    <?php
+    }
+
+if(is_int_loose($collection_add))
+    { 
+    echo "<input type=hidden name='collection_add' value='" . htmlspecialchars($collection_add) . "'>";
+    }
         
 if (!$edit_upload_options_at_top && display_upload_options()){include '../include/edit_upload_options.php';}
 
-if (!$external_upload)
+if (!$external_upload && !$edit_upload_options_at_top)
     {
     ?></div><?php
     }
 
-if(!hook('replacesubmitbuttons'))
-    {
-    SaveAndClearButtons("NoPaddingSaveClear QuestionSticky",true,true);
-    }
+hook('appendcustomfields');
 
-hook('aftereditcollapsiblesection');
+if ($edit_upload_options_at_top)
+    {
+    ?></div><?php
+    }
 ?>
 </div><!-- end of BasicsBoxLeft -->
 <?php
@@ -2279,16 +2298,7 @@ if ($ref>0 && !$multiple)
     <?php
     global $custompermshowfile;
         hook('custompermshowfile');
-        if(     (
-                (!$is_template && !checkperm('F*'))
-                    ||
-                $custompermshowfile
-                    ||
-                $external_upload
-                )
-            &&
-                !hook('replaceeditpreview')
-            )
+        if(!$is_template && !hook('replaceeditpreview'))
             { ?>
             <div class="Question QuestionStickyRight" id="question_file">
             <div class="FloatingPreviewContainer">
@@ -2340,7 +2350,7 @@ if ($ref>0 && !$multiple)
                 <?php 
                 }
 
-            if ($allow_metadata_revert)
+            if ($allow_metadata_revert && !checkperm('F*'))
                 {?>
                 <br />
                 <a href="<?php echo generateURL($baseurl_short . "pages/edit.php",$urlparams,array("exif"=>"true")); ?>" onClick="return confirm('<?php echo $lang["confirm-revertmetadata"]?>');"><?php echo LINK_CARET ?><?php echo $lang["action-revertmetadata"]?></a>
@@ -2353,7 +2363,21 @@ if ($ref>0 && !$multiple)
     <?php }
     ?>
 </div><!-- end of BasicsBoxRight-->
-<?php } ?>
+<?php }
+else
+    {
+    ?><div class="BasicsBoxRight"></div><?php
+    }
+
+if(!hook('replacesubmitbuttons'))
+    {
+    SaveAndClearButtons("NoPaddingSaveClear QuestionSticky",true,true);
+    }
+
+hook('aftereditcollapsiblesection');
+
+?>
+
 </div><!-- end of BasicsBox -->
 </form>
 
@@ -2388,6 +2412,10 @@ if ($ref>0 && !$multiple)
 <?php
 if (isset($show_error) && isset($save_errors) && is_array($save_errors) && !hook('replacesaveerror'))
   {
+  foreach ($save_errors as &$save_error) 
+    {
+    $save_error=htmlspecialchars($save_error);
+    }
   ?>
   <script>
   preventautoscroll = true;
@@ -2398,7 +2426,7 @@ if (isset($show_error) && isset($save_errors) && is_array($save_errors) && !hook
     {
     error_fields[0].scrollIntoView();
     }
-  styledalert('<?php echo $lang["error"]?>','<?php echo implode("<br />",$save_errors); ?>',450);
+    styledalert('<?php echo $lang["error"]?>','<?php echo implode("<br />",$save_errors); ?>',450);
   </script>
   <?php
   }

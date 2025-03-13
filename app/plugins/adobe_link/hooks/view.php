@@ -199,8 +199,10 @@ function HookAdobe_linkViewDownloadbuttonreplace()
     if($edit_access && in_array(strtolower($adb_ext),$adobe_link_document_extensions))
         {
         $extraparams["replace_resource"] =  $ref;
+        $extraparams["processupload"]    =  "true";
+        $extraparams["no_exif"]          =  "yes";
         $extraparams[$CSRF_token_identifier] =  generateCSRFToken($usersession, "adobe_upload");
-        $uploadpath = generateURL($baseurl . "/pages/upload_plupload.php", $urlparams, $extraparams);
+        $uploadpath = generateURL($baseurl . "/pages/upload_batch.php", $urlparams, $extraparams);
         $adobesavelink = "</td><td class='DownloadButton'><a href='" . $uploadpath . "' ";
         $adobesavelink .= "data-attribute-path='" . htmlspecialchars($uploadpath) . "' ";
         $adobesavelink .= "onclick='AdobeLinkDocumentSave(this);return false;' ";
@@ -215,7 +217,7 @@ function HookAdobe_linkViewOrigdownloadlink()
 	{
 	# Adds a special link to the download button.
 	global $userref, $usergroup, $lang, $ref, $access, $resource, $k, $size_info, $baseurl, $urlparams, $path, $direct_download, $alternative;
-	global $adobe_link_document_extensions, $adobe_link_asset_extensions, $lang, $edit_access;
+	global $adobe_link_document_extensions, $adobe_link_asset_extensions, $lang, $edit_access, $adb_ext;
     
     if(!isset($_SERVER['HTTP_USER_AGENT']) 
         ||
@@ -266,7 +268,9 @@ function HookAdobe_linkViewOrigdownloadlink()
      if($edit_access && in_array(strtolower($resource['file_extension']),$adobe_link_document_extensions))
         {
         $extraparams["replace_resource"] =  $ref;
-        $uploadpath = generateURL($baseurl . "/pages/upload_plupload.php", $urlparams, $extraparams);
+        $extraparams["processupload"]    =  "true";
+        $extraparams["no_exif"]          =  "yes";
+        $uploadpath = generateURL($baseurl . "/pages/upload_batch.php", $urlparams, $extraparams);
         $adobesavelink = "</td><td class='DownloadButton'><a href='" . $uploadpath . "'";
         $adobesavelink .= "data-attribute-path='" . htmlspecialchars($uploadpath) . "' ";
         $adobesavelink .= "onclick='AdobeLinkDocumentSave(this);return false;' ";

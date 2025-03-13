@@ -184,10 +184,11 @@ function save_proposed_changes($ref)
 				# Check for regular expression match
 				if (trim(strlen($fields[$n]["regexp_filter"]))>=1 && strlen($val)>0)
 					{
-					if(preg_match("#^" . $fields[$n]["regexp_filter"] . "$#",$val,$matches)<=0)
+                    global $regexp_slash_replace;
+					if(preg_match("#^" . str_replace($regexp_slash_replace, '\\', $fields[$n]["regexp_filter"]) . "$#",$val,$matches)<=0)
 						{
 						global $lang;
-						debug($lang["information-regexp_fail"] . ": -" . "reg exp: " . $fields[$n]["regexp_filter"] . ". Value passed: " . $val);
+						debug($lang["information-regexp_fail"] . ": -" . "reg exp: " . str_replace($regexp_slash_replace, '\\', $fields[$n]["regexp_filter"]) . ". Value passed: " . $val);
 						if (getval("autosave","")!="")
 							{
 							exit();
@@ -216,10 +217,11 @@ function save_proposed_changes($ref)
 				# Check for regular expression match
 				if (trim(strlen($fields[$n]["regexp_filter"]))>=1 && strlen($val)>0)
 						{
-						if(preg_match("#^" . $fields[$n]["regexp_filter"] . "$#",$val,$matches)<=0)
+                        global $regexp_slash_replace;
+						if(preg_match("#^" . str_replace($regexp_slash_replace, '\\', $fields[$n]["regexp_filter"]) . "$#",$val,$matches)<=0)
 								{
 								global $lang;
-								debug($lang["information-regexp_fail"] . ": -" . "reg exp: " . $fields[$n]["regexp_filter"] . ". Value passed: " . $val);
+								debug($lang["information-regexp_fail"] . ": -" . "reg exp: " . str_replace($regexp_slash_replace, '\\', $fields[$n]["regexp_filter"]) . ". Value passed: " . $val);
 								if (getval("autosave","")!="")
 										{
 										exit();
@@ -271,7 +273,9 @@ function save_proposed_changes($ref)
                         }
                     # This value is different from the value we have on record. 
                     # Add this to the proposed changes table for the user
-                    sql_query("INSERT INTO propose_changes_data(resource, user, resource_type_field, value, date) VALUES('{$ref}','{$userref}', '{$fields[$n]['ref']}', '" . escape_check($val) . "',now())");
+                    $parameters=array("i",$ref, "i",$userref, "i",$fields[$n]['ref'], "s",$val);
+                    ps_query("INSERT INTO propose_changes_data(resource, user, resource_type_field, value, date) 
+                                VALUES( ?, ?, ?, ?, now() )", $parameters);
                     }            
             
             }
@@ -282,32 +286,35 @@ function save_proposed_changes($ref)
 function get_proposed_changes($ref, $userid)
     {
     //Get all the changes proposed by a user
-    $query = sprintf('
-                SELECT d.value,
-                       d.resource_type_field,
-                       d.date,
-                       f.*,
-                       f.required AS frequired,
-                       f.ref AS fref
+    $query = "SELECT d.value,
+                     d.resource_type_field,
+                     d.date,
+                     f.*,
+                     f.required AS frequired,
+                     f.ref AS fref
                   FROM resource_type_field AS f
              LEFT JOIN (
                             SELECT *
                               FROM propose_changes_data
-                             WHERE resource = "%1$s"
-                               AND user = "%2$s"
-                       ) AS d ON d.resource_type_field = f.ref AND d.resource = "%1$s"
+                             WHERE resource = ?
+                               AND user = ?
+                       ) AS d ON d.resource_type_field = f.ref AND d.resource = ?
              GROUP BY f.ref
-             ORDER BY f.resource_type, f.order_by, f.ref;
-        ',
-        escape_check($ref),
-        escape_check($userid)
-    );
-    $changes = sql_query($query);
+             ORDER BY f.resource_type, f.order_by, f.ref;";
+    $parameters=array("i",$ref, "i",$userid, "i",$ref);
+    $changes = ps_query($query, $parameters);
 
     return $changes;
     }
         
 function delete_proposed_changes($ref, $userid="")
 	{
-    sql_query("DELETE FROM propose_changes_data WHERE resource = '" . escape_check($ref)  . "'" . ($userid!="" ? "AND user='" . escape_check($userid) . "'":""));
+    $query = "DELETE FROM propose_changes_data WHERE resource = ?";
+    $parameters=array("i",$ref);
+    if ($userid!="")
+        {
+        $query.=" AND user=?";
+        $parameters=array_merge($parameters,array("i",$userid));
+        }
+    ps_query($query, $parameters);
     }

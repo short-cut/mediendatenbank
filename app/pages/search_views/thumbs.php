@@ -3,23 +3,20 @@ if (!hook("renderresultthumb"))
     {
     # Establish various metrics for use in thumbnail rendering
     $resolved_title_trim=0; 
-
     $field_height = 31;
-    $resource_type_icon_height = 22;
     $resource_id_height = 21;
-    $resource_panel_icons_height = 31;
 
     hook("thumbstextheight");
 
     if ($display == "xlthumbs")
         {
         $resolved_title_trim = $xl_search_results_title_trim;
-        $resource_panel_height = 320 + $resource_panel_icons_height;
+        $resource_panel_height = 375;
         }
     else
         {
         $resolved_title_trim = $search_results_title_trim;
-        $resource_panel_height = 175 + $resource_panel_icons_height;
+        $resource_panel_height = 228;
         }
 
     $thumbs_displayed_fields_height = $resource_panel_height + ($field_height * count($thumbs_display_fields));
@@ -27,11 +24,6 @@ if (!hook("renderresultthumb"))
     if($annotate_enabled || (isset($annotate_enabled_adjust_size_all) && $annotate_enabled_adjust_size_all == true))
         {
         $thumbs_displayed_fields_height += $field_height;
-        }
-
-    if($resource_type_icons)
-        {
-        $thumbs_displayed_fields_height += $resource_type_icon_height;
         }
 
     # Increase height of search panel for each extended field
@@ -66,19 +58,29 @@ if (!hook("renderresultthumb"))
     <!--Resource Panel -->    
     <div class="ResourcePanel <?php echo implode(" ", $class); ?> <?php echo ($display == 'xlthumbs' ? 'ResourcePanelLarge' : '') ?> ArchiveState<?php echo $result[$n]['archive'];?> <?php hook('thumbsviewpanelstyle'); ?> ResourceType<?php echo $result[$n]['resource_type']; ?>" id="ResourceShell<?php echo htmlspecialchars($ref)?>" <?php echo hook('resourcepanelshell_attributes')?>
     style="height: <?php echo $thumbs_displayed_fields_height; ?>px;"
+    <?php hook('renderadditionalthumbattributes', '', [$result[$n]]);?>
     >
-        <?php  
-        if ($resource_type_icons && !hook("replaceresourcetypeicon")) 
-            {
-            ?>
-            <div class="ResourceTypeIcon<?php
-            if (array_key_exists($result[$n]['resource_type'], $resource_type_icons_mapping))
-                {
-                echo ' fa fa-fw fa-' . $resource_type_icons_mapping[$result[$n]['resource_type']];  
+        <div class="ResourcePanelTop">
+            <?php
+            if (isset($result[$n]['file_extension']) && $result[$n]['file_extension'] != "")
+                { ?>
+                <span class="thumbs-file-extension"><?php echo strtoupper(htmlspecialchars($result[$n]['file_extension'])) ?></span>
+                <?php
                 }
-            ?>" ></div>
-            <?php 
-            }
+
+            if (!hook("replaceresourcetypeicon"))
+                {
+                foreach ($types as $type)
+                    {
+                    if (($type["ref"] == $result[$n]['resource_type']) && isset($type["icon"]))
+                        {
+                        echo '<div class="ResourceTypeIcon fa-fw ' . htmlspecialchars($type["icon"]) . '" title="' . htmlspecialchars($type["name"]) . '"></div>';  
+                        }
+                    }
+                }
+            ?>
+        </div>
+        <?php
         hook ("resourcethumbtop");
         if (!hook("renderimagethumb")) 
             {
@@ -239,14 +241,13 @@ if (!hook("renderresultthumb"))
                 {include $plugin;}
 
             # swap title fields if necessary
-            if (isset($metadata_template_resource_type) && isset ($metadata_template_title_field))
+            if (isset($metadata_template_resource_type) && isset($metadata_template_title_field) && is_int_loose($metadata_template_title_field))
                 {
                 if (($df[$x]['ref']==$view_title_field) && ($result[$n]['resource_type']==$metadata_template_resource_type))
                     {
                     $value=$result[$n]['field'.$metadata_template_title_field];
                     }
                 }
-
             // extended css behavior 
             if (in_array($df[$x]['ref'],$thumbs_display_extended_fields) &&
             ((isset($metadata_template_title_field) && $df[$x]['ref']!=$metadata_template_title_field) || !isset($metadata_template_title_field)))

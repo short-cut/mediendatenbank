@@ -296,11 +296,33 @@ function existing_tile($title,$all_users,$url,$link,$reload_interval,$resource_c
 
 /*
  * Cleanup Duplicate and Loose Tiles
- * This removes all unused tiles that are flagged as "allowed to delete"
+ * This removes all unused tiles that are flagged as:
+ * "allowed to delete"
+ * AND not "all users"
  */
 function cleanup_dash_tiles()
 	{
-	sql_query("DELETE FROM dash_tile WHERE allow_delete = 1 AND ref NOT IN (SELECT DISTINCT dash_tile FROM user_dash_tile)");
+    global $lang;
+    $tiles = ps_query(
+        "SELECT * FROM dash_tile 
+            WHERE allow_delete = 1
+                AND all_users = 0
+                AND ref NOT IN (SELECT DISTINCT dash_tile FROM user_dash_tile)
+                AND ref NOT IN (SELECT DISTINCT dash_tile FROM usergroup_dash_tile)"
+    );
+
+    ps_query(
+        "DELETE FROM dash_tile 
+            WHERE allow_delete = 1
+                AND all_users = 0
+                AND ref NOT IN (SELECT DISTINCT dash_tile FROM user_dash_tile)
+                AND ref NOT IN (SELECT DISTINCT dash_tile FROM usergroup_dash_tile)"
+    );
+
+    foreach ($tiles as $tile)
+        {
+        log_activity($lang['manage_all_dash'],LOG_CODE_DELETED,$tile["title"],'dash_tile',NULL,$tile["ref"]);
+        }
 	}
 
 
@@ -943,18 +965,24 @@ function update_user_dash_tile_order($user,$tile,$order_by)
  *
  */
 function delete_user_dash_tile($usertile,$user)
-	{
-	if(!is_numeric($usertile) || !is_numeric($user)){return false;}
-	
-	$row = get_user_tile($usertile,$user);
-	sql_query("DELETE FROM user_dash_tile WHERE ref='".$usertile."' and user='".$user."'");
+    {
+    global $lang;
+    if(!is_numeric($usertile) || !is_numeric($user)){return false;}
+    
+    $row = get_user_tile($usertile,$user);
+    sql_query("DELETE FROM user_dash_tile WHERE ref='".$usertile."' and user='".$user."'");
 
-	$existing = sql_query("SELECT count(*) as 'count' FROM user_dash_tile WHERE dash_tile='".$row["dash_tile"]."'");
-	if($existing[0]["count"]<1)
-		{
-		delete_dash_tile($row["dash_tile"]);
-		}
-	}
+    if (!isset($row["dash_tile"]) || !is_numeric($row["dash_tile"])) {return false;}
+    
+    $existing = sql_query("SELECT count(*) as 'count' FROM user_dash_tile WHERE dash_tile='".$row["dash_tile"]."'");
+    
+    if($existing[0]["count"]<1)
+        {
+        $tile = get_tile($row["dash_tile"]);
+        delete_dash_tile($row["dash_tile"]);
+        log_activity($lang['manage_all_dash'],LOG_CODE_DELETED,($tile["title"]??""),'dash_tile',NULL,$row["dash_tile"]);
+        }
+    }
 
 /*
  * Remove all tiles from a users dash
@@ -963,6 +991,7 @@ function delete_user_dash_tile($usertile,$user)
  */
 function empty_user_dash($user,$purge=true)
 	{
+    global $lang;
 	$usertiles = sql_query("SELECT dash_tile FROM user_dash_tile WHERE user_dash_tile.user='".escape_check($user)."'");
 	sql_query("DELETE FROM user_dash_tile WHERE user='".$user."'");
 	if($purge)
@@ -973,6 +1002,7 @@ function empty_user_dash($user,$purge=true)
 			if($existing[0]["count"]<1)
 				{
 				delete_dash_tile($tile["dash_tile"]);
+                log_activity($lang['manage_all_dash'],LOG_CODE_DELETED,$tile["title"],'dash_tile',NULL,$tile["dash_tile"]);
 				}
 			}
 		}	
@@ -1109,7 +1139,7 @@ function get_user_dash($user)
 	global $baseurl,$baseurl_short,$lang,$help_modal, $dash_tile_colour, $dash_tile_colour_options;
 
 	#Build User Dash and recalculate order numbers on display
-	$user_tiles = sql_query("SELECT dash_tile.ref AS 'tile',dash_tile.title,dash_tile.all_users,dash_tile.url,dash_tile.reload_interval_secs,dash_tile.link,user_dash_tile.ref AS 'user_tile',user_dash_tile.order_by FROM user_dash_tile JOIN dash_tile ON user_dash_tile.dash_tile = dash_tile.ref WHERE user_dash_tile.user='".$user."' ORDER BY user_dash_tile.order_by");
+	$user_tiles = ps_query("SELECT dash_tile.ref AS 'tile',dash_tile.title,dash_tile.all_users,dash_tile.url,dash_tile.reload_interval_secs,dash_tile.link,user_dash_tile.ref AS 'user_tile',user_dash_tile.order_by FROM user_dash_tile JOIN dash_tile ON user_dash_tile.dash_tile = dash_tile.ref WHERE user_dash_tile.user=? ORDER BY user_dash_tile.order_by",array("i",$user));
 
 	$order=10;
 	foreach($user_tiles as $tile)
@@ -1157,7 +1187,7 @@ function get_user_dash($user)
 				jQuery(function(){
 					var height = jQuery("#contents_user_tile<?php echo htmlspecialchars($tile["user_tile"]);?>").height();
 					var width = jQuery("#contents_user_tile<?php echo htmlspecialchars($tile["user_tile"]);?>").width();
-					jQuery('#contents_user_tile<?php echo htmlspecialchars($tile["user_tile"]) ?>').load("<?php echo $baseurl."/".$tile["url"]."&tile=".htmlspecialchars($tile["tile"]);?>&user_tile=<?php echo htmlspecialchars($tile["user_tile"]);?>&tlwidth="+width+"&tlheight="+height);
+                	jQuery('#contents_user_tile<?php echo htmlspecialchars($tile["user_tile"]) ?>').load("<?php echo $baseurl."/".$tile["url"]."&tile=".htmlspecialchars($tile["tile"]);?>&user_tile=<?php echo htmlspecialchars($tile["user_tile"]);?>&tlwidth="+width+"&tlheight="+height);
 				});
 				</script>
 			</div>
@@ -1318,7 +1348,7 @@ function parse_dashtile_link($link)
     $link = str_replace("[userref]", $userref, $link);
 
     //For upload tiles respect the upload then edit preference
-    if((strpos($link, 'uploader=plupload') !== false) && $upload_then_edit)
+    if((strpos($link, 'uploader=') !== false) && $upload_then_edit)
         {
         global $baseurl;
 
@@ -1331,13 +1361,13 @@ function parse_dashtile_link($link)
         /**
         * @var path is the real ResourceSpace path (regardless if RS is installed under web root or in a subfolder)
         * Example:
-        * For http://localhost/trunk/pages/edit.php?ref=-[userref]&uploader=plupload the real path is pages/edit.php as 
+        * For http://localhost/trunk/pages/edit.php?ref=-[userref]&uploader=batch the real path is pages/edit.php as 
         * RS handles this via its baseurl when generating absolute paths.
         */
         $path = str_replace("{$baseurl}/", "", $link);
         $path = str_replace("?{$query}", "", $path);
 
-        $link = str_replace($path, "pages/upload_plupload.php", $link);
+        $link = str_replace($path, "pages/upload_batch.php", $link);
         }
 
     return $link;
@@ -1696,7 +1726,7 @@ function generate_dash_tile_toolbar(array $tile, $tile_id)
             </a>
         </div>
         <?php
-        if(checkPermission_dashadmin() || (isset($tile['all_users']) && $tile['all_users'] == 0))
+        if((checkPermission_dashadmin() || (isset($tile['all_users']) && $tile['all_users'] == 0)) && !(isset($tile['no_edit']) && $tile['no_edit']))
             {
             ?>
             <div class="tool edit">
@@ -1852,4 +1882,284 @@ function validate_tile_style(string $type, string $style)
         {
         return '';
         }
+    }
+
+
+/**
+ * Sanitise the url provided when saving a dash tile. This function will take the value obtained by the form and pass it through if valid. 
+ * If the url supplied is invalid, a blank value will be returned allowing the default standard tile type to be used.
+ *
+ * @param   string  $buildurl   url supplied when dash tile is edited, containing a number of optional parameters.
+ * 
+ * @return  string  A valid url or empty string if invalid.  
+ */
+function validate_build_url($buildurl)
+    {
+    global $tile_styles;
+    if ($buildurl != "")
+        {
+        # Sanitise the url provided.
+        $build_url_parts = explode('?',$buildurl);
+        $valid_tile_urls = array();
+        $valid_tile_urls[] = 'pages/ajax/dash_tile.php';
+        $valid_tile_urls[] = 'pages/team/ajax/graph.php';
+        if (!in_array($build_url_parts[0],$valid_tile_urls))
+            {
+            // Url is invalid
+            $buildurl = "";
+            }
+        else
+            {
+            parse_str($build_url_parts[1], $build_url_parts_param);
+            foreach ($build_url_parts_param as $param => $value)
+                {
+                switch ($param)
+                    {
+                    case 'tltype':
+                        # type checks
+                        if (!array_key_exists($value,$tile_styles))
+                            {
+                            $buildurl = "";
+                            }
+                        break;
+                    case 'tlsize':
+                        # size checks
+                        if (!in_array($value,array('single','double','')))
+                            {
+                            $buildurl = "";
+                            }
+                        break;
+                    case 'tlstyle':
+                        # style checks
+                        $all_tile_styles = array();
+                        foreach ($tile_styles as $tile_type_style)
+                            {
+                            $all_tile_styles = array_merge($all_tile_styles, $tile_type_style);
+                            }
+                        if (!in_array($value,$all_tile_styles))
+                            {
+                            $buildurl = "";
+                            }
+                        break;
+                    case 'promimg':
+                        # img checks
+                        if (!is_int_loose($value) && !is_bool($build_url_param[1]))
+                            {
+                            $buildurl = "";
+                            }
+                        break;
+                    }
+                }
+            }
+        }
+    return $buildurl;
+    }
+
+/**
+ * Generate client side logic for doing expensive computation async for retrieving the tile background and total results count.
+ * 
+ * @param array  $tile           Tile information {@see pages/ajax/dash_tile.php}
+ * @param string $tile_id        HTML ID for the container div
+ * @param int    $tile_width     Tile width {@see pages/ajax/dash_tile.php}
+ * @param int    $tile_height    Tile height {@see pages/ajax/dash_tile.php}
+ * @param int    $promoted_image ID of the promoted resource (for background)
+ */
+function tltype_srch_generate_js_for_background_and_count(array $tile, string $tile_id, int $tile_width, int $tile_height, int $promoted_image)
+    {
+    // Prevent function from running for the wrong tile type and style
+    parse_str(parse_url($tile['url'] ?? '', PHP_URL_QUERY), $tile_meta);
+    if(!(
+        isset($tile_meta['tltype'], $tile_meta['tlstyle']) 
+        && $tile_meta['tltype'] === 'srch'
+        && in_array($tile_meta['tlstyle'], $GLOBALS['tile_styles']['srch'])
+    ))
+        {
+        return;
+        }
+
+    $tile_style = $tile_meta['tlstyle'];
+
+    $search_string = explode('?',$tile["link"]);
+    parse_str(str_replace("&amp;","&",$search_string[1]),$search_string);
+    $search = isset($search_string["search"]) ? $search_string["search"] :"";
+    $restypes = isset($search_string["restypes"]) ? $search_string["restypes"] : "";
+    $order_by= isset($search_string["order_by"]) ? $search_string["order_by"] : "";
+    $archive = isset($search_string["archive"]) ? $search_string["archive"] : "";
+    $sort = isset($search_string["sort"]) ? $search_string["sort"] : "";
+    ?>
+    <!-- Resource counter -->
+    <p class="no_resources DisplayNone"><?php echo htmlspecialchars($GLOBALS['lang']['noresourcesfound']); ?></p>
+    <p class="tile_corner_box DisplayNone">
+        <span aria-hidden="true" class="fa fa-clone"></span>
+    </p>
+    <script>
+    jQuery(document).ready(function()
+        {
+        const TILE_STYLE = '<?php echo htmlspecialchars($tile_style, ENT_QUOTES); ?>';
+        const SHOW_RESOURCE_COUNT = <?php echo $tile['resource_count'] ? 'true' : 'false'; ?>;
+
+        let data = {
+            'link': '<?php echo htmlspecialchars($tile["link"], ENT_QUOTES); ?>',
+            'promimg': '<?php echo (int)$promoted_image; ?>',
+        };
+
+        api('get_dash_search_data', data, function(response)
+            {
+            const TILE_ID = '<?php echo htmlspecialchars($tile_id, ENT_QUOTES); ?>';
+            const TILE_WIDTH = <?php echo $tile_width; ?>;
+            const TILE_HEIGHT = <?php echo $tile_height; ?>;
+            var preview_resources;
+
+            if(TILE_STYLE === 'thmbs')
+                {
+                let promoted_image = <?php echo (int)$promoted_image; ?>;
+                let promoted_image_resource = response.images.filter(resource => resource.ref == promoted_image && typeof resource.url !== 'undefined');
+                console.debug('promoted_image_resource = %o', promoted_image_resource);
+
+                // Filter response
+                preview_resources = promoted_image > 0 && promoted_image_resource[0] !== undefined ? [promoted_image_resource[0]]
+                : promoted_image === 0 && response.images[0] !== undefined ? [response.images[0]]
+                : [];
+                // Fit (adjust) the 'pre' size to the tile size
+                preview_resources = preview_resources.map(function(resource)
+                    {
+                    if(resource['thumb_width'] * 0.7 >= resource['thumb_height'])
+                        {
+                        let ratio = resource['thumb_height'] / TILE_HEIGHT;
+                        if(ratio == 0) { ratio = 1; } // attempt fit if 'thumb_height' is 0
+
+                        let width = resource['thumb_width'] / ratio;
+                        var size = width < TILE_WIDTH ? ' width="100%"' : ' height="100%"';
+                        }
+                    else
+                        {
+                        let ratio = resource['thumb_width'] / TILE_WIDTH;
+                        if(ratio == 0) { ratio = 1; } // attempt fit if 'thumb_width' is 0
+
+                        let height = resource['thumb_height'] / ratio;
+                        var size = height < TILE_HEIGHT ? ' height="100%"' : ' width="100%"';
+                        }
+
+                    return '<img src="' + resource.url + '"' + size + ' class="thmbs_tile_img AbsoluteTopLeft">';
+                    });
+                }
+            else if(TILE_STYLE === 'multi')
+                {
+                preview_resources = response.images
+                    .map(function(resource, index, resources_list)
+                        {
+                        let tile_working_space = <?php echo $tile['tlsize'] == '' ? 140 : 280; ?>;
+                        let gap = tile_working_space / resources_list.length;
+                        let space = index * gap;
+                        let style = 'left: ' + (space * 1.5) + 'px;'
+                            + ' transform: rotate(' + (20 - (index * 12)) + 'deg);';
+
+                        return '<img src="' + resource.url + '" style="' + style + '">';
+                        })
+                    // images will be prepended to the tile container so reverse the order so that the layout ends up as 
+                    // expected (from left to right, each preview on top of the previous one)
+                    .reverse();
+                }
+            // Blank style
+            else
+                {
+                preview_resources = [];
+                }
+
+            // Tile background - resource(s) preview
+            console.debug('preview_resources = %o', preview_resources);
+            if(preview_resources.length > 0)
+                {
+                let tile_div = jQuery('div#' + TILE_ID);
+
+                for(let i = 0; i < preview_resources.length; i++)
+                    {
+                    tile_div.prepend(preview_resources[i]);
+                    }
+                }
+
+            // Resource count
+            let tile_corner_box = jQuery('div#' + TILE_ID + ' p.tile_corner_box');
+            if(SHOW_RESOURCE_COUNT)
+                {
+                tile_corner_box.append(response.count);
+                tile_corner_box.removeClass('DisplayNone');
+                }
+            else if(response.count == 0)
+                {
+                jQuery('div#' + TILE_ID + ' p.no_resources').removeClass('DisplayNone');
+                }
+            });
+        });
+    </script>
+    <?php
+    return;
+    }
+
+/**
+ * Get images and resource count for search dash tile. 
+ * This has to work on a string because the dash tile does not yet exist when on dash creation page
+ * For performance this function will return a maximum of 4 images
+ *
+ * @param  string   $link          Tile link URL
+ * @param  int      $promimg       Promoted image ref
+ * 
+ * @return array    $searchdata    Array containing the count of resources and details of preview images.
+ */
+function get_dash_search_data($link='', $promimg=0)
+    {    
+    $searchdata = [];
+    $searchdata["count"] = 0;
+    $searchdata["images"] = [];
+    
+    if(!(checkPermission_dashadmin() || checkPermission_dashuser()))
+        {
+        return $searchdata;
+        }
+
+    $search_string = explode('?',$link);
+    parse_str(str_replace("&amp;","&",$search_string[1]),$search_string);
+    $search = isset($search_string["search"]) ? $search_string["search"] :"";
+    $restypes = isset($search_string["restypes"]) ? $search_string["restypes"] : "";
+    $order_by= isset($search_string["order_by"]) ? $search_string["order_by"] : "";
+    $archive = isset($search_string["archive"]) ? $search_string["archive"] : "";
+    $sort = isset($search_string["sort"]) ? $search_string["sort"] : "";
+
+    $results= do_search($search,$restypes,$order_by,$archive,-1,$sort);    
+    $imagecount = 0;
+    if(is_array($results))
+        {
+        $resultcount = count($results);
+        $searchdata["count"] = $resultcount;
+        $n = 0;
+        // First see if we can get the promoted image by adding it to the front of the array
+        if($promimg != 0)
+            {
+            $add = get_resource_data($promimg);
+            if(is_array($add))
+                {
+                array_unshift($results,$add);
+                }
+            }
+        while($imagecount < 4 && $n < $resultcount)
+            {
+            global $access; // Needed by check_use_watermark()
+            $access=get_resource_access($results[$n]);
+            if(in_array($access,[RESOURCE_ACCESS_RESTRICTED,RESOURCE_ACCESS_FULL]))
+                {
+                $use_watermark=check_use_watermark();
+                $resfile=get_resource_path($results[$n]["ref"],true,"pre",false,"jpg",-1,1,$use_watermark);
+                if(file_exists($resfile))
+                    {
+                    $searchdata["images"][$imagecount]["ref"] = $results[$n]["ref"];
+                    $searchdata["images"][$imagecount]["thumb_width"] = $results[$n]["thumb_width"];
+                    $searchdata["images"][$imagecount]["thumb_height"] = $results[$n]["thumb_height"];
+                    $searchdata["images"][$imagecount]["url"] = get_resource_path($results[$n]["ref"],false,"pre",false,"jpg",-1,1,$use_watermark);
+                    $imagecount++;
+                    }
+                }
+            $n++;
+            }
+        }
+    return $searchdata;
     }
