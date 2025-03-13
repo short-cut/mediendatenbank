@@ -39,7 +39,6 @@ services:
             - "MYSQL_DATABASE=${DATABASE_DATABASE}"
             - "MYSQL_USER=${DATABASE_USER}"
             - "MYSQL_PASSWORD=${DATABASE_PASSWORD}"
-        restart: unless-stopped
         volumes:
             - "${DATA_DIR_HOST}/db/:/var/lib/mysql/${VOLUME_PARAMS}"
             - "${DATA_DIR_HOST}/backup/:/home/mysql/backup/${VOLUME_PARAMS}"
