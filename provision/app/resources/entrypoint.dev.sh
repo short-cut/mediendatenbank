@@ -25,6 +25,9 @@ if [[ ! -f ./var/log/apache2/access.log ]]; then
     touch ./var/log/access.log
 fi
 
+echo "Adapt filestore permissions..."
+chmod --recursive 777 ./filestore
+
 echo "Provisioning done!"
 
 exec "$@"
