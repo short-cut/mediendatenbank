@@ -11,7 +11,7 @@ services:
                 - "WWW_BASE_DIR=${WWW_BASE_DIR}"
                 - "PROJECT_ROOT_DOCKER=${PROJECT_ROOT_DOCKER}"
                 - "PHP_VERSION=${PHP_VERSION}"
-        container_name: ${COMPOSE_CONTAINER_NAME}
+        container_name: ${COMPOSE_CONTAINER_NAME}_app
         volumes:
             - "../app:${PROJECT_ROOT_DOCKER}"
         environment:
@@ -32,6 +32,7 @@ services:
         build:
             context: .
             dockerfile: "./db/Dockerfile_${ENVIRONMENT}"
+        container_name: ${COMPOSE_CONTAINER_NAME}_db
         environment:
             - "MYSQL_ROOT_PASSWORD=${DATABASE_ROOT_PASSWORD}"
             - "MYSQL_DATABASE=${DATABASE_DATABASE}"
