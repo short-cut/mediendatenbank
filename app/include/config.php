@@ -23,10 +23,12 @@ BASIC PARAMETERS
 #######################################
 ################################ MySQL:
 #######################################
-$mysql_server      = 'localhost';
+//$mysql_server      = 'localhost';
+$mysql_server      = 'db';
 $mysql_server_port = 3306;
 $mysql_username    = 'resourcespace';
-$mysql_password    = 'MeDi84.En';
+//$mysql_password    = 'MeDi84.En';
+$mysql_password    = 'redelmo';
 $read_only_db_username = "";
 $read_only_db_password = "";
 $mysql_db          = 'mediendatenbank';
