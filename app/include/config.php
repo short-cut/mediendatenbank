@@ -23,6 +23,7 @@ BASIC PARAMETERS
 #######################################
 ################################ MySQL:
 #######################################
+// change rollout
 //$mysql_server      = 'localhost';
 $mysql_server      = 'db';
 $mysql_server_port = 3306;
@@ -3569,7 +3570,7 @@ $preview_tile_scale_factors = array(1,2,4,8,16);
 Rather than use a URL like "http://yourdomain/filestore/1_6326bb8314c6c21/1pre_cf33a61f47b5982.jpg", it will use
 the download.php page to give back the file. This prevents users from comming back and download the files after their 
 permissions to the assets have been revoked.*/
-$hide_real_filepath = false;
+$hide_real_filepath = true;
 
 
 #######################################
