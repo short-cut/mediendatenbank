@@ -34,6 +34,9 @@ fi
 echo "Adapt filestore permissions..."
 chmod --recursive 777 ./filestore
 
+echo "Prepare config.php for environment \"${ENVIRONMENT}\""
+cp ./include/config.${ENVIRONMENT}.php ./include/config.php
+
 echo "Provisioning done!"
 
 exec "$@"
