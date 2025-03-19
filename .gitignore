@@ -10,3 +10,6 @@ app/.svn/
 doc/sql/
 app/var/log/
 provision/_data/
+
+# we're copying the env config in entypoint
+app/include/config.php
