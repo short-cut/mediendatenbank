@@ -15,6 +15,7 @@ services:
         volumes:
             - "../app:${PROJECT_ROOT_DOCKER}"
             - "./_data/filestore:${PROJECT_ROOT_DOCKER}/filestore"
+            - "./_data/backup:${WWW_BASE_DIR}/backup"
         environment:
             ENVIRONMENT: ${ENVIRONMENT}
             WWW_BASE_DIR: ${WWW_BASE_DIR}

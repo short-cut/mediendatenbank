@@ -78,7 +78,7 @@ COPY ./app/resources/bashrc ${WWW_BASE_DIR}/.bashrc
 COPY ./app/resources/entrypoint.${ENVIRONMENT}.sh /entrypoint.sh
 
 COPY ./app/resources/ports.${ENVIRONMENT}.conf /etc/apache2/ports.conf
-COPY ./app/resources/php.${ENVIRONMENT}.ini /etc/php//apache2/php.ini
+COPY ./app/resources/php.${ENVIRONMENT}.ini /etc/php/${PHP_VERSION}/apache2/php.ini
 COPY ./app/resources/timezone /etc/
 
 RUN rm /etc/apache2/sites-available/* && rm /etc/apache2/sites-enabled/*

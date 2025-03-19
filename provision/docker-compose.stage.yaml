@@ -1,0 +1,9 @@
+services:
+    app:
+        restart: unless-stopped
+    db:
+        restart: unless-stopped
+
+networks:
+    mddb_prod:
+        name: "${NETWORK_NAME}"
