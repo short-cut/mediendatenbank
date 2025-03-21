@@ -5,5 +5,5 @@ services:
         restart: unless-stopped
 
 networks:
-    mddb_prod:
+    mddb_stage:
         name: "${NETWORK_NAME}"
