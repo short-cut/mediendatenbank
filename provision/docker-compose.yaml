@@ -45,4 +45,6 @@ services:
         volumes:
             - "${DATA_DIR_HOST}/db/:/var/lib/mysql/${VOLUME_PARAMS}"
             - "${DATA_DIR_HOST}/backup/:/home/mysql/backup/${VOLUME_PARAMS}"
+        networks:
+            - "${NETWORK_KEY}"
 
