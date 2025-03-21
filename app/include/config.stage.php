@@ -26,7 +26,7 @@ BASIC PARAMETERS
 // change rollout
 $mysql_server      = 'db';
 $mysql_server_port = 3306;
-$mysql_username    = 'resourcespace';
+$mysql_username    = 'mediendatenbank';
 $mysql_password    = 'MeDi84.En';
 $read_only_db_username = "";
 $read_only_db_password = "";
