@@ -11,7 +11,7 @@ ARG PROJECT_ROOT_DOCKER
 ENV DEBIAN_FRONTEND noninteractive
 ENV APACHE_RUN_USER www-data
 ENV APACHE_RUN_GROUP www-data
-ENV APACHE_LOG_DIR /var/log/apache2
+ENV APACHE_LOG_DIR /var/www/application/var/log/apache2
 ENV APACHE_LOCK_DIR /var/lock/apache2
 ENV APACHE_PID_FILE /var/run/apache2.pid
 
@@ -27,7 +27,7 @@ RUN apt-get update && apt-get install -yq --no-install-recommends \
     imagemagick-6-common \
     ffmpeg \
     ghostscript \
-    exif \
+    libimage-exiftool-perl \
     inkscape \
     php \
     php-common \
@@ -43,7 +43,13 @@ RUN apt-get update && apt-get install -yq --no-install-recommends \
     php-zip \
     php-curl \
     php-xml \
-    php-apcu
+    php-apcu \
+    7zip \
+    antiword \
+    poppler-utils \
+    cron
+
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # check if you all need
 RUN a2enmod  \
@@ -56,8 +62,6 @@ RUN a2enmod  \
     xml2enc  \
     ssl  \
     headers
-
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install composer
 # COPY --from=composer:latest /usr/bin/composer /usr/local/bin/composer
@@ -86,9 +90,9 @@ RUN rm /etc/apache2/sites-available/* && rm /etc/apache2/sites-enabled/*
 COPY ./app/resources/apache.${ENVIRONMENT}.conf /etc/apache2/sites-available/application.conf
 #COPY ./app/resources/apache.${ENVIRONMENT}.https.conf /etc/apache2/sites-available/application.https.conf
 
+COPY ./app/resources/crontab.${ENVIRONMENT} /etc/cron.d/mddb
+RUN chown root:root /etc/cron.d/mddb && chmod 755 /etc/cron.d/mddb
 
-
-#COPY ./app/resources/crontab.${ENVIRONMENT} /etc/cron.d/application
 RUN chown ${APACHE_RUN_USER}.${APACHE_RUN_GROUP} ${WWW_BASE_DIR}/.bashrc
 RUN chmod +x /entrypoint.sh
 

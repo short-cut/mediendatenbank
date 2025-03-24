@@ -37,6 +37,10 @@ chmod --recursive 777 ./filestore
 echo "Prepare config.php for environment \"${ENVIRONMENT}\""
 cp ./include/config.${ENVIRONMENT}.php ./include/config.php
 
+echo "starting cron"
+service cron start
+service cron restart
+
 echo "Provisioning done!"
 
 exec "$@"
