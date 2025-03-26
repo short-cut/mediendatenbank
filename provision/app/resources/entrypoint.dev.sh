@@ -30,12 +30,16 @@ fi
 if [[ ! -f ./var/log/apache2/access.log ]]; then
     touch ./var/log/access.log
 fi
+if [[ ! -f  ./var/log/resourcespace.log ]]; then
+    touch ./var/log/resourcespace.log
+fi
+chmod 666 ./var/log/resourcespace.log
 
 echo "Adapt filestore permissions..."
 chmod --recursive 777 ./filestore
 
 echo "Prepare config.php for environment \"${ENVIRONMENT}\""
-cp ./include/config.${ENVIRONMENT}.php ./include/config.php
+cp "./include/config.${ENVIRONMENT}.php" ./include/config.php
 
 echo "starting cron"
 service cron start
