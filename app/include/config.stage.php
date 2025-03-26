@@ -2528,8 +2528,7 @@ $qlpreview_exclude_extensions=array("tif","tiff");
 # Log developer debug information to the debug log (filestore/tmp/debug.txt)?
 # As the default location is world-readable it is recommended for live systems to change the location to somewhere outside of the web directory by setting $debug_log_location below
 // change rollout
-//$debug_log=false;
-$debug_log=true;
+$debug_log=false;
 
 # Optional extended debugging information from backtrace (records pagename and calling functions)
 # debug_extended_info = true;
