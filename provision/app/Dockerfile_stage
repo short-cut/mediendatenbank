@@ -91,7 +91,7 @@ COPY ./app/resources/apache.${ENVIRONMENT}.conf /etc/apache2/sites-available/app
 #COPY ./app/resources/apache.${ENVIRONMENT}.https.conf /etc/apache2/sites-available/application.https.conf
 
 COPY ./app/resources/crontab.${ENVIRONMENT} /etc/cron.d/mddb
-RUN chown root:root /etc/cron.d/mddb && chmod 755 /etc/cron.d/mddb
+RUN chown root:root /etc/cron.d/mddb && chmod 644 /etc/cron.d/mddb
 
 RUN chown ${APACHE_RUN_USER}.${APACHE_RUN_GROUP} ${WWW_BASE_DIR}/.bashrc
 RUN chmod +x /entrypoint.sh
