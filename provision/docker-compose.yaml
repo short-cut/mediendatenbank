@@ -13,9 +13,9 @@ services:
                 - "PHP_VERSION=${PHP_VERSION}"
         container_name: ${COMPOSE_CONTAINER_NAME}_app
         volumes:
-            - "../app:${PROJECT_ROOT_DOCKER}"
-            - "./_data/filestore:${PROJECT_ROOT_DOCKER}/filestore"
-            - "./_data/backup:${WWW_BASE_DIR}/backup"
+            - "../app:${PROJECT_ROOT_DOCKER}${VOLUME_PARAMS}"
+            - "./_data/filestore:${PROJECT_ROOT_DOCKER}/filestore${VOLUME_PARAMS}"
+            - "./_data/backup:${WWW_BASE_DIR}/backup${VOLUME_PARAMS}"
         environment:
             ENVIRONMENT: ${ENVIRONMENT}
             WWW_BASE_DIR: ${WWW_BASE_DIR}
@@ -23,6 +23,7 @@ services:
             HOST_NAME: ${HOST_NAME}
             USER_GROUP_ID: ${USER_GROUP_ID}
             PHP_VERSION: ${PHP_VERSION}
+            TZ: "${PHP_TIMEZONE}"
         depends_on:
             - db
         ports:
