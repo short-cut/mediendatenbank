@@ -1,8 +1,8 @@
-services:
-    app:
-        restart: unless-stopped
-    db:
-        restart: unless-stopped
+#services:
+#    app:
+#        restart: unless-stopped
+#    db:
+#        restart: unless-stopped
 
 networks:
     mddb_stage:
