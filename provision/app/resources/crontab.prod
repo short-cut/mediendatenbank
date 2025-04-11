@@ -1,5 +1,5 @@
 # /etc/crontab: system-wide crontab
-# Unlike any other crontab you don't have to run the `crontab'
+# Udcnlike any other crontab you don't have to run the `crontab'
 # command to install the new version when you edit this file
 # and files in /etc/cron.d. These files also have username fields,
 # that none of the other crontabs do.
@@ -7,8 +7,8 @@
 SHELL=/bin/bash
 basepath=/var/www/application
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-# Important: this is the timezone of the application, not the cron deamon itself
-TZ=Europe/Berlin
 
 # m h dom mon dow user  command
-8 2 * * * www-data "/usr/bin/php ${basepath}/batch/cron.php  >> ${basepath}/var/log/cron.log 2>&1"
+8 3 * * * www-data /usr/bin/php ${basepath}/batch/cron.php  >> ${basepath}/var/log/cron.log 2>&1
+
+
